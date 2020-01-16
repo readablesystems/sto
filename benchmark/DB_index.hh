@@ -269,6 +269,8 @@ public:
         if (cell_accesses[I] != access_t::none) {
             auto item = Sto::item(tobj, item_key_t(e, I));
             auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
+            if (cell_accesses[I] == access_t::update)
+                item.add_write();
             if (h->status_is(COMMITTED_DELETED)) {
                 return false;
             } else if (!h->status_is(UNUSED) && !IndexType::template is_phantom<First>(h, item)) {
@@ -443,7 +445,13 @@ public:
     // For value updates (non-commutative)
     template <typename P, int C, int I, typename First, typename... Rest>
     static void mvcc_update_loop(IndexType* idx, internal_elem* e, value_type* whole_value_in) {
-        Sto::item(idx, item_key_t(e, I)).add_write(std::get<I>(P::split_builder)(*whole_value_in));
+        auto[found, item] = Sto::find_write_item(idx, item_key_t(e, I));
+        if (found) {
+            item.clear_write();
+            auto p = Sto::tx_alloc<First>();
+            *p = std::get<I>(P::split_builder)(*whole_value_in);
+            item.add_write(p);
+        }
         mvcc_update_loop<P, C, I+1, Rest...>(idx, e, whole_value_in);
     }
     template <typename P, int C, int I>
