@@ -444,11 +444,71 @@ void TestMVCCOrderedIndexSplitInsert() {
     printf("Test pass: %s\n", __FUNCTION__);
 }
 
+void TestMVCCOrderedIndexSplitUpdate() {
+    using key_type = bench::masstree_key_adapter<index_key>;
+    using index_type = mvcc_ordered_index<key_type,
+                                          index_value,
+                                          db_params::db_mvcc_params>;
+    typedef index_value::NamedColumn nc;
+    index_type idx;
+    idx.thread_init();
+
+    {
+        TestTransaction t(0);
+        key_type key{0, 1};
+        index_value val{4, 5, 6};
+
+        auto[success, found] = idx.insert_row(key, &val);
+        assert(success);
+        assert(!found);
+        assert(t.try_commit());
+    }
+
+    {
+        TestTransaction t(1);
+        key_type key{0, 1};
+        index_value new_val{7, 0, 0};
+        auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::update},
+                                                                          {nc::value_2a, access_t::read},
+                                                                          {nc::value_2b, access_t::read}});
+        assert(success);
+        assert(result);
+        assert(accessor.value_1() == 4);
+        assert(accessor.value_2a() == 5);
+        assert(accessor.value_2b() == 6);
+
+        idx.update_row(row, &new_val);
+
+        assert(t.try_commit());
+    }
+
+    {
+        TestTransaction t(0);
+        key_type key{0, 1};
+        auto[success, result, row, accessor] = idx.select_split_row(key,
+            {{nc::value_1, access_t::read},
+             {nc::value_2a, access_t::read},
+             {nc::value_2b, access_t::read}});
+
+        (void)row;
+        assert(success);
+        assert(result);
+        assert(accessor.value_1() == 7);
+        assert(accessor.value_2a() == 5);
+        assert(accessor.value_2b() == 6);
+
+        assert(t.try_commit());
+    }
+
+    printf("Test pass: %s\n", __FUNCTION__);
+}
+
 int main() {
     TestMVCCOrderedIndexSplit();
     TestMVCCOrderedIndexDelete();
     TestMVCCOrderedIndexCommute();
     TestMVCCOrderedIndexScan();
     TestMVCCOrderedIndexSplitInsert();
+    TestMVCCOrderedIndexSplitUpdate();
     return 0;
 }

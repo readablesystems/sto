@@ -765,6 +765,15 @@ private:
         return TransProxy(*this, *ti);
     }
 
+    template <typename T>
+    std::tuple<bool, TransProxy> find_write_item(const TObject* obj, T key) {
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
+        if (!ti || !ti->has_write()) {
+            return {false, TransProxy(*this, *ti)};
+        }
+        return {true, TransProxy(*this, *ti)};
+    }
 
     template <typename T>
     TransProxy item_inlined(const TObject* obj, T key) {
@@ -1427,6 +1436,12 @@ public:
     static TransProxy fresh_item(const TObject* s, T key) {
         always_assert(in_progress());
         return TThread::txn->fresh_item(s, key);
+    }
+
+    template <typename T>
+    static std::tuple<bool, TransProxy> find_write_item(const TObject* s, T key) {
+        always_assert(in_progress());
+        return TThread::txn->find_write_item(s, key);
     }
 
     static void commit() {
