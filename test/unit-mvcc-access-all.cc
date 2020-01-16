@@ -319,7 +319,7 @@ void TestMVCCOrderedIndexCommute() {
         TestTransaction t(0);
         auto[success, result, row, accessor]
             = idx.select_split_row(key,
-                                   {{nc::value_1,access_t::none},
+                                   {{nc::value_1,access_t::write},
                                     {nc::value_2b,access_t::none}});
         (void)row; (void)accessor;
         assert(success);
