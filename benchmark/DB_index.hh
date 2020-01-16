@@ -155,6 +155,10 @@ enum class RowAccess : int { None = 0, ObserveExists, ObserveValue, UpdateValue 
 
 enum class access_t : int8_t { none = 0, read = 1, write = 2, update = 3 };
 
+inline access_t operator&(const access_t& lhs, const access_t& rhs) {
+    return static_cast<access_t>(static_cast<int8_t>(lhs) & static_cast<int8_t>(rhs));
+}
+
 template <typename IndexType>
 class split_version_helpers {
 public:
@@ -268,18 +272,21 @@ public:
         auto mvobj = e->template chain_at<I>();
         if (cell_accesses[I] != access_t::none) {
             auto item = Sto::item(tobj, item_key_t(e, I));
-            auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
-            if (cell_accesses[I] == access_t::update)
+            if ((cell_accesses[I] & access_t::write) != access_t::none) {
                 item.add_write();
-            if (h->status_is(COMMITTED_DELETED)) {
-                return false;
-            } else if (!h->status_is(UNUSED) && !IndexType::template is_phantom<First>(h, item)) {
-                // XXX No read-my-write stuff for now.
-                MvAccess::template read<First>(item, h);
+            }
+            if ((cell_accesses[I] & access_t::read) != access_t::none) {
+                auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
+                if (h->status_is(COMMITTED_DELETED)) {
+                    return false;
+                } else if (!h->status_is(UNUSED) && !IndexType::template is_phantom<First>(h, item)) {
+                    // XXX No read-my-write stuff for now.
+                    MvAccess::template read<First>(item, h);
 
-                auto vp = h->vp();
-                assert(vp);
-                value_ptrs[I] = vp;
+                    auto vp = h->vp();
+                    assert(vp);
+                    value_ptrs[I] = vp;
+                }
             }
         }
         return mvcc_select_loop<C, I + 1, Rest...>(cell_accesses, value_ptrs, tobj, e);
@@ -461,7 +468,11 @@ public:
     // For commutative updates
     template <int C, int I, typename First, typename... Rest>
     static void mvcc_update_loop(IndexType* idx, internal_elem* e, const value_comm_type& comm) {
-        Sto::item(idx, item_key_t(e, I)).add_commute(static_cast<commutators::Commutator<First>>(comm));
+        auto[found, item] = Sto::find_write_item(idx, item_key_t(e, I));
+        if (found) {
+            always_assert(!item.has_read(), "CU and regular updates cannot be mixed in the same cell in the same transaction.");
+            item.add_commute(static_cast<commutators::Commutator<First>>(comm));
+        }
         mvcc_update_loop<C, I+1, Rest...>(idx, e, comm);
     }
     template <int C, int I>
