@@ -585,9 +585,10 @@ public:
     typedef IndexValueContainer<V, version_type> value_container_type;
     typedef commutators::Commutator<value_type> comm_type;
 
-    typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
-    typedef std::tuple<bool, bool>                               ins_return_type;
-    typedef std::tuple<bool, bool>                               del_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, const value_type*>      sel_return_type;
+    typedef std::tuple<bool, bool>                                    ins_return_type;
+    typedef std::tuple<bool, bool>                                    del_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, SplitRecordAccessor<V>> sel_split_return_type;
 
     static constexpr sel_return_type sel_abort = { false, false, 0, nullptr };
     static constexpr ins_return_type ins_abort = { false, false };
@@ -609,7 +610,131 @@ public:
     static bool has_row_cell(const TransItem& item) {
         return (item.flags() & row_cell_bit) != 0;
     }
+
+    struct MvInternalElement {
+        typedef typename SplitParams<value_type>::layout_type split_layout_type;
+
+        key_type key;
+        split_layout_type split_row;
+
+        MvInternalElement(const key_type& k)
+            : key(k), split_row() {}
+
+        template <typename... Args>
+        MvInternalElement(const key_type& k, Args... args)
+            : key(k), split_row(std::forward<Args>(args)...) {}
+
+        template <int I>
+        std::tuple_element_t<I, split_layout_type>* chain_at() {
+            return &std::get<I>(split_row);
+        }
+    };
 };
+
+template <typename K, typename V, typename DBParams>
+class mvcc_chain_operations {
+public:
+    using internal_elem = typename index_common<K, V, DBParams>::MvInternalElement;
+
+    static bool has_delete(const TransItem& item) {
+        return index_common<K, V, DBParams>::has_delete(item);
+    }
+
+    template <typename TSplit>
+    static bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain, internal_elem* e, TObject* index, void (*delete_cb) (void*, void*, void*));
+    template <typename TSplit>
+    static bool check_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain);
+    template <typename TSplit>
+    static void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain);
+    template <typename TSplit>
+    static void cleanup_impl_per_chain(TransItem& item, bool committed, MvObject<TSplit>* chain);
+};
+
+template <typename K, typename V, typename DBParams>
+template <typename TSplit>
+bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
+        TransItem& item, Transaction& txn, MvObject<TSplit>* chain, internal_elem* e, TObject* index, void (*delete_cb) (void*, void*, void*)) {
+    using history_type = typename MvObject<TSplit>::history_type;
+    using comm_type = typename commutators::Commutator<TSplit>;
+
+    history_type *hprev = nullptr;
+    if (item.has_read()) {
+        hprev = item.read_value<history_type*>();
+        if (Sto::commit_tid() < hprev->rtid()) {
+            TransProxy(txn, item).add_write(nullptr);
+            TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
+            return false;
+        }
+    }
+    history_type *h = nullptr;
+    if (item.has_commute()) {
+        auto wval = item.template write_value<comm_type>();
+        h = chain->new_history(
+                Sto::commit_tid(), chain, std::move(wval), hprev);
+    } else {
+        auto wval = item.template raw_write_value<TSplit*>();
+        if (has_delete(item)) {
+            h = chain->new_history(
+                    Sto::commit_tid(), chain, nullptr, hprev);
+            h->status_delete();
+            // TODO: Figure out what to do with this.
+            if (std::is_same<TSplit, typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>::value) {
+                h->set_delete_cb(index, delete_cb, e);
+            }
+        } else {
+            h = chain->new_history(
+                    Sto::commit_tid(), chain, wval, hprev);
+        }
+    }
+    assert(h);
+    bool result = chain->cp_lock(Sto::commit_tid(), h);
+    if (!result && !h->status_is(MvStatus::ABORTED)) {
+        chain->delete_history(h);
+        TransProxy(txn, item).add_mvhistory(nullptr);
+        TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
+    } else {
+        TransProxy(txn, item).add_mvhistory(h);
+        TXP_ACCOUNT(txp_tpcc_lock_abort3, txn.special_txp && !result);
+    }
+    return result;
+}
+
+template <typename K, typename V, typename DBParams>
+template <typename TSplit>
+bool mvcc_chain_operations<K, V, DBParams>::check_impl_per_chain(TransItem &item, Transaction &txn,
+                                                                 MvObject<TSplit> *chain) {
+    using history_type = typename MvObject<TSplit>::history_type;
+
+    auto h = item.template read_value<history_type*>();
+    auto result = chain->cp_check(Sto::read_tid<false>(), h);
+    TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
+    return result;
+}
+
+template <typename K, typename V, typename DBParams>
+template <typename TSplit>
+void mvcc_chain_operations<K, V, DBParams>::install_impl_per_chain(TransItem &item, Transaction &txn,
+                                                                   MvObject<TSplit> *chain) {
+    (void)txn;
+    using history_type = typename MvObject<TSplit>::history_type;
+    auto h = item.template write_value<history_type*>();
+    chain->cp_install(h);
+}
+
+template <typename K, typename V, typename DBParams>
+template <typename TSplit>
+void mvcc_chain_operations<K, V, DBParams>::cleanup_impl_per_chain(TransItem &item, bool committed,
+                                                                   MvObject<TSplit> *chain) {
+    using history_type = typename MvObject<TSplit>::history_type;
+    if (!committed) {
+        if (item.has_mvhistory()) {
+            auto h = item.template write_value<history_type*>();
+            if (h) {
+                chain->abort(h);
+            }
+        }
+    }
+}
 
 }; // namespace bench
 

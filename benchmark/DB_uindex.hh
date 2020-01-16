@@ -584,6 +584,7 @@ public:
     using typename C::sel_return_type;
     using typename C::ins_return_type;
     using typename C::del_return_type;
+    using typename C::sel_split_return_type;
 
     using typename C::version_type;
     using typename C::value_container_type;
@@ -606,22 +607,43 @@ public:
 
     using C::index_read_my_write;
 
-    typedef MvObject<value_type> object_type;
-    typedef typename object_type::history_type history_type;
+    using internal_elem = typename C::MvInternalElement;
+
     typedef typename get_occ_version<DBParams>::type bucket_version_type;
 
     typedef std::hash<K> Hash;
     typedef std::equal_to<K> Pred;
 
+#if 0
     // our hashtable is an array of linked lists. 
     // an internal_elem is the node type for these linked lists
     struct internal_elem {
-        internal_elem *next;
+        typedef typename SplitParams<value_type>::layout_type split_layout_type;
+
+        internal_elem* next;
         key_type key;
-        object_type row;
+        split_layout_type split_row;
 
         internal_elem(const key_type& k)
-            : next(nullptr), key(k), row() {}
+            : next(nullptr), key(k), split_row() {}
+
+        template <typename... Args>
+        internal_elem(const key_type& k, Args... args)
+            : next(nullptr), key(k), split_row(std::forward<Args>(args)...) {}
+
+        template <int I>
+        std::tuple_element_t<I, split_layout_type>* chain_at() {
+            return &std::get<I>(split_row);
+        }
+    };
+#endif
+    struct KVNode {
+        KVNode* next;
+        internal_elem elem;
+
+        template <typename... Args>
+        KVNode(Args... args)
+            : next(nullptr), elem(std::forward<Args>(args)...) {}
     };
 
     static void thread_init() {}
@@ -629,7 +651,7 @@ public:
 
 private:
     struct bucket_entry {
-        internal_elem *head;
+        KVNode *head;
         // this is the bucket version number, which is incremented on insert
         // we use it to make sure that an unsuccessful key lookup will still be
         // unsuccessful at commit time (because this will always be true if no
@@ -655,6 +677,11 @@ public:
     using index_t = mvcc_unordered_index<K, V, DBParams>;
     using column_access_t = typename split_version_helpers<index_t>::column_access_t;
     using item_key_t = typename split_version_helpers<index_t>::item_key_t;
+    template <typename T> static constexpr auto mvcc_column_to_cell_accesses =
+        split_version_helpers<index_t>::template mvcc_column_to_cell_accesses<T>;
+    template <typename T> static constexpr auto extract_item_list =
+        split_version_helpers<index_t>::template extract_item_list<T>;
+    using MvSplitAccessAll = typename split_version_helpers<index_t>::template MvSplitAccessAll<SplitParams<value_type>>;
 
     // Main constructor
     mvcc_unordered_index(size_t size, Hash h = Hash(), Pred p = Pred()) :
@@ -676,6 +703,7 @@ public:
         return fetch_and_add(&key_gen_, 1);
     }
 
+#if 0
     sel_return_type
     select_row(const key_type& k, RowAccess access) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
@@ -759,23 +787,53 @@ public:
             return { true, true, rid, nullptr };
         }
     }
+#endif
 
-    sel_return_type
-    select_row(uintptr_t, std::initializer_list<column_access_t>) {
-        always_assert(false, "Not implemented in MVCC, use split table instead.");
-        return { false, false, 0, nullptr };
+    // Split version select row
+    sel_split_return_type
+    select_split_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
+        bucket_entry& buck = map_[find_bucket_idx(key)];
+        bucket_version_type buck_vers = buck.version;
+        fence();
+        KVNode *n = find_in_bucket(buck, key);
+
+        if (n) {
+            auto e = &n->elem;
+            return select_splits(reinterpret_cast<uintptr_t>(e), accesses);
+        } else {
+            return {
+                Sto::item(this, make_bucket_key(buck)).observe(buck_vers),
+                false,
+                0,
+                SplitRecordAccessor<V>({ nullptr })
+            };
+        }
     }
 
-    void update_row(uintptr_t rid, value_type *new_row) {
+    sel_split_return_type
+    select_splits(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
+        using split_params = SplitParams<value_type>;
         auto e = reinterpret_cast<internal_elem*>(rid);
-        auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-        row_item.add_write(new_row);
+        auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
+        bool found;
+        auto result = MvSplitAccessAll::run_select(&found, cell_accesses, this, e);
+        return {true, found, rid, SplitRecordAccessor<V>(result)};
     }
-    
+
+    void update_row(uintptr_t rid, value_type* new_row) {
+        // Update entire row using overwrite.
+        // In timestamp-split tables, this will add a write set item to each "cell item".
+        MvSplitAccessAll::run_update(this, reinterpret_cast<internal_elem*>(rid), new_row);
+    }
+
     void update_row(uintptr_t rid, const comm_type &comm) {
-        assert(&comm);
-        auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
-        row_item.add_commute(comm);
+        // Update row using commutatively.
+        // In timestamp-split tables, this will add a commutator to each "cell item". The
+        // per-cell commutators should be supplied by the user (defined for each split) and
+        // they should be subclasses of the row commutator.
+        // Internally this run_update() implementation below uses a down-cast to convert
+        // row commutators to cell commutators.
+        MvSplitAccessAll::run_update(this, reinterpret_cast<internal_elem*>(rid), comm);
     }
 
     ins_return_type
@@ -783,12 +841,13 @@ public:
         bucket_entry& buck = map_[find_bucket_idx(k)];
 
         buck.version.lock_exclusive();
-        internal_elem* e = find_in_bucket(buck, k);
+        KVNode* n = find_in_bucket(buck, k);
 
-        if (e) {
+        if (n) {
+            auto e = &n->elem;
             buck.version.unlock_exclusive();
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-            auto h = e->row.find(txn_read_tid());
+            auto h = e->template chain_at<0>()->find(txn_read_tid());
             if (is_phantom(h, row_item))
                 return ins_abort;
 
@@ -838,11 +897,12 @@ public:
         bucket_version_type buck_vers = buck.version;
         fence();
 
-        internal_elem* e = find_in_bucket(buck, k);
-        if (e) {
+        KVNode* n = find_in_bucket(buck, k);
+        if (n) {
+            auto e = &n->elem;
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-            auto h = e->row.find(txn_read_tid());
+            auto h = e->template chain_at<0>()->find(txn_read_tid());
 
             if (is_phantom(h, row_item))
                 return { true, false };
@@ -896,46 +956,28 @@ public:
         buck.version.unlock_exclusive();
     }
 
+    template <typename TSplit>
+    bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain, internal_elem* e) {
+        return mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(item, txn, chain, e, this, _delete_cb);
+    }
+    template <typename TSplit>
+    bool check_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
+        return mvcc_chain_operations<K, V, DBParams>::check_impl_per_chain(item, txn, chain);
+    }
+    template <typename TSplit>
+    void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
+        mvcc_chain_operations<K, V, DBParams>::install_impl_per_chain(item, txn, chain);
+    }
+    template <typename TSplit>
+    void cleanup_impl_per_chain(TransItem& item, bool committed, MvObject<TSplit>* chain) {
+        mvcc_chain_operations<K, V, DBParams>::cleanup_impl_per_chain(item, committed, chain);
+    }
+
     // TObject interface methods
     bool lock(TransItem& item, Transaction& txn) override {
         assert(!is_bucket(item));
         auto key = item.key<item_key_t>();
-        auto e = key.internal_elem_ptr();
-
-        history_type* hprev = nullptr;
-        if (item.has_read()) {
-            hprev = item.read_value<history_type*>();
-            if (Sto::commit_tid() < hprev->rtid()) {
-                TransProxy(txn, item).add_write(nullptr);
-                return false;
-            }
-        }
-        history_type* h;
-        if (item.has_commute()) {
-            auto wval = item.template write_value<comm_type>();
-            h = e->row.new_history(
-                Sto::commit_tid(), &e->row, std::move(wval), hprev);
-        } else {
-            auto wval = item.template raw_write_value<value_type*>();
-            if (has_delete(item)) {
-                h = e->row.new_history(
-                    Sto::commit_tid(), &e->row, nullptr, hprev);
-                h->status_delete();
-                h->set_delete_cb(this, _delete_cb, e);
-            } else {
-                h = e->row.new_history(
-                    Sto::commit_tid(), &e->row, wval, hprev);
-            }
-        }
-        assert(h);
-        bool result = e->row.cp_lock(Sto::commit_tid(), h);
-        if (!result && !h->status_is(MvStatus::ABORTED)) {  
-            e->row.delete_history(h);
-            TransProxy(txn, item).add_mvhistory(nullptr);
-        } else {
-            TransProxy(txn, item).add_mvhistory(h);
-        }
-        return result;
+        return MvSplitAccessAll::run_lock(key.cell_num(), txn, item, this, key.internal_elem_ptr());
     }
 
     bool check(TransItem& item, Transaction& txn) override {
@@ -943,21 +985,15 @@ public:
             bucket_entry &buck = *bucket_address(item);
             return buck.version.cp_check_version(txn, item);
         } else {
-            auto key = item.key<item_key_t>();
-            auto e = key.internal_elem_ptr();
-            auto h = item.template read_value<history_type*>();
-            auto result = e->row.cp_check(txn_read_tid(), h);
-            return result;
+            int cell_id = item.key<item_key_t>().cell_num();
+            return MvSplitAccessAll::run_check(cell_id, txn, item, this);
         }
     }
 
-    void install(TransItem& item, Transaction&) override {
+    void install(TransItem& item, Transaction& txn) override {
         assert(!is_bucket(item));
         auto key = item.key<item_key_t>();
-        auto e = key.internal_elem_ptr();
-        auto h = item.template write_value<history_type*>();
-
-        e->row.cp_install(h);
+        MvSplitAccessAll::run_install(key.cell_num(), txn, item, this);
     }
 
     void unlock(TransItem& item) override {
@@ -966,25 +1002,18 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        if (!committed) {
-            auto key = item.key<item_key_t>();
-            auto e = key.internal_elem_ptr();
-            if (item.has_mvhistory()) {
-                auto h = item.template write_value<history_type*>();
-                if (h) {
-                    e->row.abort(h);
-                }
-            }
-        }
+        assert(!is_bucket(item));
+        auto key = item.key<item_key_t>();
+        MvSplitAccessAll::run_cleanup(key.cell_num(), item, committed, this);
     }
 
 private:
     // remove a k-v node during transactions (with locks)
-    void _remove(internal_elem *el) {
-        bucket_entry& buck = map_[find_bucket_idx(el->key)];
+    void _remove(KVNode *el) {
+        bucket_entry& buck = map_[find_bucket_idx(el->elem.key)];
         buck.version.lock_exclusive();
-        internal_elem *prev = nullptr;
-        internal_elem *curr = buck.head;
+        KVNode *prev = nullptr;
+        KVNode *curr = buck.head;
         while (curr != nullptr && curr != el) {
             prev = curr;
             curr = curr->next;
@@ -1001,9 +1030,9 @@ private:
     bool remove(const key_type& k) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
         buck.version.lock_exclusive();
-        internal_elem *prev = nullptr;
-        internal_elem *curr = buck.head;
-        while (curr != nullptr && !pred_(curr->key, k)) {
+        KVNode *prev = nullptr;
+        KVNode *curr = buck.head;
+        while (curr != nullptr && !pred_(curr->elem.key, k)) {
             prev = curr;
             curr = curr->next;
         }
@@ -1024,12 +1053,13 @@ private:
             void *index_ptr, void *ele_ptr, void *history_ptr) {
         auto ip = reinterpret_cast<mvcc_unordered_index<K, V, DBParams>*>(index_ptr);
         auto el = reinterpret_cast<internal_elem*>(ele_ptr);
+        using history_type = typename MvObject<typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>::history_type;
         auto hp = reinterpret_cast<history_type*>(history_ptr);
         bucket_entry& buck = ip->map_[ip->find_bucket_idx(el->key)];
         buck.version.lock_exclusive();
         internal_elem *prev = nullptr;
         internal_elem *curr = buck.head;
-        while (curr != nullptr && curr != el) {
+        while (curr != nullptr && (&curr->elem != el)) {
             prev = curr;
             curr = curr->next;
         }
@@ -1038,9 +1068,9 @@ private:
             prev->next = curr->next;
         else
             buck.head = curr->next;
-        if (el->row.is_head(hp)) {
+        if (curr->elem.row.is_head(hp)) {
             buck.version.unlock_exclusive();
-            Transaction::rcu_delete(el);
+            Transaction::rcu_delete(curr);
         } else {
             buck.version.unlock_exclusive();
         }
@@ -1050,23 +1080,24 @@ private:
     void insert_in_bucket(bucket_entry& buck, const key_type& k) {
         assert(buck.version.is_locked());
 
-        internal_elem *new_head = new internal_elem(k);
-        internal_elem *curr_head = buck.head;
+        auto new_head = new KVNode(k);
+        auto curr_head = buck.head;
 
         new_head->next = curr_head;
         buck.head = new_head;
 
         buck.version.inc_nonopaque();
     }
-    // find a key's k-v node (internal_elem) within a bucket
-    internal_elem *find_in_bucket(const bucket_entry& buck, const key_type& k) {
-        internal_elem *curr = buck.head;
+    // find a key's k-v node within a bucket
+    KVNode *find_in_bucket(const bucket_entry& buck, const key_type& k) {
+        auto curr = buck.head;
         while (curr && !pred_(curr->key, k))
             curr = curr->next;
         return curr;
     }
 
-    static bool is_phantom(const history_type *h, const TransItem& item) {
+    template <typename T>
+    static bool is_phantom(const MvHistory<T> *h, const TransItem& item) {
         return (h->status_is(DELETED) && !has_insert(item));
     }
 
