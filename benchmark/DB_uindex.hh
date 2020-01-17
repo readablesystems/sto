@@ -1,5 +1,7 @@
 #pragma once
 
+#include "DB_index.hh"
+
 namespace bench {
 // unordered index implemented as hashtable
 template <typename K, typename V, typename DBParams>
@@ -846,7 +848,7 @@ public:
         if (n) {
             auto e = &n->elem;
             buck.version.unlock_exclusive();
-            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+            auto row_item = Sto::item(this, item_key_t(e, 0));
             auto h = e->template chain_at<0>()->find(txn_read_tid());
             if (is_phantom(h, row_item))
                 return ins_abort;
@@ -859,9 +861,13 @@ public:
             }
 
             if (overwrite) {
-                row_item.template add_write<value_type*>(vptr);
+                for (size_t i = 0; i < SplitParams<V>::num_splits; ++i) {
+                    auto item = Sto::item(this, item_key_t(e, i));
+                    item.add_write();
+                }
+                this->update_row(reinterpret_cast<uintptr_t>(e), vptr);
             } else {
-                MvAccess::template read<value_type>(row_item, h);
+                MvAccess::read(row_item, h);
             }
 
             return { true, true };
@@ -869,7 +875,7 @@ public:
             // insert the new row to the table and take note of bucket version changes
             auto buck_vers_0 = bucket_version_type(buck.version.unlocked_value());
             insert_in_bucket(buck, k);
-            internal_elem *new_head = buck.head;
+            KVNode* new_head = buck.head;
             auto buck_vers_1 = bucket_version_type(buck.version.unlocked_value());
 
             buck.version.unlock_exclusive();
@@ -879,10 +885,12 @@ public:
             if (bucket_item.has_read())
                 bucket_item.update_read(buck_vers_0, buck_vers_1);
 
-            auto item = Sto::item(this, item_key_t::row_item_key(new_head));
-            // XXX adding write is probably unnecessary, am I right?
-            item.template add_write<value_type*>(vptr);
-            item.add_flags(insert_bit);
+            auto val_ptrs = TxSplitInto<value_type>(vptr);
+            for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
+                TransProxy cell_item = Sto::item(this, item_key_t(&new_head->elem, cell_id));
+                cell_item.add_write(val_ptrs[cell_id]);
+                cell_item.add_flags(insert_bit);
+            }
 
             return { true, false };
         }
@@ -900,8 +908,8 @@ public:
         KVNode* n = find_in_bucket(buck, k);
         if (n) {
             auto e = &n->elem;
-            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-
+            // Use cell 0 to probe for existence of the row.
+            auto row_item = Sto::item(this, item_key_t(e, 0));
             auto h = e->template chain_at<0>()->find(txn_read_tid());
 
             if (is_phantom(h, row_item))
@@ -916,11 +924,14 @@ public:
                 }
             }
 
-            MvAccess::template read<value_type>(row_item, h);
+            MvAccess::read(row_item, h);
             if (h->status_is(DELETED))
                 return { true, false };
-            row_item.add_write();
-            row_item.add_flags(delete_bit);
+            for (size_t i = 0; i < SplitParams<value_type>::num_splits; ++i) {
+                auto item = Sto::item(this, item_key_t(e, i));
+                item.add_write();
+                item.add_flags(delete_bit);
+            }
 
             return { true, true };
         } else {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "DB_index.hh"
+
 namespace bench {
 template <typename K, typename V, typename DBParams>
 class ordered_index : public TObject {
@@ -1093,7 +1095,6 @@ public:
     // if a row already exists, then use select (FOR UPDATE) instead
     ins_return_type
     insert_row(const key_type& key, value_type *vptr, bool overwrite = false) {
-        static constexpr size_t num_cells = SplitParams<value_type>::num_splits;
         cursor_type lp(table_, key);
         bool found = lp.find_insert(*ti);
         if (found) {
@@ -1109,7 +1110,8 @@ public:
             internal_elem *e = lp.value();
             lp.finish(0, *ti);
 
-            auto row_item = Sto::item(this, item_key_t(e, 0));  // Use cell-id 0 to represent row item
+            // Use cell-id 0 to represent the row item.
+            auto row_item = Sto::item(this, item_key_t(e, 0));
 
             auto h = e->template chain_at<0>()->find(txn_read_tid());
             if (is_phantom(h, row_item))
@@ -1124,8 +1126,11 @@ public:
             }
 
             if (overwrite) {
-                always_assert(false, "Row-level overwrite currently not supported.");
-                //row_item.add_write(*vptr);
+                for (size_t i = 0; i < SplitParams<V>::num_splits; ++i) {
+                    auto item = Sto::item(this, item_key_t(e, i));
+                    item.add_write();
+                }
+                this->update_row(reinterpret_cast<uintptr_t>(e), vptr);
             } else {
                 // TODO: This now acts like a full read of the value
                 // at rtid. Once we add predicates we can change it to
@@ -1157,7 +1162,7 @@ public:
             //fence();
 
             auto val_ptrs = TxSplitInto<value_type>(vptr);
-            for (size_t cell_id = 0; cell_id < num_cells; ++cell_id) {
+            for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
                 TransProxy cell_item = Sto::item(this, item_key_t(e, cell_id));
                 cell_item.add_write(val_ptrs[cell_id]);
                 cell_item.add_flags(insert_bit);
@@ -1180,8 +1185,8 @@ public:
         bool found = lp.find_unlocked(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            auto row_item = Sto::item(this, item_key_t(e, 0));  // A fake row item
-
+            // Use cell 0 to probe for existence of the row.
+            auto row_item = Sto::item(this, item_key_t(e, 0));
             auto h = e->template chain_at<0>()->find(txn_read_tid());
 
             if (is_phantom(h, row_item))
@@ -1199,10 +1204,10 @@ public:
                 }
             }
 
-            MvAccess::template read<typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>(row_item, h);
+            MvAccess::read(row_item, h);
             if (h->status_is(DELETED))
                 return del_return_type(true, false);
-            for (size_t i = 0; i < SplitParams<V>::num_splits; i++) {
+            for (size_t i = 0; i < SplitParams<value_type>::num_splits; i++) {
                 auto item = Sto::item(this, item_key_t(e, i));
                 item.add_write(0);
                 item.add_flags(delete_bit);
