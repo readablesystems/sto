@@ -677,6 +677,7 @@ private:
 public:
     // split version helper stuff
     using index_t = mvcc_unordered_index<K, V, DBParams>;
+    friend split_version_helpers<index_t>;
     using column_access_t = typename split_version_helpers<index_t>::column_access_t;
     using item_key_t = typename split_version_helpers<index_t>::item_key_t;
     template <typename T> static constexpr auto mvcc_column_to_cell_accesses =
@@ -944,26 +945,29 @@ public:
     }
 
     // non-transactional methods
-    value_type* nontrans_get(const key_type& k) {
+    bool nontrans_get(const key_type& k, value_type* value_out) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
-        internal_elem* e = find_in_bucket(buck, k);
-        if (e == nullptr)
-            return nullptr;
-        return &(e->row.nontrans_access());
+        KVNode* n = find_in_bucket(buck, k);
+        if (n == nullptr) {
+            return false;
+        } else {
+            internal_elem* e = &n->elem;
+            MvSplitAccessAll::run_nontrans_get(value_out, e);
+            return true;
+        }
     }
 
     void nontrans_put(const key_type& k, const value_type& v) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
         buck.version.lock_exclusive();
-        internal_elem *e = find_in_bucket(buck, k);
-        if (e == nullptr) {
-            internal_elem *new_head = new internal_elem(k);
-            new_head->row.nontrans_access() = v;
+        KVNode* n = find_in_bucket(buck, k);
+        if (n == nullptr) {
+            KVNode* new_head = new KVNode(k);
             new_head->next = buck.head;
             buck.head = new_head;
-        } else {
-            e->row.nontrans_access() = v;
+            n = new_head;
         }
+        MvSplitAccessAll::run_nontrans_put(v, &n->elem);
         buck.version.unlock_exclusive();
     }
 
@@ -1068,8 +1072,8 @@ private:
         auto hp = reinterpret_cast<history_type*>(history_ptr);
         bucket_entry& buck = ip->map_[ip->find_bucket_idx(el->key)];
         buck.version.lock_exclusive();
-        internal_elem *prev = nullptr;
-        internal_elem *curr = buck.head;
+        KVNode* prev = nullptr;
+        KVNode* curr = buck.head;
         while (curr != nullptr && (&curr->elem != el)) {
             prev = curr;
             curr = curr->next;
@@ -1079,7 +1083,7 @@ private:
             prev->next = curr->next;
         else
             buck.head = curr->next;
-        if (curr->elem.row.is_head(hp)) {
+        if (curr->elem.template chain_at<0>()->is_head(hp)) {
             buck.version.unlock_exclusive();
             Transaction::rcu_delete(curr);
         } else {
@@ -1102,7 +1106,7 @@ private:
     // find a key's k-v node within a bucket
     KVNode *find_in_bucket(const bucket_entry& buck, const key_type& k) {
         auto curr = buck.head;
-        while (curr && !pred_(curr->key, k))
+        while (curr && !pred_(curr->elem.key, k))
             curr = curr->next;
         return curr;
     }

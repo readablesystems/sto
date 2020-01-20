@@ -276,7 +276,7 @@ public:
                 item.add_write();
             }
             if ((cell_accesses[I] & access_t::read) != access_t::none) {
-                auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
+                auto h = mvobj->find(Sto::read_tid<false>());
                 if (h->status_is(COMMITTED_DELETED)) {
                     return false;
                 } else if (!h->status_is(UNUSED) && !IndexType::template is_phantom<First>(h, item)) {

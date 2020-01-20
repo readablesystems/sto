@@ -1,9 +1,11 @@
+#include "xxhash.h"
 #include "Sto.hh"
 #include "DB_params.hh"
 #include "DB_index.hh"
 
 using bench::split_version_helpers;
 using bench::mvcc_ordered_index;
+using bench::mvcc_unordered_index;
 using bench::RowAccess;
 using bench::access_t;
 
@@ -41,6 +43,21 @@ struct index_value_part2 {
     int64_t value_2a;
     int64_t value_2b;
 };
+
+namespace std {
+template <>
+struct hash<index_key> {
+    static constexpr size_t xxh_seed = 0xdeadbeefdeadbeef;
+    size_t operator()(const index_key& arg) const {
+        return XXH64(&arg, sizeof(index_key), xxh_seed);
+    }
+};
+
+inline ostream& operator<<(ostream& os, const index_key&) {
+    os << "index_key";
+    return os;
+}
+}
 
 template<>
 struct bench::SplitParams<index_value> {
@@ -212,13 +229,46 @@ public:
 };
 }  // namespace commutators
 
-void TestMVCCOrderedIndexSplit() {
-    using key_type = bench::masstree_key_adapter<index_key>;
-    using index_type = mvcc_ordered_index<key_type,
-                                          index_value,
-                                          db_params::db_mvcc_params>;
+template <bool Ordered>
+class MVCCIndexTester {
+public:
+    void RunTests();
+
+private:
+    static constexpr size_t index_init_size = 1025;
+    using key_type = typename std::conditional<Ordered, bench::masstree_key_adapter<index_key>, index_key>::type;
+    using index_type = typename std::conditional<Ordered, mvcc_ordered_index<key_type, index_value, db_params::db_mvcc_params>,
+                                                          mvcc_unordered_index<key_type, index_value, db_params::db_mvcc_params>>::type;
     typedef index_value::NamedColumn nc;
-    index_type idx;
+
+    void SelectSplitTest();
+    void DeleteTest();
+    void CommuteTest();
+    void ScanTest();
+    void InsertTest();
+    void UpdateTest();
+};
+
+template <bool Ordered>
+void MVCCIndexTester<Ordered>::RunTests() {
+    if constexpr (Ordered) {
+        printf("Testing Ordered Index (MVCC TS):\n");
+    } else {
+        printf("Testing Unordered Index (MVCC TS):\n");
+    }
+    SelectSplitTest();
+    DeleteTest();
+    CommuteTest();
+    InsertTest();
+    UpdateTest();
+    if constexpr (Ordered) {
+        ScanTest();
+    }
+}
+
+template <bool Ordered>
+void MVCCIndexTester<Ordered>::SelectSplitTest() {
+    index_type idx(index_init_size);
     idx.thread_init();
 
     key_type key{0, 1};
@@ -239,16 +289,12 @@ void TestMVCCOrderedIndexSplit() {
 
     assert(t.try_commit());
 
-    printf("Test pass: %s\n", __FUNCTION__);
+    printf("Test pass: SelectSplitTest\n");
 }
 
-void TestMVCCOrderedIndexDelete() {
-    using key_type = bench::masstree_key_adapter<index_key>;
-    using index_type = mvcc_ordered_index<key_type,
-                                          index_value,
-                                          db_params::db_mvcc_params>;
-    typedef index_value::NamedColumn nc;
-    index_type idx;
+template <bool Ordered>
+void MVCCIndexTester<Ordered>::DeleteTest() {
+    index_type idx(index_init_size);
     idx.thread_init();
 
     key_type key{0, 1};
@@ -302,13 +348,14 @@ void TestMVCCOrderedIndexDelete() {
     printf("Test pass: %s\n", __FUNCTION__);
 }
 
-void TestMVCCOrderedIndexCommute() {
+template <bool Ordered>
+void MVCCIndexTester<Ordered>::CommuteTest() {
     using key_type = bench::masstree_key_adapter<index_key>;
     using index_type = mvcc_ordered_index<key_type,
                                           index_value,
                                           db_params::db_mvcc_params>;
     typedef index_value::NamedColumn nc;
-    index_type idx;
+    index_type idx(index_init_size);
     idx.thread_init();
 
     key_type key{0, 1};
@@ -352,66 +399,62 @@ void TestMVCCOrderedIndexCommute() {
     printf("Test pass: %s\n", __FUNCTION__);
 }
 
-void TestMVCCOrderedIndexScan() {
-    using key_type = bench::masstree_key_adapter<index_key>;
-    using index_type = mvcc_ordered_index<key_type,
-                                          index_value,
-                                          db_params::db_mvcc_params>;
-    using accessor_t = bench::SplitRecordAccessor<index_value>;
-    using split_value_t = std::array<void*, bench::SplitParams<index_value>::num_splits>;
-    typedef index_value::NamedColumn nc;
-    index_type idx;
-    idx.thread_init();
+template <bool Ordered>
+void MVCCIndexTester<Ordered>::ScanTest() {
+    if constexpr (!Ordered) {
+        printf("Skipped: ScanTest\n");
+    } else {
+        using accessor_t = bench::SplitRecordAccessor<index_value>;
+        using split_value_t = std::array<void*, bench::SplitParams<index_value>::num_splits>;
+        index_type idx(index_init_size);
+        idx.thread_init();
 
-    {
-        key_type key{0, 1};
-        index_value val{4, 5, 6};
-        idx.nontrans_put(key, val);
+        {
+            key_type key{0, 1};
+            index_value val{4, 5, 6};
+            idx.nontrans_put(key, val);
+        }
+        {
+            key_type key{0, 2};
+            index_value val{7, 8, 9};
+            idx.nontrans_put(key, val);
+        }
+        {
+            key_type key{0, 3};
+            index_value val{10, 11, 12};
+            idx.nontrans_put(key, val);
+        }
+
+        {
+            TestTransaction t(0);
+
+            auto scan_callback = [&] (const key_type& key, const split_value_t& split_values) -> bool {
+                accessor_t accessor(split_values);
+                std::cout << "Visiting key: {" << key.key_1 << ", " << key.key_2 << "}, value parts:" << std::endl;
+                std::cout << "    " << accessor.value_1() << std::endl;
+                std::cout << "    " << accessor.value_2a() << std::endl;
+                std::cout << "    " << accessor.value_2b() << std::endl;
+                return true;
+            };
+
+            key_type k0{0, 0};
+            key_type k1{1, 0};
+
+            bool success = idx.template range_scan<decltype(scan_callback), false>(k0, k1,
+                                                                                   scan_callback,
+                                                                                   {{nc::value_1,access_t::read},
+                                                                                   {nc::value_2b,access_t::read}}, true);
+            assert(success);
+            assert(t.try_commit());
+        }
+
+        printf("Test pass: ScanTest\n");
     }
-    {
-        key_type key{0, 2};
-        index_value val{7, 8, 9};
-        idx.nontrans_put(key, val);
-    }
-    {
-        key_type key{0, 3};
-        index_value val{10, 11, 12};
-        idx.nontrans_put(key, val);
-    }
-
-    {
-        TestTransaction t(0);
-
-        auto scan_callback = [&] (const key_type& key, const split_value_t& split_values) -> bool {
-            accessor_t accessor(split_values);
-            std::cout << "Visiting key: {" << key.key_1 << ", " << key.key_2 << "}, value parts:" << std::endl;
-            std::cout << "    " << accessor.value_1() << std::endl;
-            std::cout << "    " << accessor.value_2a() << std::endl;
-            std::cout << "    " << accessor.value_2b() << std::endl;
-            return true;
-        };
-
-        key_type k0{0, 0};
-        key_type k1{1, 0};
-
-        bool success = idx.range_scan<decltype(scan_callback), false>(k0, k1,
-                                                                      scan_callback,
-                                                                      {{nc::value_1,access_t::read},
-                                                                       {nc::value_2b,access_t::read}}, true);
-        assert(success);
-        assert(t.try_commit());
-    }
-
-    printf("Test pass: %s\n", __FUNCTION__);
 }
 
-void TestMVCCOrderedIndexSplitInsert() {
-    using key_type = bench::masstree_key_adapter<index_key>;
-    using index_type = mvcc_ordered_index<key_type,
-                                          index_value,
-                                          db_params::db_mvcc_params>;
-    typedef index_value::NamedColumn nc;
-    index_type idx;
+template <bool Ordered>
+void MVCCIndexTester<Ordered>::InsertTest() {
+    index_type idx(index_init_size);
     idx.thread_init();
 
     {
@@ -441,16 +484,12 @@ void TestMVCCOrderedIndexSplitInsert() {
         assert(t.try_commit());
     }
 
-    printf("Test pass: %s\n", __FUNCTION__);
+    printf("Test pass: InsertTest\n");
 }
 
-void TestMVCCOrderedIndexSplitUpdate() {
-    using key_type = bench::masstree_key_adapter<index_key>;
-    using index_type = mvcc_ordered_index<key_type,
-                                          index_value,
-                                          db_params::db_mvcc_params>;
-    typedef index_value::NamedColumn nc;
-    index_type idx;
+template <bool Ordered>
+void MVCCIndexTester<Ordered>::UpdateTest() {
+    index_type idx(index_init_size);
     idx.thread_init();
 
     {
@@ -500,15 +539,18 @@ void TestMVCCOrderedIndexSplitUpdate() {
         assert(t.try_commit());
     }
 
-    printf("Test pass: %s\n", __FUNCTION__);
+    printf("Test pass: UpdateTest\n");
 }
 
 int main() {
-    TestMVCCOrderedIndexSplit();
-    TestMVCCOrderedIndexDelete();
-    TestMVCCOrderedIndexCommute();
-    TestMVCCOrderedIndexScan();
-    TestMVCCOrderedIndexSplitInsert();
-    TestMVCCOrderedIndexSplitUpdate();
+    {
+        MVCCIndexTester<true> tester;
+        tester.RunTests();
+    }
+    {
+        MVCCIndexTester<false> tester;
+        tester.RunTests();
+    }
+    printf("ALL TESTS PASS, ignore errors after this.\n");
     return 0;
 }
