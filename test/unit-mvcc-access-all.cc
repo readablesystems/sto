@@ -113,6 +113,10 @@ class RecordAccessor<A, index_value> {
         return impl().value_2b_impl();
     }
 
+    void copy_into(A* dst) const {
+        return impl().copy_into_impl(dst);
+    }
+
  private:
     const A &impl() const {
         return *static_cast<const A *>(this);
@@ -137,6 +141,14 @@ class UniRecordAccessor<index_value>
 
     int64_t value_2b_impl() const {
         return vptr_->value_2b;
+    }
+
+    void copy_into_impl(index_value* dst) const {
+        if (vptr_) {
+            dst->value_1 = vptr_->value_1;
+            dst->value_2a = vptr_->value_2a;
+            dst->value_2b = vptr_->value_2b;
+        }
     }
 
     const index_value *vptr_;
@@ -167,6 +179,16 @@ class SplitRecordAccessor<index_value>
 
     int64_t value_2b_impl() const {
         return vptr_2_->value_2b;
+    }
+
+    void copy_into_impl(index_value* dst) const {
+        if (vptr_1_) {
+            dst->value_1 = vptr_1_->value_1;
+        }
+        if (vptr_2_) {
+            dst->value_2a = vptr_2_->value_2a;
+            dst->value_2b = vptr_2_->value_2b;
+        }
     }
 
     const index_value_part1 *vptr_1_;
@@ -405,7 +427,6 @@ void MVCCIndexTester<Ordered>::ScanTest() {
         printf("Skipped: ScanTest\n");
     } else {
         using accessor_t = bench::SplitRecordAccessor<index_value>;
-        using split_value_t = std::array<void*, bench::SplitParams<index_value>::num_splits>;
         index_type idx(index_init_size);
         idx.thread_init();
 
@@ -428,7 +449,7 @@ void MVCCIndexTester<Ordered>::ScanTest() {
         {
             TestTransaction t(0);
 
-            auto scan_callback = [&] (const key_type& key, const split_value_t& split_values) -> bool {
+            auto scan_callback = [&] (const key_type& key, const auto& split_values) -> bool {
                 accessor_t accessor(split_values);
                 std::cout << "Visiting key: {" << key.key_1 << ", " << key.key_2 << "}, value parts:" << std::endl;
                 std::cout << "    " << accessor.value_1() << std::endl;
