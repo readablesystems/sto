@@ -620,10 +620,15 @@ public:
     typedef IndexValueContainer<V, version_type> value_container_type;
     typedef commutators::Commutator<value_type> comm_type;
 
-    typedef std::tuple<bool, bool, uintptr_t, const value_type*>      sel_return_type;
-    typedef std::tuple<bool, bool>                                    ins_return_type;
-    typedef std::tuple<bool, bool>                                    del_return_type;
-    typedef std::tuple<bool, bool, uintptr_t, SplitRecordAccessor<V>> sel_split_return_type;
+    typedef typename std::conditional_t<DBParams::MVCC,
+      SplitRecordAccessor<V>, UniRecordAccessor<V>> accessor_t;
+    typedef typename std::conditional_t<DBParams::MVCC,
+      void*, std::array<void*, SplitParams<V>::num_splits>> scan_value_t;
+
+    typedef std::tuple<bool, bool, uintptr_t, const value_type*>  sel_return_type;
+    typedef std::tuple<bool, bool>                                ins_return_type;
+    typedef std::tuple<bool, bool>                                del_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, accessor_t>         sel_split_return_type;
 
     static constexpr sel_return_type sel_abort = { false, false, 0, nullptr };
     static constexpr ins_return_type ins_abort = { false, false };

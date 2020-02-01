@@ -13,6 +13,8 @@ public:
     //typedef typename get_occ_version<DBParams>::type occ_version_type;
     typedef typename get_version<DBParams>::type version_type;
 
+    using accessor_t = typename index_common<K, V, DBParams>::accessor_t;
+
     static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1u;
@@ -79,6 +81,7 @@ public:
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, UniRecordAccessor<V>> sel_split_return_type;
 
     static __thread typename table_params::threadinfo_type *ti;
 
@@ -112,6 +115,7 @@ public:
         return fetch_and_add(&key_gen_, 1);
     }
 
+#if 0
     sel_return_type
     select_row(const key_type& key, RowAccess acc) {
         unlocked_cursor_type lp(table_, key);
@@ -120,17 +124,15 @@ public:
         if (found) {
             return select_row(reinterpret_cast<uintptr_t>(e), acc);
         } else {
-            if (!register_internode_version(lp.node(), lp))
-                goto abort;
-            return sel_return_type(true, false, 0, nullptr);
+            if (!register_internode_version(lp.node(), lp.full_version_value()))
+                return {false, false, 0, UniRecordAccessor<V>(nullptr)};
+            return {true, false, 0, UniRecordAccessor<V>(nullptr)};
         }
-
-    abort:
-        return sel_return_type(false, false, 0, nullptr);
     }
+#endif
 
-    sel_return_type
-    select_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
+    sel_split_return_type
+    select_split_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
         unlocked_cursor_type lp(table_, key);
         bool found = lp.find_unlocked(*ti);
         internal_elem *e = lp.value();
@@ -141,10 +143,15 @@ public:
                 return sel_return_type(false, false, 0, nullptr);
             return sel_return_type(true, false, 0, nullptr);
         }
-
-        return sel_return_type(false, false, 0, nullptr);
+        return {
+            register_internode_version(lp.node(), lp.full_version_value()),
+            false,
+            0,
+            UniRecordAccessor<V>(nullptr)
+        };
     }
 
+#if 0
     sel_return_type
     select_row(uintptr_t rid, RowAccess access) {
         auto e = reinterpret_cast<internal_elem *>(rid);
@@ -189,9 +196,10 @@ public:
     abort:
         return sel_return_type(false, false, 0, nullptr);
     }
+#endif
 
-    sel_return_type
-    select_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
+    sel_split_return_type
+    select_split_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
         auto e = reinterpret_cast<internal_elem*>(rid);
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
@@ -209,7 +217,7 @@ public:
 
         if (index_read_my_write) {
             if (has_delete(row_item)) {
-                return sel_return_type(true, false, 0, nullptr);
+                return {true, false, 0, UniRecordAccessor<V>(nullptr)};
             }
             if (any_has_write || has_row_update(row_item)) {
                 value_type *vptr;
@@ -217,7 +225,7 @@ public:
                     vptr = &e->row_container.row;
                 else
                     vptr = row_item.template raw_write_value<value_type *>();
-                return sel_return_type(true, true, rid, vptr);
+                return {true, true, rid, UniRecordAccessor<V>(vptr)};
             }
         }
 
@@ -225,10 +233,10 @@ public:
         if (!ok)
             goto abort;
 
-        return sel_return_type(true, true, rid, &(e->row_container.row));
+        return {true, true, rid, UniRecordAccessor<V>(&(e->row_container.row))};
 
     abort:
-        return sel_return_type(false, false, 0, nullptr);
+        return {false, false, 0, UniRecordAccessor<V>(nullptr)};
     }
 
     void update_row(uintptr_t rid, value_type *new_row) {
@@ -419,9 +427,9 @@ public:
                 }
                 if (any_has_write) {
                     if (has_insert(row_item))
-                        ret = callback(key_type(key), e->row_container.row);
+                        ret = callback(key_type(key), &(e->row_container.row));
                     else
-                        ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
+                        ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
                     return true;
                 }
             }
@@ -443,7 +451,7 @@ public:
                 return true;
             }
 
-            ret = callback(key_type(key), e->row_container.row);
+            ret = callback(key_type(key), &(e->row_container.row));
             return true;
         };
 
@@ -477,9 +485,9 @@ public:
                 }
                 if (has_row_update(row_item)) {
                     if (has_insert(row_item))
-                        ret = callback(key_type(key), e->row_container.row);
+                        ret = callback(key_type(key), &(e->row_container.row));
                     else
-                        ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
+                        ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
                     return true;
                 }
             }
@@ -507,7 +515,7 @@ public:
                 return true;
             }
 
-            ret = callback(key_type(key), e->row_container.row);
+            ret = callback(key_type(key), &(e->row_container.row));
             return true;
         };
 
@@ -967,6 +975,8 @@ public:
     typedef typename table_type::node_type node_type;
     typedef typename unlocked_cursor_type::nodeversion_value_type nodeversion_value_type;
 
+    using accessor_t = typename index_common<K, V, DBParams>::accessor_t;
+
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
@@ -1251,50 +1261,25 @@ public:
     template <typename Callback, bool Reverse>
     bool range_scan(const key_type& begin, const key_type& end, Callback callback,
                     RowAccess access, bool phantom_protection = true, int limit = -1) {
-        (void)access;  // TODO: Scan ignores writes right now
-        assert((limit == -1) || (limit > 0));
+        // TODO: Scan ignores blind writes right now
+        access_t each_cell = access_t::none;
+        if (access == RowAccess::ObserveValue || access == RowAccess::ObserveExists) {
+            each_cell = access_t::read;
+        } else if (access == RowAccess::UpdateValue) {
+            each_cell = access_t::update;
+        }
+
+        std::array<access_t, SplitParams<value_type>::num_splits> cell_accesses;
+        std::fill(cell_accesses.begin(), cell_accesses.end(), each_cell);
+
         auto node_callback = [&] (leaf_type* node,
                                   typename unlocked_cursor_type::nodeversion_value_type version) {
             return ((!phantom_protection) || register_internode_version(node, version));
         };
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
-            auto h = e->row.find(txn_read_tid());
-            // skip invalid (inserted but yet committed) and/or deleted values, but do not abort
-            if (h->status_is(DELETED)) {
-                ret = true;
-                count = false;
-                return true;
-            }
-
-            TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
-                                                      : Sto::fresh_item(this, item_key_t::row_item_key(e));
-
-            if (index_read_my_write) {
-                if (has_delete(row_item)) {
-                    ret = true;
-                    count = false;
-                    return true;
-                }
-                if (has_row_update(row_item)) {
-                    ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
-                    return true;
-                }
-            }
-
-            MvAccess::template read<value_type>(row_item, h);
-
-#if SAFE_FLATTEN
-            auto vptr = h->vp_safe_flatten();
-            if (vptr == nullptr) {
-                ret = false;
-                return false;
-            }
-#else
-            auto vptr = h->vp();
-#endif
-            ret = callback(key_type(key), *vptr);
-            return true;
+            return MvSplitAccessAll::template run_scan_callback<Callback>(
+                    ret, count, cell_accesses, key, this, e, callback);
         };
 
         range_scanner<decltype(node_callback), decltype(value_callback), Reverse>

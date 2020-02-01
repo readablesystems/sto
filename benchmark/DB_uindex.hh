@@ -14,6 +14,7 @@ public:
     using typename C::sel_return_type;
     using typename C::ins_return_type;
     using typename C::del_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, UniRecordAccessor<V>> sel_split_return_type;
 
     using typename C::version_type;
     using typename C::value_container_type;
@@ -121,6 +122,7 @@ public:
         return fetch_and_add(&key_gen_, 1);
     }
 
+#if 0
     sel_return_type
     select_row(const key_type& k, RowAccess access) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
@@ -137,24 +139,26 @@ public:
             return { true, false, 0, nullptr };
         }
     }
+#endif
 
-    sel_return_type
-    select_row(const key_type& k, std::initializer_list<column_access_t> accesses) {
+    sel_split_return_type
+    select_split_row(const key_type& k, std::initializer_list<column_access_t> accesses) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
         bucket_version_type buck_vers = buck.version;
         fence();
         internal_elem *e = find_in_bucket(buck, k);
 
         if (e != nullptr) {
-            return select_row(reinterpret_cast<uintptr_t>(e), accesses);
+            return select_split_row(reinterpret_cast<uintptr_t>(e), accesses);
         } else {
             if (!Sto::item(this, make_bucket_key(buck)).observe(buck_vers)) {
-                return sel_abort;
+                return { false, false, 0, UniRecordAccessor<V>(nullptr) };
             }
-            return { true, false, 0, nullptr };
+            return { true, false, 0, UniRecordAccessor<V>(nullptr) };
         }
     }
 
+#if 0
     sel_return_type
     select_row(uintptr_t rid, RowAccess access) {
         auto e = reinterpret_cast<internal_elem*>(rid);
@@ -196,9 +200,10 @@ public:
 
         return { true, true, rid, &(e->row_container.row) };
     }
+#endif
 
-    sel_return_type
-    select_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
+    sel_split_return_type
+    select_split_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
         auto e = reinterpret_cast<internal_elem*>(rid);
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
@@ -210,11 +215,11 @@ public:
         std::tie(any_has_write, cell_items) = extract_item_list<value_container_type>(cell_accesses, this, e);
 
         if (is_phantom(e, row_item))
-            return sel_abort;
+            return { false, false, 0, UniRecordAccessor<V>(nullptr) };
 
         if (index_read_my_write) {
             if (has_delete(row_item)) {
-                return { true, false, 0, nullptr };
+                return { true, false, 0, UniRecordAccessor<V>(nullptr) };
             }
             if (any_has_write || has_row_update(row_item)) {
                 value_type *vptr;
@@ -222,15 +227,15 @@ public:
                     vptr = &(e->row_container.row);
                 else
                     vptr = row_item.template raw_write_value<value_type *>();
-                return { true, true, rid, vptr };
+                return { true, true, rid, UniRecordAccessor<V>(vptr) };
             }
         }
 
         ok = access_all(cell_accesses, cell_items, e->row_container);
         if (!ok)
-            return sel_abort;
+            return { false, false, 0, UniRecordAccessor<V>(nullptr) };
 
-        return sel_return_type(true, true, rid, &(e->row_container.row));
+        return { true, true, rid, UniRecordAccessor<V>(&(e->row_container.row)) };
     }
 
     void update_row(uintptr_t rid, value_type *new_row) {

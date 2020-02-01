@@ -7,21 +7,29 @@
 
 namespace commutators {
 
-#if TPCC_SPLIT_TABLE
-using warehouse_value = tpcc::warehouse_comm_value;
-using district_value = tpcc::district_comm_value;
-using customer_value = tpcc::customer_comm_value;
-using order_value = tpcc::order_comm_value;
-using orderline_value = tpcc::orderline_comm_value;
-using stock_value = tpcc::stock_comm_value;
-#else
 using warehouse_value = tpcc::warehouse_value;
+using warehouse_value_frequpd = tpcc::warehouse_value_frequpd;
+using warehouse_value_infreq = tpcc::warehouse_value_infreq;
+
 using district_value = tpcc::district_value;
+using district_value_frequpd = tpcc::district_value_frequpd;
+using district_value_infreq = tpcc::district_value_infreq;
+
 using customer_value = tpcc::customer_value;
+using customer_value_frequpd = tpcc::customer_value_frequpd;
+using customer_value_infreq = tpcc::customer_value_infreq;
+
 using order_value = tpcc::order_value;
+using order_value_frequpd = tpcc::order_value_frequpd;
+using order_value_infreq = tpcc::order_value_infreq;
+
 using orderline_value = tpcc::orderline_value;
+using orderline_value_frequpd = tpcc::orderline_value_frequpd;
+using orderline_value_infreq = tpcc::orderline_value_infreq;
+
 using stock_value = tpcc::stock_value;
-#endif
+using stock_value_frequpd = tpcc::stock_value_frequpd;
+using stock_value_infreq = tpcc::stock_value_infreq;
 
 using tpcc::c_data_info;
 
@@ -39,6 +47,34 @@ public:
 
 private:
     int64_t delta_ytd;
+    friend Commutator<warehouse_value_frequpd>;
+};
+
+template <>
+class Commutator<warehouse_value_infreq> : Commutator<warehouse_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<warehouse_value>(std::forward<Args>(args)...) {}
+
+    warehouse_value_infreq& operate(warehouse_value_infreq &w) const {
+        return w;
+    }
+};
+
+template <>
+class Commutator<warehouse_value_frequpd> : Commutator<warehouse_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<warehouse_value>(std::forward<Args>(args)...) {}
+
+    warehouse_value_frequpd& operate(warehouse_value_frequpd &w) const {
+        w.w_ytd += (uint64_t)delta_ytd;
+        return w;
+    }
 };
 
 template <>
@@ -55,6 +91,34 @@ public:
 
 private:
     int64_t delta_ytd;
+    friend Commutator<district_value_frequpd>;
+};
+
+template <>
+class Commutator<district_value_infreq> : Commutator<district_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<district_value>(std::forward<Args>(args)...) {}
+
+    district_value_infreq& operate(district_value_infreq &d) const {
+        return d;
+    }
+};
+
+template <>
+class Commutator<district_value_frequpd> : Commutator<district_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<district_value>(std::forward<Args>(args)...) {}
+
+    district_value_frequpd& operate(district_value_frequpd &d) const {
+        d.d_ytd += (uint64_t)delta_ytd;
+        return d;
+    }
 };
 
 /*
@@ -102,6 +166,46 @@ private:
     OpType      op;
     bool        bad_credit;
     c_data_info delta_data;
+
+    friend Commutator<customer_value_infreq>;
+    friend Commutator<customer_value_frequpd>;
+};
+
+template <>
+class Commutator<customer_value_infreq> : Commutator<customer_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<customer_value>(std::forward<Args>(args)...) {}
+
+    customer_value_infreq& operate(customer_value_infreq &c) const {
+        return c;
+    }
+};
+
+template <>
+class Commutator<customer_value_frequpd> : Commutator<customer_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<customer_value>(std::forward<Args>(args)...) {}
+
+    customer_value_frequpd& operate(customer_value_frequpd &c) const {
+        if (op == OpType::Payment) {
+            c.c_balance += delta_balance;
+            c.c_payment_cnt += 1;
+            c.c_ytd_payment += delta_ytd_payment;
+            if (bad_credit) {
+                c.c_data.insert_left(delta_data.buf(), c_data_info::len);
+            }
+        } else if (op == OpType::Delivery) {
+            c.c_balance += delta_balance;
+            c.c_delivery_cnt += 1;
+        }
+        return c;
+    }
 };
 
 template <>
@@ -116,6 +220,35 @@ public:
     }
 private:
     uint64_t write_carrier_id;
+
+    friend Commutator<order_value_frequpd>;
+};
+
+template <>
+class Commutator<order_value_infreq> : Commutator<order_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<order_value>(std::forward<Args>(args)...) {}
+
+    order_value_infreq& operate(order_value_infreq &ov) const {
+        return ov;
+    }
+};
+
+template <>
+class Commutator<order_value_frequpd> : Commutator<order_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<order_value>(std::forward<Args>(args)...) {}
+
+    order_value_frequpd& operate(order_value_frequpd &ov) const {
+        ov.o_carrier_id = write_carrier_id;
+        return ov;
+    }
 };
 
 template <>
@@ -130,6 +263,35 @@ public:
     }
 private:
     uint32_t write_delivery_d;
+
+    friend Commutator<orderline_value_frequpd>;
+};
+
+template <>
+class Commutator<orderline_value_infreq> : Commutator<orderline_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<orderline_value>(std::forward<Args>(args)...) {}
+
+    orderline_value_infreq& operate(orderline_value_infreq &ol) const {
+        return ol;
+    }
+};
+
+template <>
+class Commutator<orderline_value_frequpd> : Commutator<orderline_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<orderline_value>(std::forward<Args>(args)...) {}
+
+    orderline_value_frequpd& operate(orderline_value_frequpd &ol) const {
+        ol.ol_delivery_d = write_delivery_d;
+        return ol;
+    }
 };
 
 template <>
@@ -153,6 +315,42 @@ public:
 private:
     int32_t update_qty;
     bool is_remote;
+
+    friend Commutator<stock_value_frequpd>;
+};
+
+template <>
+class Commutator<stock_value_infreq> : Commutator<stock_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<stock_value>(std::forward<Args>(args)...) {}
+
+    stock_value_infreq& operate(stock_value_infreq &sv) const {
+        return sv;
+    }
+};
+
+template <>
+class Commutator<stock_value_frequpd> : Commutator<stock_value> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<stock_value>(std::forward<Args>(args)...) {}
+
+    stock_value_frequpd& operate(stock_value_frequpd &sv) const {
+        if ((sv.s_quantity - 10) >= update_qty)
+            sv.s_quantity -= update_qty;
+        else
+            sv.s_quantity += (91 - update_qty);
+        sv.s_ytd += update_qty;
+        sv.s_order_cnt += 1;
+        if (is_remote)
+            sv.s_remote_cnt += 1;
+        return sv;
+    }
 };
 
 }
