@@ -11,12 +11,11 @@ namespace tpcc {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
-#if TABLE_FINE_GRAINED
     typedef warehouse_value::NamedColumn wh_nc;
     typedef district_value::NamedColumn dt_nc;
     typedef customer_value::NamedColumn cu_nc;
+    typedef item_value::NamedColumn it_nc;
     typedef stock_value::NamedColumn st_nc;
-#endif
 
     uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
@@ -67,119 +66,58 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     RWTXN {
     ++starts;
 
-    bool abort, result;
-    uintptr_t row;
-    const void *value;
-
     int64_t wh_tax_rate, dt_tax_rate;
     uint64_t dt_next_oid;
 
+    {
     warehouse_key wk(q_w_id);
-#if TPCC_SPLIT_TABLE
-    std::tie(abort, result, row, value) = db.tbl_warehouses_const().select_row(wk, RowAccess::ObserveValue);
-    CHK(abort);
-    assert(result);
-    wh_tax_rate = reinterpret_cast<const warehouse_const_value*>(value)->w_tax;
-#else
-    std::tie(abort, result, row, value) = db.tbl_warehouses().select_row(wk,
-#if TABLE_FINE_GRAINED
+    auto [abort, result, row, value] = db.tbl_warehouses().select_split_row(wk,
         {{wh_nc::w_tax, access_t::read}}
-#else
-        RowAccess::ObserveValue
-#endif
     );
+    (void)row;
     CHK(abort);
     assert(result);
-    wh_tax_rate = reinterpret_cast<const warehouse_value*>(value)->w_tax;
-#endif
+    wh_tax_rate = value.w_tax();
+    }
 
-#if TPCC_SPLIT_TABLE
+    {
     district_key dk(q_w_id, q_d_id);
-    std::tie(abort, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::ObserveValue);
-    CHK(abort);
-    assert(result);
-
-    TXP_INCREMENT(txp_tpcc_no_stage1);
-
-    auto dv = reinterpret_cast<const district_const_value*>(value);
-    dt_tax_rate = dv->d_tax;
-    dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
-    //dt_next_oid = new_dv->d_next_o_id ++;
-    //db.tbl_districts(q_w_id).update_row(row, new_dv);
-
-    customer_key ck(q_w_id, q_d_id, q_c_id);
-    std::tie(abort, result, std::ignore, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::ObserveValue);
-    CHK(abort);
-    assert(result);
-
-    TXP_INCREMENT(txp_tpcc_no_stage2);
-
-    auto ccv = reinterpret_cast<const customer_const_value*>(value);
-
-    auto cus_discount = ccv->c_discount;
-    out_cus_last = ccv->c_last;
-    out_cus_credit = ccv->c_credit;
-#else
-    district_key dk(q_w_id, q_d_id);
-    std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(dk,
-#if TABLE_FINE_GRAINED
+    auto [abort, result, row, value] = db.tbl_districts(q_w_id).select_split_row(dk,
         {{dt_nc::d_tax, access_t::read}}
-#else
-        RowAccess::ObserveValue
-#endif
     );
+    (void)row;
     CHK(abort);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_no_stage1);
 
-    auto dv = reinterpret_cast<const district_value*>(value);
-    dt_tax_rate = dv->d_tax;
+    dt_tax_rate = value.d_tax();
     dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
     //dt_next_oid = new_dv->d_next_o_id ++;
     //db.tbl_districts(q_w_id).update_row(row, new_dv);
+    }
 
+    int64_t cus_discount;
+    {
     customer_key ck(q_w_id, q_d_id, q_c_id);
-    std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(ck,
-#if TABLE_FINE_GRAINED
+    auto [abort, result, row, value] = db.tbl_customers(q_w_id).select_split_row(ck,
         {{cu_nc::c_discount, access_t::read},
          {cu_nc::c_last, access_t::read},
          {cu_nc::c_credit, access_t::read}}
-#else
-        RowAccess::ObserveValue
-#endif
     );
+    (void)row;
     CHK(abort);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_no_stage2);
 
-    auto cv = reinterpret_cast<const customer_value*>(value);
-
-    auto cus_discount = cv->c_discount;
-    out_cus_last = cv->c_last;
-    out_cus_credit = cv->c_credit;
-#endif
+    cus_discount = value.c_discount();
+    out_cus_last = value.c_last();
+    out_cus_credit = value.c_credit();
+    }
 
     order_key ok(q_w_id, q_d_id, dt_next_oid);
     order_cidx_key ock(q_w_id, q_d_id, q_c_id, dt_next_oid);
-#if TPCC_SPLIT_TABLE
-    order_const_value* ocv = Sto::tx_alloc<order_const_value>();
-    order_comm_value* omv = Sto::tx_alloc<order_comm_value>();
-    ocv->o_c_id = q_c_id;
-    omv->o_carrier_id = 0;
-    ocv->o_all_local = all_local ? 1 : 0;
-    ocv->o_entry_d = o_entry_d;
-    ocv->o_ol_cnt = num_items;
-
-    std::tie(abort, result) = db.tbl_orders_const(q_w_id).insert_row(ok, ocv, false);
-    CHK(abort);
-    assert(!result);
-
-    std::tie(abort, result) = db.tbl_orders_comm(q_w_id).insert_row(ok, omv, false);
-    CHK(abort);
-    assert(!result);
-#else
     order_value* ov = Sto::tx_alloc<order_value>();
     ov->o_c_id = q_c_id;
     ov->o_carrier_id = 0;
@@ -187,10 +125,10 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     ov->o_entry_d = o_entry_d;
     ov->o_ol_cnt = num_items;
 
-    std::tie(abort, result) = db.tbl_orders(q_w_id).insert_row(ok, ov, false);
+    {
+    auto [abort, result] = db.tbl_orders(q_w_id).insert_row(ok, ov, false);
     CHK(abort);
     assert(!result);
-#endif
 
     std::tie(abort, result) = db.tbl_neworders(q_w_id).insert_row(ok, &bench::dummy_row::row, false);
     CHK(abort);
@@ -198,6 +136,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     std::tie(abort, result) = db.tbl_order_customer_index(q_w_id).insert_row(ock, &bench::dummy_row::row, false);
     CHK(abort);
     assert(!result);
+    }
 
     TXP_INCREMENT(txp_tpcc_no_stage3);
 
@@ -207,76 +146,50 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         uint64_t iid = ol_i_ids[i];
         uint64_t wid = ol_supply_w_ids[i];
         uint64_t qty = ol_quantities[i];
+        uint64_t oid;
+        uint32_t i_price;
 
-        std::tie(abort, result, std::ignore, value) = db.tbl_items().select_row(item_key(iid), RowAccess::ObserveValue);
+        {
+        auto [abort, result, row, value] = db.tbl_items().select_split_row(item_key(iid),
+            {{it_nc::i_im_id, access_t::read},
+             {it_nc::i_price, access_t::read},
+             {it_nc::i_name, access_t::read},
+             {it_nc::i_data, access_t::read}});
+        (void)row;
         CHK(abort);
         assert(result);
-        uint64_t oid = reinterpret_cast<const item_value *>(value)->i_im_id;
+        oid = value.i_im_id();
         CHK(oid != 0);
-        uint32_t i_price = reinterpret_cast<const item_value *>(value)->i_price;
-        out_item_names[i] = reinterpret_cast<const item_value *>(value)->i_name;
+        i_price = value.i_price();
+        out_item_names[i] = value.i_name();
         //auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
-
-#if TPCC_SPLIT_TABLE
-        std::tie(abort, result, row, value) = db.tbl_stocks_const(wid).select_row(stock_key(wid, iid), RowAccess::ObserveValue);
-        CHK(abort);
-        assert(result);
-        auto scv = reinterpret_cast<const stock_const_value*>(value);
-        auto s_dist = scv->s_dists[q_d_id - 1];
-        //auto s_data = scv->s_data;
-        //if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
-        //    out_brand_generic[i] = 'B';
-        //else
-        //    out_brand_generic[i] = 'G';
-
-        std::tie(abort, result, row, value) = db.tbl_stocks_comm(wid).select_row(stock_key(wid, iid),
-            Commute ? RowAccess::None : RowAccess::ObserveValue);
-        CHK(abort);
-        assert(result);
-        if (Commute) {
-            commutators::Commutator<stock_comm_value> comm(qty, wid != q_w_id);
-            db.tbl_stocks_comm(wid).update_row(row, comm);
-        } else {
-            auto new_smv = Sto::tx_alloc(reinterpret_cast<const stock_comm_value*>(value));
-            if ((new_smv->s_quantity - 10) >= (int32_t)qty)
-                new_smv->s_quantity -= qty;
-            else
-                new_smv->s_quantity += (91 - (int32_t)qty);
-            new_smv->s_ytd += qty;
-            new_smv->s_order_cnt += 1;
-            if (wid != q_w_id)
-                new_smv->s_remote_cnt += 1;
-            db.tbl_stocks_comm(wid).update_row(row, new_smv);
         }
-#else
-        std::tie(abort, result, row, value) = db.tbl_stocks(wid).select_row(stock_key(wid, iid),
-#if TABLE_FINE_GRAINED
+
+        {
+        auto [abort, result, row, value] = db.tbl_stocks(wid).select_split_row(stock_key(wid, iid),
             {{st_nc::s_quantity, Commute ? access_t::write : access_t::update},
              {st_nc::s_ytd, Commute ? access_t::write : access_t::update},
              {st_nc::s_order_cnt, Commute ? access_t::write : access_t::update},
              {st_nc::s_remote_cnt, Commute ? access_t::write : access_t::update},
              {st_nc::s_dists, access_t::read },
              {st_nc::s_data, access_t::read }}
-#else
-            RowAccess::ObserveValue
-#endif
         );
         CHK(abort);
         assert(result);
-        auto sv = reinterpret_cast<const stock_value*>(value);
-        int32_t s_quantity = sv->s_quantity;
-        auto s_dist = sv->s_dists[q_d_id - 1];
+        int32_t s_quantity = value.s_quantity();
+        auto s_dist = value.s_dists()[q_d_id - 1];
         //auto s_data = sv->s_data;
         //if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
         //    out_brand_generic[i] = 'B';
         //else
         //    out_brand_generic[i] = 'G';
 
-        if (Commute) {
+        if constexpr (Commute) {
             commutators::Commutator<stock_value> comm(qty, wid != q_w_id);
             db.tbl_stocks(wid).update_row(row, comm);
         } else {
-            stock_value *new_sv = Sto::tx_alloc(sv);
+            stock_value* new_sv = Sto::tx_alloc<stock_value>();
+            value.copy_into(new_sv);
             if ((s_quantity - 10) >= (int32_t) qty)
                 new_sv->s_quantity -= qty;
             else
@@ -287,29 +200,10 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
                 new_sv->s_remote_cnt += 1;
             db.tbl_stocks(wid).update_row(row, new_sv);
         }
-#endif
 
         double ol_amount = qty * i_price/100.0;
 
         orderline_key olk(q_w_id, q_d_id, dt_next_oid, i + 1);
-#if TPCC_SPLIT_TABLE
-        orderline_const_value *lcv = Sto::tx_alloc<orderline_const_value>();
-        orderline_comm_value *lmv = Sto::tx_alloc<orderline_comm_value>();
-        lcv->ol_i_id = iid;
-        lcv->ol_supply_w_id = wid;
-        lmv->ol_delivery_d = 0;
-        lcv->ol_quantity = qty;
-        lcv->ol_amount = ol_amount;
-        lcv->ol_dist_info = s_dist;
-
-        std::tie(abort, result) = db.tbl_orderlines_const(q_w_id).insert_row(olk, lcv, false);
-        CHK(abort);
-        assert(!result);
-
-        std::tie(abort, result) = db.tbl_orderlines_comm(q_w_id).insert_row(olk, lmv, false);
-        CHK(abort);
-        assert(!result);
-#else
         orderline_value *olv = Sto::tx_alloc<orderline_value>();
         olv->ol_i_id = iid;
         olv->ol_supply_w_id = wid;
@@ -321,11 +215,11 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         std::tie(abort, result) = db.tbl_orderlines(q_w_id).insert_row(olk, olv, false);
         CHK(abort);
         assert(!result);
-#endif
 
         out_total_amount += ol_amount * (1.0 - cus_discount/100.0) * (1.0 + (wh_tax_rate + dt_tax_rate)/100.0);
 
         TXP_INCREMENT(txp_tpcc_no_stage5);
+        }
     }
 
     // commit txn
@@ -338,11 +232,9 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_payment() {
-#if TABLE_FINE_GRAINED
     typedef warehouse_value::NamedColumn wh_nc;
     typedef district_value::NamedColumn dt_nc;
     typedef customer_value::NamedColumn cu_nc;
-#endif
 
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
@@ -404,43 +296,10 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     Sto::transaction()->special_txp = true;
     ++starts;
 
-    bool success, result;
-    uintptr_t row;
-    const void *value;
-
     // select warehouse row for update and retrieve warehouse info
-#if TPCC_SPLIT_TABLE
+    {
     warehouse_key wk(q_w_id);
-    std::tie(success, result, row, value) = db.tbl_warehouses_const().select_row(wk, RowAccess::ObserveValue);
-    CHK(success);
-    assert(result);
-    auto wv = reinterpret_cast<const warehouse_const_value*>(value);
-
-    out_w_name = wv->w_name;
-    out_w_street_1 = wv->w_street_1;
-    out_w_street_2 = wv->w_street_2;
-    out_w_city = wv->w_city;
-    out_w_state = wv->w_state;
-    out_w_zip = wv->w_zip;
-
-    std::tie(success, result, row, value) = db.tbl_warehouses_comm().select_row(wk,
-            Commute ? RowAccess::None : RowAccess::UpdateValue);
-    CHK(success);
-    assert(result);
-
-    if (Commute) {
-        commutators::Commutator<warehouse_comm_value> commutator(h_amount);
-        db.tbl_warehouses_comm().update_row(row, commutator);
-    } else {
-        auto wmv = reinterpret_cast<const warehouse_comm_value*>(value);
-        auto new_wmv = Sto::tx_alloc(wmv);
-        new_wmv->w_ytd += h_amount;
-        db.tbl_warehouses_comm().update_row(row, new_wmv);
-    }
-#else
-    warehouse_key wk(q_w_id);
-    std::tie(success, result, row, value) = db.tbl_warehouses().select_row(wk,
-#if TABLE_FINE_GRAINED
+    auto [success, result, row, value] = db.tbl_warehouses().select_split_row(wk,
         {{wh_nc::w_name, access_t::read},
          {wh_nc::w_street_1, access_t::read},
          {wh_nc::w_street_2, access_t::read},
@@ -448,66 +307,32 @@ void tpcc_runner<DBParams>::run_txn_payment() {
          {wh_nc::w_state, access_t::read},
          {wh_nc::w_zip, access_t::read},
          {wh_nc::w_ytd, Commute ? access_t::write : access_t::update}}
-#else
-        RowAccess::ObserveValue
-#endif
     );
     CHK(success);
     assert(result);
-    auto wv = reinterpret_cast<const warehouse_value*>(value);
-    out_w_name = wv->w_name;
-    out_w_street_1 = wv->w_street_1;
-    out_w_street_2 = wv->w_street_2;
-    out_w_city = wv->w_city;
-    out_w_state = wv->w_state;
-    out_w_zip = wv->w_zip;
+    out_w_name = value.w_name();
+    out_w_street_1 = value.w_street_1();
+    out_w_street_2 = value.w_street_2();
+    out_w_city = value.w_city();
+    out_w_state = value.w_state();
+    out_w_zip = value.w_zip();
 
     // update warehouse ytd
-    if (Commute) {
+    if constexpr (Commute) {
         commutators::Commutator<warehouse_value> commutator(h_amount);
         db.tbl_warehouses().update_row(row, commutator);
     } else {
-        auto new_wv = Sto::tx_alloc(wv);
+        auto new_wv = Sto::tx_alloc<warehouse_value>();
+        value.copy_into(new_wv);
         new_wv->w_ytd += h_amount;
         db.tbl_warehouses().update_row(row, new_wv);
     }
-#endif
+    }
 
     // select district row and retrieve district info
+    {
     district_key dk(q_w_id, q_d_id);
-#if TPCC_SPLIT_TABLE
-    std::tie(success, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::ObserveValue);
-    CHK(success);
-    assert(result);
-    auto dv = reinterpret_cast<const district_const_value *>(value);
-    out_d_name = dv->d_name;
-    out_d_street_1 = dv->d_street_1;
-    out_d_street_2 = dv->d_street_2;
-    out_d_city = dv->d_city;
-    out_d_state = dv->d_state;
-    out_d_zip = dv->d_zip;
-
-    std::tie(success, result, row, value) = db.tbl_districts_comm(q_w_id).select_row(dk,
-            Commute ? RowAccess::None : RowAccess::UpdateValue);
-    CHK(success);
-    assert(result);
-
-    TXP_INCREMENT(txp_tpcc_pm_stage1);
-
-    if (Commute) {
-        // update district ytd commutatively
-        commutators::Commutator<district_comm_value> commutator(h_amount);
-        db.tbl_districts_comm(q_w_id).update_row(row, commutator);
-    } else {
-        auto dmv = reinterpret_cast<const district_comm_value*>(value);
-        auto new_dmv = Sto::tx_alloc(dmv);
-        // update district ytd in-place
-        new_dmv->d_ytd += h_amount;
-        db.tbl_districts_comm(q_w_id).update_row(row, new_dmv);
-    }
-#else
-    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk,
-#if TABLE_FINE_GRAINED
+    auto [success, result, row, value] = db.tbl_districts(q_w_id).select_split_row(dk,
         {{dt_nc::d_name, access_t::read},
          {dt_nc::d_street_1, access_t::read},
          {dt_nc::d_street_2, access_t::read},
@@ -515,43 +340,42 @@ void tpcc_runner<DBParams>::run_txn_payment() {
          {dt_nc::d_state, access_t::read},
          {dt_nc::d_zip, access_t::read},
          {dt_nc::d_ytd, Commute ? access_t::write : access_t::update}}
-#else
-        RowAccess::ObserveValue
-#endif
     );
     CHK(success);
     assert(result);
-    auto dv = reinterpret_cast<const district_value *>(value);
-    out_d_name = dv->d_name;
-    out_d_street_1 = dv->d_street_1;
-    out_d_street_2 = dv->d_street_2;
-    out_d_city = dv->d_city;
-    out_d_state = dv->d_state;
-    out_d_zip = dv->d_zip;
+    out_d_name = value.d_name();
+    out_d_street_1 = value.d_street_1();
+    out_d_street_2 = value.d_street_2();
+    out_d_city = value.d_city();
+    out_d_state = value.d_state();
+    out_d_zip = value.d_zip();
 
     TXP_INCREMENT(txp_tpcc_pm_stage1);
 
-    if (Commute) {
+    if constexpr (Commute) {
         // update district ytd commutatively
         commutators::Commutator<district_value> commutator(h_amount);
         db.tbl_districts(q_w_id).update_row(row, commutator);
     } else {
-        auto new_dv = Sto::tx_alloc(dv);
+        auto new_dv = Sto::tx_alloc<district_value>();
+        value.copy_into(new_dv);
         // update district ytd in-place
         new_dv->d_ytd += h_amount;
         db.tbl_districts(q_w_id).update_row(row, new_dv);
     }
-#endif
 
     TXP_INCREMENT(txp_tpcc_pm_stage2);
+    }
 
     // select and update customer
     if (by_name) {
         customer_idx_key ck(q_c_w_id, q_c_d_id, last_name);
-        std::tie(success, result, row, value) = db.tbl_customer_index(q_c_w_id).select_row(ck, RowAccess::ObserveValue);
+        auto [success, result, row, value] = db.tbl_customer_index(q_c_w_id).select_split_row(ck,
+            {{customer_idx_value::NamedColumn::c_ids, access_t::read}});
+        (void)row;
         CHK(success);
         assert(result);
-        auto& c_id_list = reinterpret_cast<const customer_idx_value*>(value)->c_ids;
+        auto& c_id_list = value.c_ids();
         uint64_t rows[100];
         int cnt = 0;
         for (auto it = c_id_list.begin(); cnt < 100 && it != c_id_list.end(); ++it, ++cnt) {
@@ -564,57 +388,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     TXP_INCREMENT(txp_tpcc_pm_stage3);
 
-#if TPCC_SPLIT_TABLE
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
-    std::tie(success, result, row, value) = db.tbl_customers_const(q_c_w_id).select_row(ck, RowAccess::ObserveValue);
-    CHK(success);
-    assert(result);
-
-    TXP_INCREMENT(txp_tpcc_pm_stage4);
-
-    auto ccv = reinterpret_cast<const customer_const_value*>(value);
-    out_c_since = ccv->c_since;
-    out_c_credit_lim = ccv->c_credit_lim;
-    out_c_discount = ccv->c_discount;
-
-#if TPCC_OBSERVE_C_BALANCE
-    std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck, RowAccess::UpdateValue);
-    CHK(success);
-    assert(result);
-    auto cmv = reinterpret_cast<const customer_comm_value*>(value);
-    out_c_balance = cmv->c_balance;
-#else
-    std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck,
-            Commute ? RowAccess::None : RowAccess::UpdateValue);
-    CHK(success);
-    assert(result);
-#endif
-
-    if (Commute) {
-        if (ccv->c_credit == "BC") {
-            commutators::Commutator<customer_comm_value> commutator(-h_amount, h_amount, q_c_id, q_c_d_id, q_c_w_id,
-                                                                      q_d_id, q_w_id, h_amount);
-            db.tbl_customers_comm(q_c_w_id).update_row(row, commutator);
-        } else {
-            commutators::Commutator<customer_comm_value> commutator(-h_amount, h_amount);
-            db.tbl_customers_comm(q_c_w_id).update_row(row, commutator);
-        }
-    } else {
-        auto cmmv = reinterpret_cast<const customer_comm_value*>(value);
-        auto new_cmmv = Sto::tx_alloc(cmmv);
-        new_cmmv->c_balance -= h_amount;
-        new_cmmv->c_payment_cnt += 1;
-        new_cmmv->c_ytd_payment += h_amount;
-        if (ccv->c_credit == "BC") {
-            c_data_info info(q_c_id, q_c_d_id, q_c_w_id, q_d_id, q_w_id, h_amount);
-            new_cmmv->c_data.insert_left(info.buf(), c_data_info::len);
-        }
-        db.tbl_customers_comm(q_c_w_id).update_row(row, new_cmmv);
-    }
-#else
-    customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
-    std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck,
-#if TABLE_FINE_GRAINED
+    auto [success, result, row, value] = db.tbl_customers(q_c_w_id).select_split_row(ck,
         {{cu_nc::c_since,    access_t::read},
          {cu_nc::c_credit,   access_t::read},
          {cu_nc::c_discount, access_t::read},
@@ -622,23 +397,19 @@ void tpcc_runner<DBParams>::run_txn_payment() {
          {cu_nc::c_payment_cnt, Commute ? access_t::write : access_t::update},
          {cu_nc::c_ytd_payment, Commute ? access_t::write : access_t::update},
          {cu_nc::c_credit, Commute ? access_t::write : access_t::update}}
-#else
-        RowAccess::ObserveValue
-#endif
     );
     CHK(success);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_pm_stage4);
 
-    auto cv = reinterpret_cast<const customer_value*>(value);
-    out_c_since = cv->c_since;
-    out_c_credit_lim = cv->c_credit_lim;
-    out_c_discount = cv->c_discount;
-    out_c_balance = cv->c_balance;
+    out_c_since = value.c_since();
+    out_c_credit_lim = value.c_credit_lim();
+    out_c_discount = value.c_discount();
+    out_c_balance = value.c_balance();
 
-    if (Commute) {
-        if (cv->c_credit == "BC") {
+    if constexpr (Commute) {
+        if (value.c_credit() == "BC") {
             commutators::Commutator<customer_value> commutator(-h_amount, h_amount, q_c_id, q_c_d_id, q_c_w_id,
                                                                       q_d_id, q_w_id, h_amount);
             db.tbl_customers(q_c_w_id).update_row(row, commutator);
@@ -647,17 +418,17 @@ void tpcc_runner<DBParams>::run_txn_payment() {
             db.tbl_customers(q_c_w_id).update_row(row, commutator);
         }
     } else {
-        auto new_cv = Sto::tx_alloc(cv);
+        auto new_cv = Sto::tx_alloc<customer_value>();
+        value.copy_into(new_cv);
         new_cv->c_balance -= h_amount;
         new_cv->c_payment_cnt += 1;
         new_cv->c_ytd_payment += h_amount;
-        if (cv->c_credit == "BC") {
+        if (value.c_credit() == "BC") {
             c_data_info info(q_c_id, q_c_d_id, q_c_w_id, q_d_id, q_w_id, h_amount);
             new_cv->c_data.insert_left(info.buf(), c_data_info::len);
         }
         db.tbl_customers(q_c_w_id).update_row(row, new_cv);
     }
-#endif
 
     TXP_INCREMENT(txp_tpcc_pm_stage5);
 
@@ -689,10 +460,9 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_orderstatus() {
-#if TABLE_FINE_GRAINED
     typedef customer_value::NamedColumn cu_nc;
+    typedef order_value::NamedColumn od_nc;
     typedef orderline_value::NamedColumn ol_nc;
-#endif
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
 
@@ -728,16 +498,14 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     TXN {
     ++starts;
 
-    bool success, result;
-    uintptr_t row;
-    const void *value;
-
     if (by_name) {
         customer_idx_key ck(q_w_id, q_d_id, last_name);
-        std::tie(success, result, row, value) = db.tbl_customer_index(q_w_id).select_row(ck, RowAccess::ObserveValue);
+        auto [success, result, row, value] = db.tbl_customer_index(q_w_id).select_split_row(ck,
+            {{customer_idx_value::NamedColumn::c_ids, access_t::read}});
+        (void)row;
         CHK(success);
         assert(result);
-        auto& c_id_list = reinterpret_cast<const customer_idx_value*>(value)->c_ids;
+        auto& c_id_list = value.c_ids();
         uint64_t rows[100];
         int cnt = 0;
         for (auto it = c_id_list.begin(); cnt < 100 && it != c_id_list.end(); ++it, ++cnt) {
@@ -748,53 +516,26 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         always_assert(q_c_id != 0, "q_c_id invalid when selecting customer by c_id");
     }
 
-#if TPCC_SPLIT_TABLE
     customer_key ck(q_w_id, q_d_id, q_c_id);
-    std::tie(success, result, row, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::ObserveValue);
-    CHK(success);
-    assert(result);
-
-    auto ccv = reinterpret_cast<const customer_const_value*>(value);
-
-    // simulate retrieving customer info
-    out_c_first = ccv->c_first;
-    out_c_last = ccv->c_last;
-    out_c_middle = ccv->c_middle;
-
-#if TPCC_OBSERVE_C_BALANCE
-    std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck, RowAccess::ObserveValue);
-    CHK(success);
-    assert(result);
-    auto cmv = reinterpret_cast<const customer_comm_value*>(value);
-    out_c_balance = cmv->c_balance;
-#endif
-#else
-    customer_key ck(q_w_id, q_d_id, q_c_id);
-    std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck,
-#if TABLE_FINE_GRAINED
+    auto [success, result, row, value] = db.tbl_customers(q_w_id).select_split_row(ck,
         {{cu_nc::c_first, access_t::read},
          {cu_nc::c_last, access_t::read},
          {cu_nc::c_middle, access_t::read},
          {cu_nc::c_balance, access_t::read}}
-#else
-        RowAccess::ObserveValue
-#endif
     );
+    (void)row;
     CHK(success);
     assert(result);
 
-    auto cv = reinterpret_cast<const customer_value*>(value);
-
     // simulate retrieving customer info
-    out_c_first = cv->c_first;
-    out_c_last = cv->c_last;
-    out_c_middle = cv->c_middle;
-    out_c_balance = cv->c_balance;
-#endif
+    out_c_first = value.c_first();
+    out_c_last = value.c_last();
+    out_c_middle = value.c_middle();
+    out_c_balance = value.c_balance();
 
     // find the highest order placed by customer q_c_id
     uint64_t cus_o_id = 0;
-    auto scan_callback = [&] (const order_cidx_key& key, const bench::dummy_row&) -> bool {
+    auto scan_callback = [&] (const order_cidx_key& key, const auto&) -> bool {
         cus_o_id = bswap(key.o_id);
         return true;
     };
@@ -802,82 +543,44 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     order_cidx_key k0(q_w_id, q_d_id, q_c_id, 0);
     order_cidx_key k1(q_w_id, q_d_id, q_c_id, std::numeric_limits<uint64_t>::max());
 
-    success = db.tbl_order_customer_index(q_w_id)
+    bool scan_success = db.tbl_order_customer_index(q_w_id)
             .template range_scan<decltype(scan_callback), true/*reverse*/>(k1, k0, scan_callback, RowAccess::ObserveExists, true, 1/*reverse scan for only 1 item*/);
-    CHK(success);
+    CHK(scan_success);
 
     if (cus_o_id > 0) {
         order_key ok(q_w_id, q_d_id, cus_o_id);
-#if TPCC_SPLIT_TABLE
-        std::tie(success, result, std::ignore, value) = db.tbl_orders_const(q_w_id).select_row(ok, RowAccess::ObserveValue);
+        auto [success, result, row, value] = db.tbl_orders(q_w_id).select_split_row(ok,
+            {{od_nc::o_entry_d, access_t::read},
+             {od_nc::o_carrier_id, access_t::read}});
+        (void)row;
         CHK(success);
         assert(result);
-        auto ocv = reinterpret_cast<const order_const_value*>(value);
-        out_o_entry_date = ocv->o_entry_d;
 
-        std::tie(success, result, std::ignore, value) = db.tbl_orders_comm(q_w_id).select_row(ok, RowAccess::ObserveValue);
-        CHK(success);
-        assert(result);
-        auto omv = reinterpret_cast<const order_comm_value*>(value);
-        out_o_carrier_id = omv->o_carrier_id;
+        out_o_entry_date = value.o_entry_d();
+        out_o_carrier_id = value.o_carrier_id();
 
-        auto lc_scan_callback = [&] (const orderline_key&, const orderline_const_value& lcv) -> bool {
-            out_ol_i_id = lcv.ol_i_id;
-            out_ol_supply_w_id = lcv.ol_supply_w_id;
-            out_ol_quantity = lcv.ol_quantity;
-            out_ol_amount = lcv.ol_amount;
-            return true;
-        };
-        auto lm_scan_callback = [&] (const orderline_key&, const orderline_comm_value& lmv) -> bool {
-            out_ol_delivery_d = lmv.ol_delivery_d;
+        auto ol_scan_callback = [&] (const orderline_key&, const auto& scan_value) -> bool {
+            auto olv = (typename std::remove_reference_t<decltype(db)>::ol_table_type::accessor_t)(scan_value);
+            out_ol_i_id = olv.ol_i_id();
+            out_ol_supply_w_id = olv.ol_supply_w_id();
+            out_ol_quantity = olv.ol_quantity();
+            out_ol_amount = olv.ol_amount();
+            out_ol_delivery_d = olv.ol_delivery_d();
             return true;
         };
 
         orderline_key olk0(q_w_id, q_d_id, cus_o_id, 0);
         orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint64_t>::max());
 
-        success = db.tbl_orderlines_const(q_w_id)
-                .template range_scan<decltype(lc_scan_callback), false/*reverse*/>(olk0, olk1, lc_scan_callback, RowAccess::ObserveValue);
-        CHK(success);
-        success = db.tbl_orderlines_comm(q_w_id)
-                .template range_scan<decltype(lm_scan_callback), false/*reverse*/>(olk0, olk1, lm_scan_callback, RowAccess::ObserveValue);
-        CHK(success);
-#else
-        std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok, RowAccess::ObserveValue);
-        CHK(success);
-        assert(result);
-
-        auto ov = reinterpret_cast<const order_value *>(value);
-        out_o_entry_date = ov->o_entry_d;
-        out_o_carrier_id = ov->o_carrier_id;
-
-        auto ol_scan_callback = [&] (const orderline_key& olk, const orderline_value& olv) -> bool {
-            (void)olk;
-            out_ol_i_id = olv.ol_i_id;
-            out_ol_supply_w_id = olv.ol_supply_w_id;
-            out_ol_quantity = olv.ol_quantity;
-            out_ol_amount = olv.ol_amount;
-            out_ol_delivery_d = olv.ol_delivery_d;
-            return true;
-        };
-
-        orderline_key olk0(q_w_id, q_d_id, cus_o_id, 0);
-        orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint64_t>::max());
-
-        success = db.tbl_orderlines(q_w_id)
+        scan_success = db.tbl_orderlines(q_w_id)
                 .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk0, olk1, ol_scan_callback,
-#if TABLE_FINE_GRAINED
                         {{ol_nc::ol_i_id, access_t::read},
                          {ol_nc::ol_supply_w_id, access_t::read},
                          {ol_nc::ol_quantity, access_t::read},
                          {ol_nc::ol_amount, access_t::read},
                          {ol_nc::ol_delivery_d, access_t::read}}
-#else
-                        RowAccess::ObserveValue
-#endif
                 );
-        CHK(success);
-#endif
+        CHK(scan_success);
     } else {
         // order doesn't exist, simply commit the transaction
     }
@@ -892,24 +595,18 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
-#if TABLE_FINE_GRAINED
     typedef order_value::NamedColumn od_nc;
     typedef orderline_value::NamedColumn ol_nc;
     typedef customer_value::NamedColumn cu_nc;
-#endif
 
     uint64_t carrier_id = ig.random(1, 10);
     uint32_t delivery_date = ig.gen_date();
-
-    bool success, result;
-    uintptr_t row;
-    const void *value;
 
     uint64_t order_id;
     std::vector<uint64_t> ol_nums;
     int32_t ol_amount_sum;
 
-    auto no_scan_callback = [&order_id] (const order_key& ok, const bench::dummy_row&) -> bool {
+    auto no_scan_callback = [&order_id] (const order_key& ok, const auto&) -> bool {
         order_id = bswap(ok.o_id);
         return true;
     };
@@ -928,9 +625,9 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 
         order_key k0(q_w_id, q_d_id, 0);
         order_key k1(q_w_id, q_d_id, std::numeric_limits<order_key::oid_type>::max());
-        success = db.tbl_neworders(q_w_id)
+        bool scan_success = db.tbl_neworders(q_w_id)
                 .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, true, 1);
-        CHK(success);
+        CHK(scan_success);
         //Sto::print_read_set_size("1");
 
         TXP_INCREMENT(txp_tpcc_dl_stage2);
@@ -939,103 +636,48 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
             continue;
 
         order_key ok(q_w_id, q_d_id, order_id);
-        std::tie(success, result) = db.tbl_neworders(q_w_id).delete_row(ok);
+        {
+        auto [success, result] = db.tbl_neworders(q_w_id).delete_row(ok);
         CHK(success);
         CHK(result);
         assert(result);
-
-#if TPCC_SPLIT_TABLE
-        std::tie(success, result, std::ignore, value) = db.tbl_orders_const(q_w_id).select_row(ok, RowAccess::ObserveValue);
-        CHK(success);
-        assert(result);
-
-        auto ocv = reinterpret_cast<const order_const_value *>(value);
-        uint64_t q_c_id = ocv->o_c_id;
-        auto ol_cnt = ocv->o_ol_cnt;
-
-        std::tie(success, result, row, value) = db.tbl_orders_comm(q_w_id).select_row(ok,
-                Commute ? RowAccess::None : RowAccess::UpdateValue);
-        CHK(success);
-        assert(result);
-
-        TXP_INCREMENT(txp_tpcc_dl_stage4);
-
-        if (Commute) {
-            commutators::Commutator<order_comm_value> commutator(carrier_id);
-            db.tbl_orders_comm(q_w_id).update_row(row, commutator);
-        } else {
-            auto omv = reinterpret_cast<const order_comm_value*>(value);
-            order_comm_value *new_omv = Sto::tx_alloc(omv);
-            new_omv->o_carrier_id = carrier_id;
-            db.tbl_orders_comm(q_w_id).update_row(row, new_omv);
         }
-#else
-        std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok,
-#if TABLE_FINE_GRAINED
+
+        uint64_t q_c_id = 0;
+        uint32_t ol_cnt = 0;
+        {
+        auto [success, result, row, value] = db.tbl_orders(q_w_id).select_split_row(ok,
             {{od_nc::o_c_id, access_t::read},
              {od_nc::o_ol_cnt, access_t::read},
              {od_nc::o_carrier_id, Commute ? access_t::write : access_t::update}}
-#else
-            RowAccess::ObserveValue
-#endif
         );
         CHK(success);
         assert(result);
 
         TXP_INCREMENT(txp_tpcc_dl_stage4);
 
-        auto ov = reinterpret_cast<const order_value *>(value);
-        uint64_t q_c_id = ov->o_c_id;
+        q_c_id = value.o_c_id();
         assert(q_c_id != 0);
-        auto ol_cnt = ov->o_ol_cnt;
+        ol_cnt = value.o_ol_cnt();
 
-        if (Commute) {
+        if constexpr (Commute) {
             commutators::Commutator<order_value> commutator(carrier_id);
             db.tbl_orders(q_w_id).update_row(row, commutator);
         } else {
-            auto ov = reinterpret_cast<const order_value*>(value);
-            order_value *new_ov = Sto::tx_alloc(ov);
+            order_value* new_ov = Sto::tx_alloc<order_value>();
+            value.copy_into(new_ov);
             new_ov->o_carrier_id = carrier_id;
             db.tbl_orders(q_w_id).update_row(row, new_ov);
         }
-#endif
+        }
 
+        {
         ol_amount_sum = 0;
-
         for (uint32_t ol_num = 1; ol_num <= ol_cnt; ++ol_num) {
             orderline_key olk(q_w_id, q_d_id, order_id, ol_num);
-#if TPCC_SPLIT_TABLE
-            std::tie(success, result, row, value) = db.tbl_orderlines_const(q_w_id).select_row(olk, RowAccess::ObserveValue);
-            CHK(success);
-            assert(result);
-
-            auto lcv = reinterpret_cast<const orderline_const_value *>(value);
-            ol_amount_sum += lcv->ol_amount;
-
-            std::tie(success, result, row, value) = db.tbl_orderlines_comm(q_w_id).select_row(olk,
-                    Commute ? RowAccess::None : RowAccess::UpdateValue);
-            CHK(success);
-            assert(result);
-
-            TXP_INCREMENT(txp_tpcc_dl_stage3);
-
-            if (Commute) {
-                commutators::Commutator<orderline_comm_value> commutator(delivery_date);
-                db.tbl_orderlines_comm(q_w_id).update_row(row, commutator);
-            } else {
-                auto lmv = reinterpret_cast<const orderline_comm_value*>(value);
-                orderline_comm_value *new_lmv = Sto::tx_alloc(lmv);
-                new_lmv->ol_delivery_d = delivery_date;
-                db.tbl_orderlines_comm(q_w_id).update_row(row, new_lmv);
-            }
-#else
-            std::tie(success, result, row, value) = db.tbl_orderlines(q_w_id).select_row(olk,
-#if TABLE_FINE_GRAINED
+            auto [success, result, row, value] = db.tbl_orderlines(q_w_id).select_split_row(olk,
                 {{ol_nc::ol_amount, access_t::read},
                  {ol_nc::ol_delivery_d, Commute ? access_t::write : access_t::update}}
-#else
-                RowAccess::UpdateValue
-#endif
             );
             CHK(success);
 
@@ -1043,66 +685,42 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 
             TXP_INCREMENT(txp_tpcc_dl_stage3);
 
-            auto olv = reinterpret_cast<const orderline_value *>(value);
-            ol_amount_sum += olv->ol_amount;
+            ol_amount_sum += value.ol_amount();
 
-            if (Commute) {
+            if constexpr (Commute) {
                 commutators::Commutator<orderline_value> commutator(delivery_date);
                 db.tbl_orderlines(q_w_id).update_row(row, commutator);
             } else {
-                auto olv = reinterpret_cast<const orderline_value*>(value);
-                orderline_value *new_olv = Sto::tx_alloc(olv);
+                orderline_value* new_olv = Sto::tx_alloc<orderline_value>();
+                value.copy_into(new_olv);
                 new_olv->ol_delivery_d = delivery_date;
                 db.tbl_orderlines(q_w_id).update_row(row, new_olv);
             }
-#endif
+        }
         }
 
-#if TPCC_SPLIT_TABLE
+        {
         customer_key ck(q_w_id, q_d_id, q_c_id);
-        std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck,
-                Commute ? RowAccess::None : RowAccess::UpdateValue);
-        CHK(success);
-        assert(result);
-
-        TXP_INCREMENT(txp_tpcc_dl_stage5);
-
-        if (Commute) {
-            commutators::Commutator<customer_comm_value> commutator((int64_t)ol_amount_sum);
-            db.tbl_customers_comm(q_w_id).update_row(row, commutator);
-        } else {
-            auto cmv = reinterpret_cast<const customer_comm_value*>(value);
-            auto new_cmv = Sto::tx_alloc(cmv);
-            new_cmv->c_balance += (int64_t)ol_amount_sum;
-            new_cmv->c_delivery_cnt += 1;
-            db.tbl_customers_comm(q_w_id).update_row(row, new_cmv);
-        }
-#else
-        customer_key ck(q_w_id, q_d_id, q_c_id);
-        std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck,
-#if TABLE_FINE_GRAINED
+        auto [success, result, row, value] = db.tbl_customers(q_w_id).select_split_row(ck,
             {{cu_nc::c_balance, Commute ? access_t::write : access_t::update},
              {cu_nc::c_delivery_cnt, Commute ? access_t::write : access_t::update}}
-#else
-            RowAccess::ObserveValue
-#endif
         );
         CHK(success);
         assert(result);
 
         TXP_INCREMENT(txp_tpcc_dl_stage5);
 
-        if (Commute) {
+        if constexpr (Commute) {
             commutators::Commutator<customer_value> commutator((int64_t)ol_amount_sum);
             db.tbl_customers(q_w_id).update_row(row, commutator);
         } else {
-            auto cv = reinterpret_cast<const customer_value*>(value);
-            auto new_cv = Sto::tx_alloc(cv);
+            auto new_cv = Sto::tx_alloc<customer_value>();
+            value.copy_into(new_cv);
             new_cv->c_balance += (int64_t)ol_amount_sum;
             new_cv->c_delivery_cnt += 1;
             db.tbl_customers(q_w_id).update_row(row, new_cv);
         }
-#endif
+        }
     }
 
     } TEND(true);
@@ -1113,10 +731,8 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_stocklevel(){
-#if TABLE_FINE_GRAINED
     typedef orderline_value::NamedColumn ol_nc;
     typedef stock_value::NamedColumn st_nc;
-#endif
 
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
@@ -1127,20 +743,11 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     volatile int out_count = 0;
     (void)out_count;
 
-    bool success, result;
-    const void *value;
-
-#if TPCC_SPLIT_TABLE
-    auto lc_scan_callback = [ &ol_iids] (const orderline_key&, const orderline_const_value& value) -> bool {
-        ol_iids.insert(value.ol_i_id);
+    auto ol_scan_callback = [ &ol_iids] (const orderline_key&, const auto& scan_value) -> bool {
+        auto olv = (typename std::remove_reference_t<decltype(db)>::ol_table_type::accessor_t)(scan_value);
+        ol_iids.insert(olv.ol_i_id());
         return true;
     };
-#else
-    auto ol_scan_callback = [ &ol_iids] (const orderline_key&, const orderline_value& value) -> bool {
-        ol_iids.insert(value.ol_i_id);
-        return true;
-    };
-#endif
 
     size_t starts = 0;
 
@@ -1154,42 +761,21 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     orderline_key olk0(q_w_id, q_d_id, oid_lower, 0);
     orderline_key olk1(q_w_id, q_d_id, d_next_oid, 0);
 
-#if TPCC_SPLIT_TABLE
-    success = db.tbl_orderlines_const(q_w_id)
-            .template range_scan<decltype(lc_scan_callback), false/*reverse*/>(olk1, olk0, lc_scan_callback, RowAccess::ObserveValue);
-    CHK(success);
-#else
-    success = db.tbl_orderlines(q_w_id)
+    bool scan_success = db.tbl_orderlines(q_w_id)
             .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk1, olk0, ol_scan_callback,
-#if TABLE_FINE_GRAINED
                     {{ol_nc::ol_i_id, access_t::read}}
-#else
-                    RowAccess::ObserveValue
-#endif
             );
-    CHK(success);
-#endif
+    CHK(scan_success);
 
     for (auto iid : ol_iids) {
         stock_key sk(q_w_id, iid);
-#if TPCC_SPLIT_TABLE
-        std::tie(success, result, std::ignore, value) = db.tbl_stocks_comm(q_w_id).select_row(sk, RowAccess::ObserveValue);
-        CHK(success);
-        assert(result);
-        auto sv = reinterpret_cast<const stock_comm_value*>(value);
-#else
-        std::tie(success, result, std::ignore, value) = db.tbl_stocks(q_w_id).select_row(sk,
-#if TABLE_FINE_GRAINED
+        auto [success, result, row, value] = db.tbl_stocks(q_w_id).select_split_row(sk,
             {{st_nc::s_quantity, access_t::read}}
-#else
-            RowAccess::ObserveValue
-#endif
         );
+        (void)row;
         CHK(success);
         assert(result);
-        auto sv = reinterpret_cast<const stock_value*>(value);
-#endif
-        if(sv->s_quantity < threshold) {
+        if(value.s_quantity() < threshold) {
             out_count += 1;
         }
     }

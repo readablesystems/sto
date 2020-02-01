@@ -280,8 +280,7 @@ public:
                 dst->s_remote_cnt = src->s_remote_cnt;
                 break;
             case 1:
-                for (int i = 0; i < NUM_DISTRICTS_PER_WAREHOUSE; ++i)
-                    dst->s_dists[i] = src->s_dists[i];
+                dst->s_dists = src->s_dists;
                 dst->s_data = src->s_data;
                 break;
             default:

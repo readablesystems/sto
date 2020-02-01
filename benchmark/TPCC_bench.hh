@@ -24,6 +24,8 @@
 #include "DB_profiler.hh"
 #include "PlatformFeatures.hh"
 
+#include "tpcc_split_params_default.hh"
+
 #define A_GEN_CUSTOMER_ID           1023
 #define A_GEN_ITEM_ID               8191
 
@@ -160,27 +162,12 @@ public:
 #endif
 
     // partitioned according to warehouse id
-#if TPCC_SPLIT_TABLE
-    typedef UIndex<warehouse_key, warehouse_const_value> wc_table_type;
-    typedef UIndex<warehouse_key, warehouse_comm_value>  wm_table_type;
-    typedef UIndex<district_key, district_const_value>   dc_table_type;
-    typedef UIndex<district_key, district_comm_value>    dm_table_type;
-    typedef UIndex<customer_key, customer_const_value>   cc_table_type;
-    typedef UIndex<customer_key, customer_comm_value>    cm_table_type;
-    typedef OIndex<order_key, order_const_value>         oc_table_type;
-    typedef OIndex<order_key, order_comm_value>          om_table_type;
-    typedef OIndex<orderline_key, orderline_const_value> lc_table_type;
-    typedef OIndex<orderline_key, orderline_comm_value>  lm_table_type;
-    typedef UIndex<stock_key, stock_const_value>         sc_table_type;
-    typedef UIndex<stock_key, stock_comm_value>          sm_table_type;
-#else
     typedef UIndex<warehouse_key, warehouse_value>       wh_table_type;
     typedef UIndex<district_key, district_value>         dt_table_type;
     typedef UIndex<customer_key, customer_value>         cu_table_type;
     typedef OIndex<order_key, order_value>               od_table_type;
     typedef OIndex<orderline_key, orderline_value>       ol_table_type;
     typedef UIndex<stock_key, stock_value>               st_table_type;
-#endif
     typedef UIndex<customer_idx_key, customer_idx_value> ci_table_type;
     typedef OIndex<order_cidx_key, bench::dummy_row>     oi_table_type;
     typedef OIndex<order_key, bench::dummy_row>          no_table_type;
@@ -195,44 +182,6 @@ public:
     int num_warehouses() const {
         return static_cast<int>(num_whs_);
     }
-#if TPCC_SPLIT_TABLE
-    wc_table_type& tbl_warehouses_const() {
-        return tbl_whs_const_;
-    }
-    wm_table_type& tbl_warehouses_comm() {
-        return tbl_whs_comm_;
-    }
-    dc_table_type& tbl_districts_const(uint64_t w_id) {
-        return tbl_dts_const_[w_id - 1];
-    }
-    dm_table_type& tbl_districts_comm(uint64_t w_id) {
-        return tbl_dts_comm_[w_id - 1];
-    }
-    cc_table_type& tbl_customers_const(uint64_t w_id) {
-        return tbl_cus_const_[w_id - 1];
-    }
-    cm_table_type& tbl_customers_comm(uint64_t w_id) {
-        return tbl_cus_comm_[w_id - 1];
-    }
-    oc_table_type& tbl_orders_const(uint64_t w_id) {
-        return tbl_ods_const_[w_id - 1];
-    }
-    om_table_type& tbl_orders_comm(uint64_t w_id) {
-        return tbl_ods_comm_[w_id - 1];
-    }
-    lc_table_type& tbl_orderlines_const(uint64_t w_id) {
-        return tbl_ols_const_[w_id - 1];
-    }
-    lm_table_type& tbl_orderlines_comm(uint64_t w_id) {
-        return tbl_ols_comm_[w_id - 1];
-    }
-    sc_table_type& tbl_stocks_const(uint64_t w_id) {
-        return tbl_sts_const_[w_id - 1];
-    }
-    sm_table_type& tbl_stocks_comm(uint64_t w_id) {
-        return tbl_sts_comm_[w_id - 1];
-    }
-#else
     wh_table_type& tbl_warehouses() {
         return tbl_whs_;
     }
@@ -251,7 +200,6 @@ public:
     st_table_type& tbl_stocks(uint64_t w_id) {
         return tbl_sts_[w_id - 1];
     }
-#endif
     ci_table_type& tbl_customer_index(uint64_t w_id) {
         return tbl_cni_[w_id - 1];
     }
@@ -278,27 +226,12 @@ private:
     size_t num_whs_;
     it_table_type *tbl_its_;
 
-#if TPCC_SPLIT_TABLE
-    wc_table_type tbl_whs_const_;
-    wm_table_type tbl_whs_comm_;
-    std::vector<dc_table_type> tbl_dts_const_;
-    std::vector<dm_table_type> tbl_dts_comm_;
-    std::vector<cc_table_type> tbl_cus_const_;
-    std::vector<cm_table_type> tbl_cus_comm_;
-    std::vector<oc_table_type> tbl_ods_const_;
-    std::vector<om_table_type> tbl_ods_comm_;
-    std::vector<lc_table_type> tbl_ols_const_;
-    std::vector<lm_table_type> tbl_ols_comm_;
-    std::vector<sc_table_type> tbl_sts_const_;
-    std::vector<sm_table_type> tbl_sts_comm_;
-#else
     wh_table_type tbl_whs_;
     std::vector<dt_table_type> tbl_dts_;
     std::vector<cu_table_type> tbl_cus_;
     std::vector<od_table_type> tbl_ods_;
     std::vector<ol_table_type> tbl_ols_;
     std::vector<st_table_type> tbl_sts_;
-#endif
 
     std::vector<ci_table_type> tbl_cni_;
     std::vector<oi_table_type> tbl_oci_;
@@ -407,36 +340,18 @@ pthread_barrier_t tpcc_prepopulator<DBParams>::sync_barrier;
 template <typename DBParams>
 tpcc_db<DBParams>::tpcc_db(int num_whs)
     : num_whs_(num_whs),
-#if TPCC_SPLIT_TABLE
-      tbl_whs_const_(256),
-      tbl_whs_comm_(256),
-#else
       tbl_whs_(256),
-#endif
       oid_gen_() {
     //constexpr size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE;
     //constexpr size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * NUM_DISTRICTS_PER_WAREHOUSE;
 
     tbl_its_ = new it_table_type(999983/*NUM_ITEMS * 2*/);
     for (auto i = 0; i < num_whs; ++i) {
-#if TPCC_SPLIT_TABLE
-        tbl_dts_const_.emplace_back(32/*num_districts * 2*/);
-        tbl_dts_comm_.emplace_back(32);
-        tbl_cus_const_.emplace_back(999983/*num_customers * 2*/);
-        tbl_cus_comm_.emplace_back(999983);
-        tbl_ods_const_.emplace_back(999983/*num_customers * 10 * 2*/);
-        tbl_ods_comm_.emplace_back(999983);
-        tbl_ols_const_.emplace_back(999983/*num_customers * 100 * 2*/);
-        tbl_ols_comm_.emplace_back(999983);
-        tbl_sts_const_.emplace_back(999983/*NUM_ITEMS * 2*/);
-        tbl_sts_comm_.emplace_back(999983/*NUM_ITEMS * 2*/);
-#else
         tbl_dts_.emplace_back(32/*num_districts * 2*/);
         tbl_cus_.emplace_back(999983/*num_customers * 2*/);
         tbl_ods_.emplace_back(999983/*num_customers * 10 * 2*/);
         tbl_ols_.emplace_back(999983/*num_customers * 100 * 2*/);
         tbl_sts_.emplace_back(999983/*NUM_ITEMS * 2*/);
-#endif
         tbl_cni_.emplace_back(999983/*num_customers * 2*/);
         tbl_oci_.emplace_back(999983/*num_customers * 2*/);
         tbl_nos_.emplace_back(999983/*num_customers * 10 * 2*/);
@@ -452,30 +367,6 @@ tpcc_db<DBParams>::~tpcc_db() {
 template <typename DBParams>
 void tpcc_db<DBParams>::thread_init_all() {
     tbl_its_->thread_init();
-#if TPCC_SPLIT_TABLE
-    tbl_whs_const_.thread_init();
-    tbl_whs_comm_.thread_init();
-    for (auto& t : tbl_dts_const_)
-        t.thread_init();
-    for (auto& t : tbl_dts_comm_)
-        t.thread_init();
-    for (auto& t : tbl_cus_const_)
-        t.thread_init();
-    for (auto& t : tbl_cus_comm_)
-        t.thread_init();
-    for (auto& t : tbl_ods_const_)
-        t.thread_init();
-    for (auto& t : tbl_ods_comm_)
-        t.thread_init();
-    for (auto& t : tbl_ols_const_)
-        t.thread_init();
-    for (auto& t : tbl_ols_comm_)
-        t.thread_init();
-    for (auto& t : tbl_sts_const_)
-        t.thread_init();
-    for (auto& t : tbl_sts_comm_)
-        t.thread_init();
-#else
     tbl_whs_.thread_init();
     for (auto& t : tbl_dts_)
         t.thread_init();
@@ -487,7 +378,6 @@ void tpcc_db<DBParams>::thread_init_all() {
         t.thread_init();
     for (auto& t : tbl_sts_)
         t.thread_init();
-#endif
     for (auto& t : tbl_cni_)
         t.thread_init();
     for (auto& t : tbl_oci_)
@@ -524,21 +414,6 @@ template<typename DBParams>
 void tpcc_prepopulator<DBParams>::fill_warehouses() {
     for (uint64_t wid = 1; wid <= ig.num_warehouses(); ++wid) {
         warehouse_key wk(wid);
-#if TPCC_SPLIT_TABLE
-        warehouse_const_value wcv {};
-        warehouse_comm_value wmv {};
-        wcv.w_name = random_a_string(6, 10);
-        wcv.w_street_1 = random_a_string(10, 20);
-        wcv.w_street_2 = random_a_string(10, 20);
-        wcv.w_city = random_a_string(10, 20);
-        wcv.w_state = random_state_name();
-        wcv.w_zip = random_zip_code();
-        wcv.w_tax = ig.random(0, 2000);
-        wmv.w_ytd = 30000000;
-
-        db.tbl_warehouses_const().nontrans_put(wk, wcv);
-        db.tbl_warehouses_comm().nontrans_put(wk, wmv);
-#else
         warehouse_value wv {};
         wv.w_name = random_a_string(6, 10);
         wv.w_street_1 = random_a_string(10, 20);
@@ -550,7 +425,6 @@ void tpcc_prepopulator<DBParams>::fill_warehouses() {
         wv.w_ytd = 30000000;
 
         db.tbl_warehouses().nontrans_put(wk, wv);
-#endif
     }
 }
 
@@ -558,27 +432,6 @@ template<typename DBParams>
 void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
     for (uint64_t iid = 1; iid <= NUM_ITEMS; ++iid) {
         stock_key sk(wid, iid);
-#if TPCC_SPLIT_TABLE
-        stock_const_value scv {};
-        stock_comm_value smv {};
-
-        smv.s_quantity = ig.random(10, 100);
-        for (auto i = 0; i < NUM_DISTRICTS_PER_WAREHOUSE; ++i)
-            scv.s_dists[i] = random_a_string(24, 24);
-        smv.s_ytd = 0;
-        smv.s_order_cnt = 0;
-        smv.s_remote_cnt = 0;
-        scv.s_data = random_a_string(26, 50);
-        if (ig.random(1, 100) <= 10) {
-            auto pos = ig.random(0, scv.s_data.length() - 8);
-            auto placed = scv.s_data.place("ORIGINAL", pos);
-            assert(placed);
-            (void)placed;
-        }
-
-        db.tbl_stocks_const(wid).nontrans_put(sk, scv);
-        db.tbl_stocks_comm(wid).nontrans_put(sk, smv);
-#else
         stock_value sv;
 
         sv.s_quantity = ig.random(10, 100);
@@ -596,28 +449,10 @@ void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
         }
 
         db.tbl_stocks(wid).nontrans_put(sk, sv);
-#endif
     }
 
     for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
         district_key dk(wid, did);
-#if TPCC_SPLIT_TABLE
-        district_const_value dcv;
-        district_comm_value dmv;
-
-        dcv.d_name = random_a_string(6, 10);
-        dcv.d_street_1 = random_a_string(10, 20);
-        dcv.d_street_2 = random_a_string(10, 20);
-        dcv.d_city = random_a_string(10, 20);
-        dcv.d_state = random_state_name();
-        dcv.d_zip = random_zip_code();
-        dcv.d_tax = ig.random(0, 2000);
-        dmv.d_ytd = 3000000;
-        //dv.d_next_o_id = 3001;
-
-        db.tbl_districts_const(wid).nontrans_put(dk, dcv);
-        db.tbl_districts_comm(wid).nontrans_put(dk, dmv);
-#else
         district_value dv;
 
         dv.d_name = random_a_string(6, 10);
@@ -631,45 +466,18 @@ void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
         //dv.d_next_o_id = 3001;
 
         db.tbl_districts(wid).nontrans_put(dk, dv);
-#endif
-
     }
 }
 
 template<typename DBParams>
 void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
+    std::unordered_map<customer_idx_key, std::list<uint64_t>> cids_map;
+
     for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
         for (uint64_t cid = 1; cid <= NUM_CUSTOMERS_PER_DISTRICT; ++cid) {
             int last_name_num = (cid <= 1000) ? int(cid - 1)
                                               : ig.gen_customer_last_name_num(false/*run time*/);
             customer_key ck(wid, did, cid);
-#if TPCC_SPLIT_TABLE
-            customer_const_value ccv;
-            customer_comm_value cmv;
-
-            ccv.c_last = ig.to_last_name(last_name_num);
-            ccv.c_middle = "OE";
-            ccv.c_first = random_a_string(8, 16);
-            ccv.c_street_1 = random_a_string(10, 20);
-            ccv.c_street_2 = random_a_string(10, 20);
-            ccv.c_city = random_a_string(10, 20);
-            ccv.c_zip = random_zip_code();
-            ccv.c_phone = random_n_string(16, 16);
-            ccv.c_since = ig.gen_date();
-            ccv.c_credit = (ig.random(1, 100) <= 10) ? "BC" : "GC";
-            ccv.c_credit_lim = 5000000;
-            ccv.c_discount = ig.random(0, 5000);
-            cmv.c_balance = -1000;
-            cmv.c_ytd_payment = 1000;
-            cmv.c_payment_cnt = 1;
-            cmv.c_delivery_cnt = 0;
-            cmv.c_data = random_a_string(300, 500);
-
-            db.tbl_customers_const(wid).nontrans_put(ck, ccv);
-            db.tbl_customers_comm(wid).nontrans_put(ck, cmv);
-
-            customer_idx_key cik(wid, did, ccv.c_last);
-#else
             customer_value cv;
 
             cv.c_last = ig.to_last_name(last_name_num);
@@ -693,15 +501,14 @@ void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
             db.tbl_customers(wid).nontrans_put(ck, cv);
 
             customer_idx_key cik(wid, did, cv.c_last);
-#endif
-            auto civ = db.tbl_customer_index(wid).nontrans_get(cik);
-            if (civ == nullptr) {
-                db.tbl_customer_index(wid).nontrans_put(cik, customer_idx_value());
-                civ = db.tbl_customer_index(wid).nontrans_get(cik);
-                assert(civ);
-            }
-            civ->c_ids.push_front(cid);
+            cids_map[cik].push_front(cid);
         }
+    }
+
+    for (auto kv : cids_map) {
+        customer_idx_value civ;
+        civ.c_ids = kv.second;
+        db.tbl_customer_index(wid).nontrans_put(kv.first, civ);
     }
 }
 
@@ -734,22 +541,6 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
             order_key ok(wid, did, oid);
             auto ol_count = (uint32_t) ig.random(5, 15);
             auto entry_date = ig.gen_date();
-#if TPCC_SPLIT_TABLE
-            order_const_value ocv;
-            order_comm_value omv;
-
-
-            ocv.o_c_id = cid_perm[i - 1];
-            omv.o_carrier_id = (oid < 2101) ? ig.random(1, 10) : 0;
-            ocv.o_entry_d = entry_date;
-            ocv.o_ol_cnt = ol_count;
-            ocv.o_all_local = 1;
-
-            order_cidx_key ock(wid, did, ocv.o_c_id, oid);
-
-            db.tbl_orders_const(wid).nontrans_put(ok, ocv);
-            db.tbl_orders_comm(wid).nontrans_put(ok, omv);
-#else
             order_value ov;
 
             ov.o_c_id = cid_perm[i - 1];
@@ -761,25 +552,10 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
             order_cidx_key ock(wid, did, ov.o_c_id, oid);
 
             db.tbl_orders(wid).nontrans_put(ok, ov);
-#endif
             db.tbl_order_customer_index(wid).nontrans_put(ock, {});
 
             for (uint64_t on = 1; on <= ol_count; ++on) {
                 orderline_key olk(wid, did, oid, on);
-#if TPCC_SPLIT_TABLE
-                orderline_const_value lcv;
-                orderline_comm_value lmv;
-
-                lcv.ol_i_id = ig.random(1, 100000);
-                lcv.ol_supply_w_id = wid;
-                lmv.ol_delivery_d = (oid < 2101) ? entry_date : 0;
-                lcv.ol_quantity = 5;
-                lcv.ol_amount = (oid < 2101) ? 0 : (int) ig.random(1, 999999);
-                lcv.ol_dist_info = random_a_string(24, 24);
-
-                db.tbl_orderlines_const(wid).nontrans_put(olk, lcv);
-                db.tbl_orderlines_comm(wid).nontrans_put(olk, lmv);
-#else
                 orderline_value olv;
 
                 olv.ol_i_id = ig.random(1, 100000);
@@ -790,7 +566,6 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
                 olv.ol_dist_info = random_a_string(24, 24);
 
                 db.tbl_orderlines(wid).nontrans_put(olk, olv);
-#endif
             }
 
             if (oid >= 2101) {

@@ -97,16 +97,7 @@ struct warehouse_key {
     uint64_t w_id;
 };
 
-#if TPCC_SPLIT_TABLE
-struct warehouse_const_value {
-    enum class NamedColumn : int { w_name = 0,
-                                   w_street_1,
-                                   w_street_2,
-                                   w_city,
-                                   w_state,
-                                   w_zip,
-                                   w_tax };
-
+struct warehouse_value_infreq {
     var_string<10> w_name;
     var_string<20> w_street_1;
     var_string<20> w_street_2;
@@ -116,12 +107,10 @@ struct warehouse_const_value {
     int64_t        w_tax; // in 1/10000
 };
 
-struct warehouse_comm_value {
-    enum class NamedColumn : int { w_ytd = 0 };
-
+struct warehouse_value_frequpd {
     uint64_t       w_ytd;
 };
-#else
+
 struct warehouse_value {
     enum class NamedColumn : int { w_name = 0,
                                    w_street_1,
@@ -141,7 +130,6 @@ struct warehouse_value {
     int64_t        w_tax; // in 1/10000
     uint64_t       w_ytd; // in 1/100
 };
-#endif
 
 // DISTRICT
 
@@ -164,16 +152,8 @@ struct district_key {
     uint64_t d_id;
 };
 
-#if TPCC_SPLIT_TABLE
-struct district_const_value {
-    enum class NamedColumn : int { d_name = 0,
-                                   d_street_1,
-                                   d_street_2,
-                                   d_city,
-                                   d_state,
-                                   d_zip,
-                                   d_tax };
 
+struct district_value_infreq {
     var_string<10> d_name;
     var_string<20> d_street_1;
     var_string<20> d_street_2;
@@ -183,14 +163,12 @@ struct district_const_value {
     int64_t        d_tax;
 };
 
-struct district_comm_value {
-    enum class NamedColumn : int { d_ytd = 0 };
-
+struct district_value_frequpd {
     int64_t d_ytd;
     // we use the separate oid generator for better semantics in transactions
     //uint64_t       d_next_o_id;
 };
-#else
+
 struct district_value {
     enum class NamedColumn : int { d_name = 0,
         d_street_1,
@@ -212,7 +190,6 @@ struct district_value {
     // we use the separate oid generator for better semantics in transactions
     //uint64_t       d_next_o_id;
 };
-#endif
 
 
 // CUSTOMER
@@ -292,23 +269,8 @@ struct customer_key {
     uint64_t c_id;
 };
 
-#if TPCC_SPLIT_TABLE
 // Split customer table
-struct customer_const_value {
-    enum class NamedColumn : int { c_first = 0,
-                                   c_middle,
-                                   c_last,
-                                   c_street_1,
-                                   c_street_2,
-                                   c_city,
-                                   c_state,
-                                   c_zip,
-                                   c_phone,
-                                   c_since,
-                                   c_credit,
-                                   c_credit_lim,
-                                   c_discount };
-
+struct customer_value_infreq {
     var_string<16>  c_first;
     fix_string<2>   c_middle;
     var_string<16>  c_last;
@@ -324,13 +286,7 @@ struct customer_const_value {
     int64_t         c_discount;
 };
 
-struct customer_comm_value {
-    enum class NamedColumn : int { c_balance = 0,
-                                   c_ytd_payment,
-                                   c_payment_cnt,
-                                   c_delivery_cnt,
-                                   c_data };
-
+struct customer_value_frequpd {
     int64_t         c_balance;
     int64_t         c_ytd_payment;
     uint16_t        c_payment_cnt;
@@ -338,7 +294,6 @@ struct customer_comm_value {
     fix_string<500> c_data;
 };
 
-#else
 // Unsplit customer table
 struct customer_value {
     enum class NamedColumn : int { c_first = 0,
@@ -379,7 +334,6 @@ struct customer_value {
     uint16_t        c_delivery_cnt;
     fix_string<500> c_data;
 };
-#endif
 
 struct c_data_info {
     c_data_info() = default;
@@ -498,25 +452,17 @@ struct order_key {
     oid_type o_id;
 };
 
-#if TPCC_SPLIT_TABLE
-struct order_const_value{
-    enum class NamedColumn : int { o_c_id = 0,
-                                   o_entry_d,
-                                   o_ol_cnt,
-                                   o_all_local };
-
+struct order_value_infreq {
     uint64_t o_c_id;
     uint32_t o_entry_d;
     uint32_t o_ol_cnt;
     uint32_t o_all_local;
 };
 
-struct order_comm_value {
-    enum class NamedColumn : int { o_carrier_id = 0 };
-
+struct order_value_frequpd {
     uint64_t o_carrier_id;
 };
-#else
+
 struct order_value{
     enum class NamedColumn : int { o_c_id = 0,
                                    o_carrier_id,
@@ -530,7 +476,6 @@ struct order_value{
     uint32_t o_ol_cnt;
     uint32_t o_all_local;
 };
-#endif
 
 // ORDER-LINE
 
@@ -563,14 +508,7 @@ struct orderline_key {
     uint64_t ol_number;
 };
 
-#if TPCC_SPLIT_TABLE
-struct orderline_const_value {
-    enum class NamedColumn : int { ol_i_id = 0,
-                                   ol_supply_w_id,
-                                   ol_quantity,
-                                   ol_amount,
-                                   ol_dist_info };
-
+struct orderline_value_infreq {
     uint64_t       ol_i_id;
     uint64_t       ol_supply_w_id;
     uint32_t       ol_quantity;
@@ -578,12 +516,10 @@ struct orderline_const_value {
     fix_string<24> ol_dist_info;
 };
 
-struct orderline_comm_value {
-    enum class NamedColumn : int { ol_delivery_d = 0 };
-
+struct orderline_value_frequpd {
     uint32_t ol_delivery_d;
 };
-#else
+
 struct orderline_value {
     enum class NamedColumn : int { ol_i_id = 0,
                                    ol_supply_w_id,
@@ -599,7 +535,6 @@ struct orderline_value {
     int32_t        ol_amount;
     fix_string<24> ol_dist_info;
 };
-#endif
 
 // ITEM
 
@@ -663,27 +598,18 @@ struct stock_key {
     uint64_t s_i_id;
 };
 
-#if TPCC_SPLIT_TABLE
-struct stock_const_value {
-    enum class NamedColumn : int { s_dists = 0,
-                                   s_data };
-
+struct stock_value_infreq {
     fix_string<24> s_dists[NUM_DISTRICTS_PER_WAREHOUSE];
     var_string<50> s_data;
 };
 
-struct stock_comm_value {
-    enum class NamedColumn : int { s_quantity = 0,
-                                   s_ytd,
-                                   s_order_cnt,
-                                   s_remote_cnt };
-
+struct stock_value_frequpd {
     int32_t        s_quantity;
     uint32_t       s_ytd;
     uint32_t       s_order_cnt;
     uint32_t       s_remote_cnt;
 };
-#else
+
 struct stock_value {
     enum class NamedColumn : int { s_quantity = 0,
                                    s_ytd,
@@ -696,10 +622,9 @@ struct stock_value {
     uint32_t       s_ytd;
     uint32_t       s_order_cnt;
     uint32_t       s_remote_cnt;
-    fix_string<24> s_dists[NUM_DISTRICTS_PER_WAREHOUSE];
+    std::array<fix_string<24>, NUM_DISTRICTS_PER_WAREHOUSE> s_dists;
     var_string<50> s_data;
 };
-#endif
 
 }; // namespace tpcc
 
@@ -821,7 +746,7 @@ struct hash<tpcc::stock_key> {
 template <>
 struct hash<tpcc::customer_idx_key> {
     size_t operator()(const tpcc::customer_idx_key& arg) const {
-        return XXH64(arg.c_last, 16, xxh_seed);
+        return XXH64(&arg, sizeof(tpcc::customer_idx_key), xxh_seed);
     }
 };
 

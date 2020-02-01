@@ -113,7 +113,7 @@ class RecordAccessor<A, index_value> {
         return impl().value_2b_impl();
     }
 
-    void copy_into(A* dst) const {
+    void copy_into(index_value* dst) const {
         return impl().copy_into_impl(dst);
     }
 
