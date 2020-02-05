@@ -183,9 +183,17 @@ int main(int argc, const char *const *argv) {
         break;
     case db_params_id::TicToc:
         if (enable_commute) {
-            ret_code = tpcc_tc(argc, argv);
+            if (node_tracking) {
+                ret_code = tpcc_tcn(argc, argv);
+            } else {
+                ret_code = tpcc_tc(argc, argv);
+            }
         } else {
-            ret_code = tpcc_t(argc, argv);
+            if (node_tracking) {
+                ret_code = tpcc_tn(argc, argv);
+            } else {
+                ret_code = tpcc_t(argc, argv);
+            }
         }
         break;
     case db_params_id::MVCC:

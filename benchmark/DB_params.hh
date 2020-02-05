@@ -90,6 +90,16 @@ public:
     static constexpr bool Commute = true;
 };
 
+class db_tictoc_node_params : public db_tictoc_params {
+public:
+    static constexpr bool NodeTrack = true;
+};
+
+class db_tictoc_commute_node_params : public db_tictoc_commute_params {
+public:
+    static constexpr bool NodeTrack = true;
+};
+
 class db_mvcc_params : public db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::MVCC;

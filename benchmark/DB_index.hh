@@ -171,16 +171,16 @@ public:
 
     // TransItem key format:
     // |----internal_elem pointer----|--cell id--|I|
-    //           48 bits                15 bits   1
+    //           48 bits                14 bits   2
 
-    // I: internode bit (or bucket bit in the unordered case)
-    // cell id: valid range 0-32767 (0x7fff)
+    // I: internode and ttnv bits (or bucket bit in the unordered case)
+    // cell id: valid range 0-16383 (0x3fff)
     // cell id 0 identifies the row item
 
     class item_key_t {
         typedef uintptr_t type;
         static constexpr unsigned shift = 16u;
-        static constexpr type cell_mask = type(0xfffe);
+        static constexpr type cell_mask = type(0xfffc);
         static constexpr int row_item_cell_num = 0x0;
         type key_;
 
@@ -188,7 +188,7 @@ public:
         item_key_t() : key_() {};
 
         item_key_t(internal_elem *e, int cell_num) : key_((reinterpret_cast<type>(e) << shift)
-                                                          | ((static_cast<type>(cell_num) << 1u) & cell_mask)) {};
+                                                          | ((static_cast<type>(cell_num) << 2) & cell_mask)) {};
 
         static item_key_t row_item_key(internal_elem *e) {
             return item_key_t(e, row_item_cell_num);
@@ -199,7 +199,7 @@ public:
         }
 
         int cell_num() const {
-            return static_cast<int>((key_ & cell_mask) >> 1);
+            return static_cast<int>((key_ & cell_mask) >> 2);
         }
 
         bool is_row_item() const {

@@ -17,6 +17,8 @@ public:
     static constexpr TransItem::flags_type row_update_bit = TransItem::user0_bit << 2u;
     static constexpr TransItem::flags_type row_cell_bit = TransItem::user0_bit << 3u;
     static constexpr uintptr_t internode_bit = 1;
+    // TicToc node version bit
+    static constexpr uintptr_t ttnv_bit = 1 << 1u;
 
     typedef typename value_type::NamedColumn NamedColumn;
     typedef IndexValueContainer<V, version_type> value_container_type;
@@ -50,25 +52,8 @@ public:
         typedef Masstree::value_print<value_type> value_print_type;
         typedef threadinfo threadinfo_type;
 
-        static constexpr bool simulated_node_tracking = DBParams::NodeTrack;
-        typedef TBox<fix_string<64>> tmvbox_type;
-        template <typename MvBoxType>
-        static inline void tmvbox_callback(MvBoxType* box) {
-            if (TThread::txn) {
-                // hack... but should be fine as long as we don't
-                // support arbitrary non-transactions accesses
-                fix_string<64> r;
-                std::tie(std::ignore, r) = box->read_nothrow();
-                box->write(r);
-            }
-        }
-        template <typename MvBoxType>
-        static inline void tmvbox_init_callback(MvBoxType* &box) {
-            box = new MvBoxType();
-            if (TThread::txn) {
-                box->write(fix_string<64>());
-            }
-        }
+        static constexpr bool track_nodes = DBParams::NodeTrack && DBParams::TicToc;
+        typedef std::conditional_t<track_nodes, version_type, int> aux_tracker_type;
     };
 
     typedef Masstree::Str Str;
@@ -380,6 +365,9 @@ public:
                 }
             }
 
+            // Register a TicToc write to the leaf node when necessary.
+            ttnv_register_node_write(lp.node());
+
             // select_for_update will register an observation and set the write bit of
             // the TItem
             if (!version_adapter::select_for_update(row_item, e->version())) {
@@ -560,6 +548,12 @@ public:
     // TObject interface methods
     bool lock(TransItem& item, Transaction &txn) override {
         assert(!is_internode(item));
+        if constexpr (table_params::track_nodes) {
+            if (is_ttnv(item)) {
+                auto n = get_internode_address(item);
+                return txn.try_lock(item, *static_cast<leaf_type*>(n)->get_aux_tracker());
+            }
+        }
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
         if (key.is_row_item())
@@ -575,6 +569,12 @@ public:
             auto read_nv = item.template read_value<decltype(curr_nv)>();
             return (curr_nv == read_nv);
         } else {
+            if constexpr (table_params::track_nodes) {
+                if (is_ttnv(item)) {
+                    auto n = get_internode_address(item);
+                    return static_cast<leaf_type*>(n)->get_aux_tracker()->cp_check_version(txn, item);
+                }
+            }
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
             if (key.is_row_item())
@@ -586,6 +586,15 @@ public:
 
     void install(TransItem& item, Transaction& txn) override {
         assert(!is_internode(item));
+
+        if constexpr (table_params::track_nodes) {
+            if (is_ttnv(item)) {
+                auto n = get_internode_address(item);
+                txn.set_version_unlock(*static_cast<leaf_type*>(n)->get_aux_tracker(), item);
+                return;
+            }
+        }
+
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
 
@@ -654,6 +663,13 @@ public:
 
     void unlock(TransItem& item) override {
         assert(!is_internode(item));
+        if constexpr (table_params::track_nodes) {
+            if (is_ttnv(item)) {
+                auto n = get_internode_address(item);
+                static_cast<leaf_type*>(n)->get_aux_tracker()->cp_unlock(item);
+                return;
+            }
+        }
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
         if (key.is_row_item())
@@ -788,13 +804,15 @@ private:
 
     bool register_internode_version(node_type *node, nodeversion_value_type nodeversion) {
         TransProxy item = Sto::item(this, get_internode_key(node));
-        if (DBParams::Opaque)
-            return item.add_read_opaque(nodeversion);
-        else
-            return item.add_read(nodeversion);
+        if constexpr (DBParams::Opaque) {
+            return item.add_read_opaque(nodeversion) && ttnv_register_node_read(node);
+        } else {
+            return item.add_read(nodeversion) && ttnv_register_node_read(node);
+        }
     }
     bool update_internode_version(node_type *node,
             nodeversion_value_type prev_nv, nodeversion_value_type new_nv) {
+        ttnv_register_node_write(node);
         TransProxy item = Sto::item(this, get_internode_key(node));
         if (!item.has_read()) {
             return true;
@@ -804,6 +822,28 @@ private:
             return true;
         }
         return false;
+    }
+
+    void ttnv_register_node_write(node_type* node) {
+        (void)node;
+        if constexpr (table_params::track_nodes) {
+            static_assert(DBParams::TicToc, "Node tracking requires TicToc.");
+            always_assert(node->isleaf(), "Tracking non-leaf node!!");
+            auto tt_item = Sto::item(this, get_ttnv_key(node));
+            tt_item.acquire_write(*static_cast<leaf_type*>(node)->get_aux_tracker());
+        }
+    }
+
+    bool ttnv_register_node_read(node_type* node) {
+        (void)node;
+        if constexpr (table_params::track_nodes) {
+            static_assert(DBParams::TicToc, "Node tracking requires TicToc.");
+            always_assert(node->isleaf(), "Tracking non-leaf node!!");
+            auto tt_item = Sto::item(this, get_ttnv_key(node));
+            return tt_item.observe(*static_cast<leaf_type*>(node)->get_aux_tracker());
+        } else {
+            return true;
+        }
     }
 
     bool _remove(const key_type& key) {
@@ -827,8 +867,20 @@ private:
         return (item.key<uintptr_t>() & internode_bit) != 0;
     }
     static node_type *get_internode_address(TransItem& item) {
-        assert(is_internode(item));
-        return reinterpret_cast<node_type *>(item.key<uintptr_t>() & ~internode_bit);
+        if (is_internode(item)) {
+            return reinterpret_cast<node_type *>(item.key<uintptr_t>() & ~internode_bit);
+        } else if (is_ttnv(item)) {
+            return reinterpret_cast<node_type *>(item.key<uintptr_t>() & ~ttnv_bit);
+        }
+        assert(false);
+        return nullptr;
+    }
+
+    static uintptr_t get_ttnv_key(node_type* node) {
+        return reinterpret_cast<uintptr_t>(node) | ttnv_bit;
+    }
+    static bool is_ttnv(TransItem& item) {
+        return (item.key<uintptr_t>() & ttnv_bit);
     }
 
     static void copy_row(internal_elem *e, comm_type &comm) {
@@ -884,25 +936,6 @@ public:
         typedef internal_elem* value_type;
         typedef Masstree::value_print<value_type> value_print_type;
         typedef threadinfo threadinfo_type;
-
-        static constexpr bool simulated_node_tracking = DBParams::NodeTrack;
-        typedef TMvBox<fix_string<64>> tmvbox_type;
-        template <typename MvBoxType>
-        static inline void tmvbox_callback(MvBoxType* box) {
-            if (TThread::txn) {
-                // hack... but should be fine as long as we don't
-                // support arbitrary non-transactions accesses
-                fix_string<64> r = box->read();
-                box->write(r);
-            }
-        }
-        template <typename MvBoxType>
-        static inline void tmvbox_init_callback(MvBoxType* &box) {
-            box = new MvBoxType();
-            if (TThread::txn) {
-                box->write(fix_string<64>());
-            }
-        }
     };
 
     typedef Masstree::Str Str;
