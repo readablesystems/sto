@@ -218,6 +218,7 @@ public:
     column_to_cell_accesses(std::initializer_list<column_access_t> accesses) {
         constexpr size_t num_versions = T::num_versions;
         std::array<access_t, num_versions> cell_accesses { access_t::none };
+        std::fill(cell_accesses.begin(), cell_accesses.end(), access_t::none);
 
         for (auto it = accesses.begin(); it != accesses.end(); ++it) {
             int cell_id = T::map(it->col_id);
@@ -232,6 +233,7 @@ public:
     mvcc_column_to_cell_accesses(std::initializer_list<column_access_t> accesses) {
         constexpr size_t num_splits = T::num_splits;
         std::array<access_t, num_splits> cell_accesses { access_t::none };
+        std::fill(cell_accesses.begin(), cell_accesses.end(), access_t::none);
 
         for (auto it = accesses.begin(); it != accesses.end(); ++it) {
             int cell_id = T::map(it->col_id);
@@ -246,6 +248,8 @@ public:
     extract_item_list(const std::array<access_t, T::num_versions>& cell_accesses, TObject *tobj, internal_elem *e) {
         bool any_has_write = false;
         std::array<TransItem*, T::num_versions> cell_items { nullptr };
+        std::fill(cell_items.begin(), cell_items.end(), nullptr);
+
         for (size_t i = 0; i < T::num_versions; ++i) {
             if (cell_accesses[i] != access_t::none) {
                 auto item = Sto::item(tobj, item_key_t(e, i));
@@ -470,7 +474,6 @@ public:
     static void mvcc_update_loop(IndexType* idx, internal_elem* e, const value_comm_type& comm) {
         auto[found, item] = Sto::find_write_item(idx, item_key_t(e, I));
         if (found) {
-            always_assert(!item.has_read(), "CU and regular updates cannot be mixed in the same cell in the same transaction.");
             item.add_commute(static_cast<commutators::Commutator<First>>(comm));
         }
         mvcc_update_loop<C, I+1, Rest...>(idx, e, comm);
