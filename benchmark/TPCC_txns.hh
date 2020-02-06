@@ -393,7 +393,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         {{cu_nc::c_since,    access_t::read},
          {cu_nc::c_credit,   access_t::read},
          {cu_nc::c_discount, access_t::read},
-         {cu_nc::c_balance, Commute ? access_t::write : access_t::update},
+         {cu_nc::c_balance, access_t::update},
          {cu_nc::c_payment_cnt, Commute ? access_t::write : access_t::update},
          {cu_nc::c_ytd_payment, Commute ? access_t::write : access_t::update},
          {cu_nc::c_credit, Commute ? access_t::write : access_t::update}}

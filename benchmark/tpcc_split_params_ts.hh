@@ -2,14 +2,14 @@ namespace bench {
 
 
 template <>
-struct SplitParams<warehouse_value> {
-  using split_type_list = std::tuple<warehouse_value_infreq, warehouse_value_frequpd>;
+struct SplitParams<tpcc::warehouse_value> {
+  using split_type_list = std::tuple<tpcc::warehouse_value_infreq, tpcc::warehouse_value_frequpd>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
   static constexpr auto split_builder = std::make_tuple(
-    [](const warehouse_value& in) -> warehouse_value_infreq {
-      warehouse_value_infreq out;
+    [](const tpcc::warehouse_value& in) -> tpcc::warehouse_value_infreq {
+      tpcc::warehouse_value_infreq out;
       out.w_name = in.w_name;
       out.w_street_1 = in.w_street_1;
       out.w_street_2 = in.w_street_2;
@@ -19,15 +19,15 @@ struct SplitParams<warehouse_value> {
       out.w_tax = in.w_tax;
       return out;
     },
-    [](const warehouse_value& in) -> warehouse_value_frequpd {
-      warehouse_value_frequpd out;
+    [](const tpcc::warehouse_value& in) -> tpcc::warehouse_value_frequpd {
+      tpcc::warehouse_value_frequpd out;
       out.w_ytd = in.w_ytd;
       return out;
     }
   );
 
   static constexpr auto split_merger = std::make_tuple(
-    [](warehouse_value* out, const warehouse_value_infreq& in) -> void {
+    [](tpcc::warehouse_value* out, const tpcc::warehouse_value_infreq& in) -> void {
       out->w_name = in.w_name;
       out->w_street_1 = in.w_street_1;
       out->w_street_2 = in.w_street_2;
@@ -36,7 +36,7 @@ struct SplitParams<warehouse_value> {
       out->w_zip = in.w_zip;
       out->w_tax = in.w_tax;
     },
-    [](warehouse_value* out, const warehouse_value_frequpd& in) -> void {
+    [](tpcc::warehouse_value* out, const tpcc::warehouse_value_frequpd& in) -> void {
       out->w_ytd = in.w_ytd;
     }
   );
@@ -49,7 +49,7 @@ struct SplitParams<warehouse_value> {
 
 
 template <typename A>
-class RecordAccessor<A, warehouse_value> {
+class RecordAccessor<A, tpcc::warehouse_value> {
  public:
   
   const var_string<10>& w_name() const {
@@ -92,7 +92,7 @@ class RecordAccessor<A, warehouse_value> {
   }
 
 
-  void copy_into(warehouse_value* dst) const {
+  void copy_into(tpcc::warehouse_value* dst) const {
     return impl().copy_into_impl(dst);
   }
 
@@ -103,9 +103,9 @@ class RecordAccessor<A, warehouse_value> {
 };
 
 template <>
-class UniRecordAccessor<warehouse_value> : public RecordAccessor<UniRecordAccessor<warehouse_value>, warehouse_value> {
+class UniRecordAccessor<tpcc::warehouse_value> : public RecordAccessor<UniRecordAccessor<tpcc::warehouse_value>, tpcc::warehouse_value> {
  public:
-  UniRecordAccessor(const warehouse_value* const vptr) : vptr_(vptr) {}
+  UniRecordAccessor(const tpcc::warehouse_value* const vptr) : vptr_(vptr) {}
 
  private:
   
@@ -150,7 +150,7 @@ class UniRecordAccessor<warehouse_value> : public RecordAccessor<UniRecordAccess
 
 
   
-  void copy_into_impl(warehouse_value* dst) const {
+  void copy_into_impl(tpcc::warehouse_value* dst) const {
     
     if (vptr_) {
       dst->w_name = vptr_->w_name;
@@ -165,17 +165,17 @@ class UniRecordAccessor<warehouse_value> : public RecordAccessor<UniRecordAccess
   }
 
 
-  const warehouse_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<warehouse_value>, warehouse_value>;
+  const tpcc::warehouse_value* vptr_;
+  friend RecordAccessor<UniRecordAccessor<tpcc::warehouse_value>, tpcc::warehouse_value>;
 };
 
 template <>
-class SplitRecordAccessor<warehouse_value> : public RecordAccessor<SplitRecordAccessor<warehouse_value>, warehouse_value> {
+class SplitRecordAccessor<tpcc::warehouse_value> : public RecordAccessor<SplitRecordAccessor<tpcc::warehouse_value>, tpcc::warehouse_value> {
  public:
-   static constexpr size_t num_splits = SplitParams<warehouse_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<tpcc::warehouse_value>::num_splits;
 
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
-     : vptr_0_(reinterpret_cast<warehouse_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<warehouse_value_frequpd*>(vptrs[1])) {}
+     : vptr_0_(reinterpret_cast<tpcc::warehouse_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::warehouse_value_frequpd*>(vptrs[1])) {}
 
  private:
   
@@ -220,7 +220,7 @@ class SplitRecordAccessor<warehouse_value> : public RecordAccessor<SplitRecordAc
 
 
   
-  void copy_into_impl(warehouse_value* dst) const {
+  void copy_into_impl(tpcc::warehouse_value* dst) const {
     
     if (vptr_0_) {
       dst->w_name = vptr_0_->w_name;
@@ -240,22 +240,22 @@ class SplitRecordAccessor<warehouse_value> : public RecordAccessor<SplitRecordAc
   }
 
 
-  const warehouse_value_infreq* vptr_0_;
-  const warehouse_value_frequpd* vptr_1_;
+  const tpcc::warehouse_value_infreq* vptr_0_;
+  const tpcc::warehouse_value_frequpd* vptr_1_;
 
-  friend RecordAccessor<SplitRecordAccessor<warehouse_value>, warehouse_value>;
+  friend RecordAccessor<SplitRecordAccessor<tpcc::warehouse_value>, tpcc::warehouse_value>;
 };
 
 
 template <>
-struct SplitParams<district_value> {
-  using split_type_list = std::tuple<district_value_infreq, district_value_frequpd>;
+struct SplitParams<tpcc::district_value> {
+  using split_type_list = std::tuple<tpcc::district_value_infreq, tpcc::district_value_frequpd>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
   static constexpr auto split_builder = std::make_tuple(
-    [](const district_value& in) -> district_value_infreq {
-      district_value_infreq out;
+    [](const tpcc::district_value& in) -> tpcc::district_value_infreq {
+      tpcc::district_value_infreq out;
       out.d_name = in.d_name;
       out.d_street_1 = in.d_street_1;
       out.d_street_2 = in.d_street_2;
@@ -265,15 +265,15 @@ struct SplitParams<district_value> {
       out.d_tax = in.d_tax;
       return out;
     },
-    [](const district_value& in) -> district_value_frequpd {
-      district_value_frequpd out;
+    [](const tpcc::district_value& in) -> tpcc::district_value_frequpd {
+      tpcc::district_value_frequpd out;
       out.d_ytd = in.d_ytd;
       return out;
     }
   );
 
   static constexpr auto split_merger = std::make_tuple(
-    [](district_value* out, const district_value_infreq& in) -> void {
+    [](tpcc::district_value* out, const tpcc::district_value_infreq& in) -> void {
       out->d_name = in.d_name;
       out->d_street_1 = in.d_street_1;
       out->d_street_2 = in.d_street_2;
@@ -282,7 +282,7 @@ struct SplitParams<district_value> {
       out->d_zip = in.d_zip;
       out->d_tax = in.d_tax;
     },
-    [](district_value* out, const district_value_frequpd& in) -> void {
+    [](tpcc::district_value* out, const tpcc::district_value_frequpd& in) -> void {
       out->d_ytd = in.d_ytd;
     }
   );
@@ -295,7 +295,7 @@ struct SplitParams<district_value> {
 
 
 template <typename A>
-class RecordAccessor<A, district_value> {
+class RecordAccessor<A, tpcc::district_value> {
  public:
   
   const var_string<10>& d_name() const {
@@ -338,7 +338,7 @@ class RecordAccessor<A, district_value> {
   }
 
 
-  void copy_into(district_value* dst) const {
+  void copy_into(tpcc::district_value* dst) const {
     return impl().copy_into_impl(dst);
   }
 
@@ -349,9 +349,9 @@ class RecordAccessor<A, district_value> {
 };
 
 template <>
-class UniRecordAccessor<district_value> : public RecordAccessor<UniRecordAccessor<district_value>, district_value> {
+class UniRecordAccessor<tpcc::district_value> : public RecordAccessor<UniRecordAccessor<tpcc::district_value>, tpcc::district_value> {
  public:
-  UniRecordAccessor(const district_value* const vptr) : vptr_(vptr) {}
+  UniRecordAccessor(const tpcc::district_value* const vptr) : vptr_(vptr) {}
 
  private:
   
@@ -396,7 +396,7 @@ class UniRecordAccessor<district_value> : public RecordAccessor<UniRecordAccesso
 
 
   
-  void copy_into_impl(district_value* dst) const {
+  void copy_into_impl(tpcc::district_value* dst) const {
     
     if (vptr_) {
       dst->d_name = vptr_->d_name;
@@ -411,17 +411,17 @@ class UniRecordAccessor<district_value> : public RecordAccessor<UniRecordAccesso
   }
 
 
-  const district_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<district_value>, district_value>;
+  const tpcc::district_value* vptr_;
+  friend RecordAccessor<UniRecordAccessor<tpcc::district_value>, tpcc::district_value>;
 };
 
 template <>
-class SplitRecordAccessor<district_value> : public RecordAccessor<SplitRecordAccessor<district_value>, district_value> {
+class SplitRecordAccessor<tpcc::district_value> : public RecordAccessor<SplitRecordAccessor<tpcc::district_value>, tpcc::district_value> {
  public:
-   static constexpr size_t num_splits = SplitParams<district_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<tpcc::district_value>::num_splits;
 
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
-     : vptr_0_(reinterpret_cast<district_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<district_value_frequpd*>(vptrs[1])) {}
+     : vptr_0_(reinterpret_cast<tpcc::district_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::district_value_frequpd*>(vptrs[1])) {}
 
  private:
   
@@ -466,7 +466,7 @@ class SplitRecordAccessor<district_value> : public RecordAccessor<SplitRecordAcc
 
 
   
-  void copy_into_impl(district_value* dst) const {
+  void copy_into_impl(tpcc::district_value* dst) const {
     
     if (vptr_0_) {
       dst->d_name = vptr_0_->d_name;
@@ -486,22 +486,22 @@ class SplitRecordAccessor<district_value> : public RecordAccessor<SplitRecordAcc
   }
 
 
-  const district_value_infreq* vptr_0_;
-  const district_value_frequpd* vptr_1_;
+  const tpcc::district_value_infreq* vptr_0_;
+  const tpcc::district_value_frequpd* vptr_1_;
 
-  friend RecordAccessor<SplitRecordAccessor<district_value>, district_value>;
+  friend RecordAccessor<SplitRecordAccessor<tpcc::district_value>, tpcc::district_value>;
 };
 
 
 template <>
-struct SplitParams<customer_value> {
-  using split_type_list = std::tuple<customer_value_infreq, customer_value_frequpd>;
+struct SplitParams<tpcc::customer_value> {
+  using split_type_list = std::tuple<tpcc::customer_value_infreq, tpcc::customer_value_frequpd>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
   static constexpr auto split_builder = std::make_tuple(
-    [](const customer_value& in) -> customer_value_infreq {
-      customer_value_infreq out;
+    [](const tpcc::customer_value& in) -> tpcc::customer_value_infreq {
+      tpcc::customer_value_infreq out;
       out.c_first = in.c_first;
       out.c_middle = in.c_middle;
       out.c_last = in.c_last;
@@ -517,8 +517,8 @@ struct SplitParams<customer_value> {
       out.c_discount = in.c_discount;
       return out;
     },
-    [](const customer_value& in) -> customer_value_frequpd {
-      customer_value_frequpd out;
+    [](const tpcc::customer_value& in) -> tpcc::customer_value_frequpd {
+      tpcc::customer_value_frequpd out;
       out.c_balance = in.c_balance;
       out.c_ytd_payment = in.c_ytd_payment;
       out.c_payment_cnt = in.c_payment_cnt;
@@ -529,7 +529,7 @@ struct SplitParams<customer_value> {
   );
 
   static constexpr auto split_merger = std::make_tuple(
-    [](customer_value* out, const customer_value_infreq& in) -> void {
+    [](tpcc::customer_value* out, const tpcc::customer_value_infreq& in) -> void {
       out->c_first = in.c_first;
       out->c_middle = in.c_middle;
       out->c_last = in.c_last;
@@ -544,7 +544,7 @@ struct SplitParams<customer_value> {
       out->c_credit_lim = in.c_credit_lim;
       out->c_discount = in.c_discount;
     },
-    [](customer_value* out, const customer_value_frequpd& in) -> void {
+    [](tpcc::customer_value* out, const tpcc::customer_value_frequpd& in) -> void {
       out->c_balance = in.c_balance;
       out->c_ytd_payment = in.c_ytd_payment;
       out->c_payment_cnt = in.c_payment_cnt;
@@ -561,7 +561,7 @@ struct SplitParams<customer_value> {
 
 
 template <typename A>
-class RecordAccessor<A, customer_value> {
+class RecordAccessor<A, tpcc::customer_value> {
  public:
   
   const var_string<16>& c_first() const {
@@ -654,7 +654,7 @@ class RecordAccessor<A, customer_value> {
   }
 
 
-  void copy_into(customer_value* dst) const {
+  void copy_into(tpcc::customer_value* dst) const {
     return impl().copy_into_impl(dst);
   }
 
@@ -665,9 +665,9 @@ class RecordAccessor<A, customer_value> {
 };
 
 template <>
-class UniRecordAccessor<customer_value> : public RecordAccessor<UniRecordAccessor<customer_value>, customer_value> {
+class UniRecordAccessor<tpcc::customer_value> : public RecordAccessor<UniRecordAccessor<tpcc::customer_value>, tpcc::customer_value> {
  public:
-  UniRecordAccessor(const customer_value* const vptr) : vptr_(vptr) {}
+  UniRecordAccessor(const tpcc::customer_value* const vptr) : vptr_(vptr) {}
 
  private:
   
@@ -762,7 +762,7 @@ class UniRecordAccessor<customer_value> : public RecordAccessor<UniRecordAccesso
 
 
   
-  void copy_into_impl(customer_value* dst) const {
+  void copy_into_impl(tpcc::customer_value* dst) const {
     
     if (vptr_) {
       dst->c_first = vptr_->c_first;
@@ -787,17 +787,17 @@ class UniRecordAccessor<customer_value> : public RecordAccessor<UniRecordAccesso
   }
 
 
-  const customer_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<customer_value>, customer_value>;
+  const tpcc::customer_value* vptr_;
+  friend RecordAccessor<UniRecordAccessor<tpcc::customer_value>, tpcc::customer_value>;
 };
 
 template <>
-class SplitRecordAccessor<customer_value> : public RecordAccessor<SplitRecordAccessor<customer_value>, customer_value> {
+class SplitRecordAccessor<tpcc::customer_value> : public RecordAccessor<SplitRecordAccessor<tpcc::customer_value>, tpcc::customer_value> {
  public:
-   static constexpr size_t num_splits = SplitParams<customer_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<tpcc::customer_value>::num_splits;
 
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
-     : vptr_0_(reinterpret_cast<customer_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<customer_value_frequpd*>(vptrs[1])) {}
+     : vptr_0_(reinterpret_cast<tpcc::customer_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::customer_value_frequpd*>(vptrs[1])) {}
 
  private:
   
@@ -892,7 +892,7 @@ class SplitRecordAccessor<customer_value> : public RecordAccessor<SplitRecordAcc
 
 
   
-  void copy_into_impl(customer_value* dst) const {
+  void copy_into_impl(tpcc::customer_value* dst) const {
     
     if (vptr_0_) {
       dst->c_first = vptr_0_->c_first;
@@ -922,22 +922,22 @@ class SplitRecordAccessor<customer_value> : public RecordAccessor<SplitRecordAcc
   }
 
 
-  const customer_value_infreq* vptr_0_;
-  const customer_value_frequpd* vptr_1_;
+  const tpcc::customer_value_infreq* vptr_0_;
+  const tpcc::customer_value_frequpd* vptr_1_;
 
-  friend RecordAccessor<SplitRecordAccessor<customer_value>, customer_value>;
+  friend RecordAccessor<SplitRecordAccessor<tpcc::customer_value>, tpcc::customer_value>;
 };
 
 
 template <>
-struct SplitParams<history_value> {
-  using split_type_list = std::tuple<history_value>;
+struct SplitParams<tpcc::history_value> {
+  using split_type_list = std::tuple<tpcc::history_value>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
   static constexpr auto split_builder = std::make_tuple(
-    [](const history_value& in) -> history_value {
-      history_value out;
+    [](const tpcc::history_value& in) -> tpcc::history_value {
+      tpcc::history_value out;
       out.h_c_id = in.h_c_id;
       out.h_c_d_id = in.h_c_d_id;
       out.h_c_w_id = in.h_c_w_id;
@@ -951,7 +951,7 @@ struct SplitParams<history_value> {
   );
 
   static constexpr auto split_merger = std::make_tuple(
-    [](history_value* out, const history_value& in) -> void {
+    [](tpcc::history_value* out, const tpcc::history_value& in) -> void {
       out->h_c_id = in.h_c_id;
       out->h_c_d_id = in.h_c_d_id;
       out->h_c_w_id = in.h_c_w_id;
@@ -971,7 +971,7 @@ struct SplitParams<history_value> {
 
 
 template <typename A>
-class RecordAccessor<A, history_value> {
+class RecordAccessor<A, tpcc::history_value> {
  public:
   
   const uint64_t& h_c_id() const {
@@ -1014,7 +1014,7 @@ class RecordAccessor<A, history_value> {
   }
 
 
-  void copy_into(history_value* dst) const {
+  void copy_into(tpcc::history_value* dst) const {
     return impl().copy_into_impl(dst);
   }
 
@@ -1025,9 +1025,9 @@ class RecordAccessor<A, history_value> {
 };
 
 template <>
-class UniRecordAccessor<history_value> : public RecordAccessor<UniRecordAccessor<history_value>, history_value> {
+class UniRecordAccessor<tpcc::history_value> : public RecordAccessor<UniRecordAccessor<tpcc::history_value>, tpcc::history_value> {
  public:
-  UniRecordAccessor(const history_value* const vptr) : vptr_(vptr) {}
+  UniRecordAccessor(const tpcc::history_value* const vptr) : vptr_(vptr) {}
 
  private:
   
@@ -1072,7 +1072,7 @@ class UniRecordAccessor<history_value> : public RecordAccessor<UniRecordAccessor
 
 
   
-  void copy_into_impl(history_value* dst) const {
+  void copy_into_impl(tpcc::history_value* dst) const {
     
     if (vptr_) {
       dst->h_c_id = vptr_->h_c_id;
@@ -1087,17 +1087,17 @@ class UniRecordAccessor<history_value> : public RecordAccessor<UniRecordAccessor
   }
 
 
-  const history_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<history_value>, history_value>;
+  const tpcc::history_value* vptr_;
+  friend RecordAccessor<UniRecordAccessor<tpcc::history_value>, tpcc::history_value>;
 };
 
 template <>
-class SplitRecordAccessor<history_value> : public RecordAccessor<SplitRecordAccessor<history_value>, history_value> {
+class SplitRecordAccessor<tpcc::history_value> : public RecordAccessor<SplitRecordAccessor<tpcc::history_value>, tpcc::history_value> {
  public:
-   static constexpr size_t num_splits = SplitParams<history_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<tpcc::history_value>::num_splits;
 
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
-     : vptr_0_(reinterpret_cast<history_value*>(vptrs[0])) {}
+     : vptr_0_(reinterpret_cast<tpcc::history_value*>(vptrs[0])) {}
 
  private:
   
@@ -1142,7 +1142,7 @@ class SplitRecordAccessor<history_value> : public RecordAccessor<SplitRecordAcce
 
 
   
-  void copy_into_impl(history_value* dst) const {
+  void copy_into_impl(tpcc::history_value* dst) const {
     
     if (vptr_0_) {
       dst->h_c_id = vptr_0_->h_c_id;
@@ -1158,42 +1158,42 @@ class SplitRecordAccessor<history_value> : public RecordAccessor<SplitRecordAcce
   }
 
 
-  const history_value* vptr_0_;
+  const tpcc::history_value* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<history_value>, history_value>;
+  friend RecordAccessor<SplitRecordAccessor<tpcc::history_value>, tpcc::history_value>;
 };
 
 
 template <>
-struct SplitParams<order_value> {
-  using split_type_list = std::tuple<order_value_infreq, order_value_frequpd>;
+struct SplitParams<tpcc::order_value> {
+  using split_type_list = std::tuple<tpcc::order_value_infreq, tpcc::order_value_frequpd>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
   static constexpr auto split_builder = std::make_tuple(
-    [](const order_value& in) -> order_value_infreq {
-      order_value_infreq out;
+    [](const tpcc::order_value& in) -> tpcc::order_value_infreq {
+      tpcc::order_value_infreq out;
       out.o_c_id = in.o_c_id;
       out.o_entry_d = in.o_entry_d;
       out.o_ol_cnt = in.o_ol_cnt;
       out.o_all_local = in.o_all_local;
       return out;
     },
-    [](const order_value& in) -> order_value_frequpd {
-      order_value_frequpd out;
+    [](const tpcc::order_value& in) -> tpcc::order_value_frequpd {
+      tpcc::order_value_frequpd out;
       out.o_carrier_id = in.o_carrier_id;
       return out;
     }
   );
 
   static constexpr auto split_merger = std::make_tuple(
-    [](order_value* out, const order_value_infreq& in) -> void {
+    [](tpcc::order_value* out, const tpcc::order_value_infreq& in) -> void {
       out->o_c_id = in.o_c_id;
       out->o_entry_d = in.o_entry_d;
       out->o_ol_cnt = in.o_ol_cnt;
       out->o_all_local = in.o_all_local;
     },
-    [](order_value* out, const order_value_frequpd& in) -> void {
+    [](tpcc::order_value* out, const tpcc::order_value_frequpd& in) -> void {
       out->o_carrier_id = in.o_carrier_id;
     }
   );
@@ -1206,7 +1206,7 @@ struct SplitParams<order_value> {
 
 
 template <typename A>
-class RecordAccessor<A, order_value> {
+class RecordAccessor<A, tpcc::order_value> {
  public:
   
   const uint64_t& o_c_id() const {
@@ -1234,7 +1234,7 @@ class RecordAccessor<A, order_value> {
   }
 
 
-  void copy_into(order_value* dst) const {
+  void copy_into(tpcc::order_value* dst) const {
     return impl().copy_into_impl(dst);
   }
 
@@ -1245,9 +1245,9 @@ class RecordAccessor<A, order_value> {
 };
 
 template <>
-class UniRecordAccessor<order_value> : public RecordAccessor<UniRecordAccessor<order_value>, order_value> {
+class UniRecordAccessor<tpcc::order_value> : public RecordAccessor<UniRecordAccessor<tpcc::order_value>, tpcc::order_value> {
  public:
-  UniRecordAccessor(const order_value* const vptr) : vptr_(vptr) {}
+  UniRecordAccessor(const tpcc::order_value* const vptr) : vptr_(vptr) {}
 
  private:
   
@@ -1277,7 +1277,7 @@ class UniRecordAccessor<order_value> : public RecordAccessor<UniRecordAccessor<o
 
 
   
-  void copy_into_impl(order_value* dst) const {
+  void copy_into_impl(tpcc::order_value* dst) const {
     
     if (vptr_) {
       dst->o_c_id = vptr_->o_c_id;
@@ -1289,17 +1289,17 @@ class UniRecordAccessor<order_value> : public RecordAccessor<UniRecordAccessor<o
   }
 
 
-  const order_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<order_value>, order_value>;
+  const tpcc::order_value* vptr_;
+  friend RecordAccessor<UniRecordAccessor<tpcc::order_value>, tpcc::order_value>;
 };
 
 template <>
-class SplitRecordAccessor<order_value> : public RecordAccessor<SplitRecordAccessor<order_value>, order_value> {
+class SplitRecordAccessor<tpcc::order_value> : public RecordAccessor<SplitRecordAccessor<tpcc::order_value>, tpcc::order_value> {
  public:
-   static constexpr size_t num_splits = SplitParams<order_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<tpcc::order_value>::num_splits;
 
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
-     : vptr_0_(reinterpret_cast<order_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<order_value_frequpd*>(vptrs[1])) {}
+     : vptr_0_(reinterpret_cast<tpcc::order_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::order_value_frequpd*>(vptrs[1])) {}
 
  private:
   
@@ -1329,7 +1329,7 @@ class SplitRecordAccessor<order_value> : public RecordAccessor<SplitRecordAccess
 
 
   
-  void copy_into_impl(order_value* dst) const {
+  void copy_into_impl(tpcc::order_value* dst) const {
     
     if (vptr_0_) {
       dst->o_c_id = vptr_0_->o_c_id;
@@ -1346,22 +1346,22 @@ class SplitRecordAccessor<order_value> : public RecordAccessor<SplitRecordAccess
   }
 
 
-  const order_value_infreq* vptr_0_;
-  const order_value_frequpd* vptr_1_;
+  const tpcc::order_value_infreq* vptr_0_;
+  const tpcc::order_value_frequpd* vptr_1_;
 
-  friend RecordAccessor<SplitRecordAccessor<order_value>, order_value>;
+  friend RecordAccessor<SplitRecordAccessor<tpcc::order_value>, tpcc::order_value>;
 };
 
 
 template <>
-struct SplitParams<orderline_value> {
-  using split_type_list = std::tuple<orderline_value_infreq, orderline_value_frequpd>;
+struct SplitParams<tpcc::orderline_value> {
+  using split_type_list = std::tuple<tpcc::orderline_value_infreq, tpcc::orderline_value_frequpd>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
   static constexpr auto split_builder = std::make_tuple(
-    [](const orderline_value& in) -> orderline_value_infreq {
-      orderline_value_infreq out;
+    [](const tpcc::orderline_value& in) -> tpcc::orderline_value_infreq {
+      tpcc::orderline_value_infreq out;
       out.ol_i_id = in.ol_i_id;
       out.ol_supply_w_id = in.ol_supply_w_id;
       out.ol_quantity = in.ol_quantity;
@@ -1369,22 +1369,22 @@ struct SplitParams<orderline_value> {
       out.ol_dist_info = in.ol_dist_info;
       return out;
     },
-    [](const orderline_value& in) -> orderline_value_frequpd {
-      orderline_value_frequpd out;
+    [](const tpcc::orderline_value& in) -> tpcc::orderline_value_frequpd {
+      tpcc::orderline_value_frequpd out;
       out.ol_delivery_d = in.ol_delivery_d;
       return out;
     }
   );
 
   static constexpr auto split_merger = std::make_tuple(
-    [](orderline_value* out, const orderline_value_infreq& in) -> void {
+    [](tpcc::orderline_value* out, const tpcc::orderline_value_infreq& in) -> void {
       out->ol_i_id = in.ol_i_id;
       out->ol_supply_w_id = in.ol_supply_w_id;
       out->ol_quantity = in.ol_quantity;
       out->ol_amount = in.ol_amount;
       out->ol_dist_info = in.ol_dist_info;
     },
-    [](orderline_value* out, const orderline_value_frequpd& in) -> void {
+    [](tpcc::orderline_value* out, const tpcc::orderline_value_frequpd& in) -> void {
       out->ol_delivery_d = in.ol_delivery_d;
     }
   );
@@ -1397,7 +1397,7 @@ struct SplitParams<orderline_value> {
 
 
 template <typename A>
-class RecordAccessor<A, orderline_value> {
+class RecordAccessor<A, tpcc::orderline_value> {
  public:
   
   const uint64_t& ol_i_id() const {
@@ -1430,7 +1430,7 @@ class RecordAccessor<A, orderline_value> {
   }
 
 
-  void copy_into(orderline_value* dst) const {
+  void copy_into(tpcc::orderline_value* dst) const {
     return impl().copy_into_impl(dst);
   }
 
@@ -1441,9 +1441,9 @@ class RecordAccessor<A, orderline_value> {
 };
 
 template <>
-class UniRecordAccessor<orderline_value> : public RecordAccessor<UniRecordAccessor<orderline_value>, orderline_value> {
+class UniRecordAccessor<tpcc::orderline_value> : public RecordAccessor<UniRecordAccessor<tpcc::orderline_value>, tpcc::orderline_value> {
  public:
-  UniRecordAccessor(const orderline_value* const vptr) : vptr_(vptr) {}
+  UniRecordAccessor(const tpcc::orderline_value* const vptr) : vptr_(vptr) {}
 
  private:
   
@@ -1478,7 +1478,7 @@ class UniRecordAccessor<orderline_value> : public RecordAccessor<UniRecordAccess
 
 
   
-  void copy_into_impl(orderline_value* dst) const {
+  void copy_into_impl(tpcc::orderline_value* dst) const {
     
     if (vptr_) {
       dst->ol_i_id = vptr_->ol_i_id;
@@ -1491,17 +1491,17 @@ class UniRecordAccessor<orderline_value> : public RecordAccessor<UniRecordAccess
   }
 
 
-  const orderline_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<orderline_value>, orderline_value>;
+  const tpcc::orderline_value* vptr_;
+  friend RecordAccessor<UniRecordAccessor<tpcc::orderline_value>, tpcc::orderline_value>;
 };
 
 template <>
-class SplitRecordAccessor<orderline_value> : public RecordAccessor<SplitRecordAccessor<orderline_value>, orderline_value> {
+class SplitRecordAccessor<tpcc::orderline_value> : public RecordAccessor<SplitRecordAccessor<tpcc::orderline_value>, tpcc::orderline_value> {
  public:
-   static constexpr size_t num_splits = SplitParams<orderline_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<tpcc::orderline_value>::num_splits;
 
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
-     : vptr_0_(reinterpret_cast<orderline_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<orderline_value_frequpd*>(vptrs[1])) {}
+     : vptr_0_(reinterpret_cast<tpcc::orderline_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::orderline_value_frequpd*>(vptrs[1])) {}
 
  private:
   
@@ -1536,7 +1536,7 @@ class SplitRecordAccessor<orderline_value> : public RecordAccessor<SplitRecordAc
 
 
   
-  void copy_into_impl(orderline_value* dst) const {
+  void copy_into_impl(tpcc::orderline_value* dst) const {
     
     if (vptr_0_) {
       dst->ol_i_id = vptr_0_->ol_i_id;
@@ -1554,22 +1554,22 @@ class SplitRecordAccessor<orderline_value> : public RecordAccessor<SplitRecordAc
   }
 
 
-  const orderline_value_infreq* vptr_0_;
-  const orderline_value_frequpd* vptr_1_;
+  const tpcc::orderline_value_infreq* vptr_0_;
+  const tpcc::orderline_value_frequpd* vptr_1_;
 
-  friend RecordAccessor<SplitRecordAccessor<orderline_value>, orderline_value>;
+  friend RecordAccessor<SplitRecordAccessor<tpcc::orderline_value>, tpcc::orderline_value>;
 };
 
 
 template <>
-struct SplitParams<item_value> {
-  using split_type_list = std::tuple<item_value>;
+struct SplitParams<tpcc::item_value> {
+  using split_type_list = std::tuple<tpcc::item_value>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
   static constexpr auto split_builder = std::make_tuple(
-    [](const item_value& in) -> item_value {
-      item_value out;
+    [](const tpcc::item_value& in) -> tpcc::item_value {
+      tpcc::item_value out;
       out.i_im_id = in.i_im_id;
       out.i_price = in.i_price;
       out.i_name = in.i_name;
@@ -1579,7 +1579,7 @@ struct SplitParams<item_value> {
   );
 
   static constexpr auto split_merger = std::make_tuple(
-    [](item_value* out, const item_value& in) -> void {
+    [](tpcc::item_value* out, const tpcc::item_value& in) -> void {
       out->i_im_id = in.i_im_id;
       out->i_price = in.i_price;
       out->i_name = in.i_name;
@@ -1595,7 +1595,7 @@ struct SplitParams<item_value> {
 
 
 template <typename A>
-class RecordAccessor<A, item_value> {
+class RecordAccessor<A, tpcc::item_value> {
  public:
   
   const uint64_t& i_im_id() const {
@@ -1618,7 +1618,7 @@ class RecordAccessor<A, item_value> {
   }
 
 
-  void copy_into(item_value* dst) const {
+  void copy_into(tpcc::item_value* dst) const {
     return impl().copy_into_impl(dst);
   }
 
@@ -1629,9 +1629,9 @@ class RecordAccessor<A, item_value> {
 };
 
 template <>
-class UniRecordAccessor<item_value> : public RecordAccessor<UniRecordAccessor<item_value>, item_value> {
+class UniRecordAccessor<tpcc::item_value> : public RecordAccessor<UniRecordAccessor<tpcc::item_value>, tpcc::item_value> {
  public:
-  UniRecordAccessor(const item_value* const vptr) : vptr_(vptr) {}
+  UniRecordAccessor(const tpcc::item_value* const vptr) : vptr_(vptr) {}
 
  private:
   
@@ -1656,7 +1656,7 @@ class UniRecordAccessor<item_value> : public RecordAccessor<UniRecordAccessor<it
 
 
   
-  void copy_into_impl(item_value* dst) const {
+  void copy_into_impl(tpcc::item_value* dst) const {
     
     if (vptr_) {
       dst->i_im_id = vptr_->i_im_id;
@@ -1667,17 +1667,17 @@ class UniRecordAccessor<item_value> : public RecordAccessor<UniRecordAccessor<it
   }
 
 
-  const item_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<item_value>, item_value>;
+  const tpcc::item_value* vptr_;
+  friend RecordAccessor<UniRecordAccessor<tpcc::item_value>, tpcc::item_value>;
 };
 
 template <>
-class SplitRecordAccessor<item_value> : public RecordAccessor<SplitRecordAccessor<item_value>, item_value> {
+class SplitRecordAccessor<tpcc::item_value> : public RecordAccessor<SplitRecordAccessor<tpcc::item_value>, tpcc::item_value> {
  public:
-   static constexpr size_t num_splits = SplitParams<item_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<tpcc::item_value>::num_splits;
 
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
-     : vptr_0_(reinterpret_cast<item_value*>(vptrs[0])) {}
+     : vptr_0_(reinterpret_cast<tpcc::item_value*>(vptrs[0])) {}
 
  private:
   
@@ -1702,7 +1702,7 @@ class SplitRecordAccessor<item_value> : public RecordAccessor<SplitRecordAccesso
 
 
   
-  void copy_into_impl(item_value* dst) const {
+  void copy_into_impl(tpcc::item_value* dst) const {
     
     if (vptr_0_) {
       dst->i_im_id = vptr_0_->i_im_id;
@@ -1714,27 +1714,27 @@ class SplitRecordAccessor<item_value> : public RecordAccessor<SplitRecordAccesso
   }
 
 
-  const item_value* vptr_0_;
+  const tpcc::item_value* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<item_value>, item_value>;
+  friend RecordAccessor<SplitRecordAccessor<tpcc::item_value>, tpcc::item_value>;
 };
 
 
 template <>
-struct SplitParams<stock_value> {
-  using split_type_list = std::tuple<stock_value_infreq, stock_value_frequpd>;
+struct SplitParams<tpcc::stock_value> {
+  using split_type_list = std::tuple<tpcc::stock_value_infreq, tpcc::stock_value_frequpd>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
   static constexpr auto split_builder = std::make_tuple(
-    [](const stock_value& in) -> stock_value_infreq {
-      stock_value_infreq out;
+    [](const tpcc::stock_value& in) -> tpcc::stock_value_infreq {
+      tpcc::stock_value_infreq out;
       out.s_dists = in.s_dists;
       out.s_data = in.s_data;
       return out;
     },
-    [](const stock_value& in) -> stock_value_frequpd {
-      stock_value_frequpd out;
+    [](const tpcc::stock_value& in) -> tpcc::stock_value_frequpd {
+      tpcc::stock_value_frequpd out;
       out.s_quantity = in.s_quantity;
       out.s_ytd = in.s_ytd;
       out.s_order_cnt = in.s_order_cnt;
@@ -1744,11 +1744,11 @@ struct SplitParams<stock_value> {
   );
 
   static constexpr auto split_merger = std::make_tuple(
-    [](stock_value* out, const stock_value_infreq& in) -> void {
+    [](tpcc::stock_value* out, const tpcc::stock_value_infreq& in) -> void {
       out->s_dists = in.s_dists;
       out->s_data = in.s_data;
     },
-    [](stock_value* out, const stock_value_frequpd& in) -> void {
+    [](tpcc::stock_value* out, const tpcc::stock_value_frequpd& in) -> void {
       out->s_quantity = in.s_quantity;
       out->s_ytd = in.s_ytd;
       out->s_order_cnt = in.s_order_cnt;
@@ -1764,7 +1764,7 @@ struct SplitParams<stock_value> {
 
 
 template <typename A>
-class RecordAccessor<A, stock_value> {
+class RecordAccessor<A, tpcc::stock_value> {
  public:
   
   const std::array<fix_string<24>, NUM_DISTRICTS_PER_WAREHOUSE>& s_dists() const {
@@ -1797,7 +1797,7 @@ class RecordAccessor<A, stock_value> {
   }
 
 
-  void copy_into(stock_value* dst) const {
+  void copy_into(tpcc::stock_value* dst) const {
     return impl().copy_into_impl(dst);
   }
 
@@ -1808,9 +1808,9 @@ class RecordAccessor<A, stock_value> {
 };
 
 template <>
-class UniRecordAccessor<stock_value> : public RecordAccessor<UniRecordAccessor<stock_value>, stock_value> {
+class UniRecordAccessor<tpcc::stock_value> : public RecordAccessor<UniRecordAccessor<tpcc::stock_value>, tpcc::stock_value> {
  public:
-  UniRecordAccessor(const stock_value* const vptr) : vptr_(vptr) {}
+  UniRecordAccessor(const tpcc::stock_value* const vptr) : vptr_(vptr) {}
 
  private:
   
@@ -1845,7 +1845,7 @@ class UniRecordAccessor<stock_value> : public RecordAccessor<UniRecordAccessor<s
 
 
   
-  void copy_into_impl(stock_value* dst) const {
+  void copy_into_impl(tpcc::stock_value* dst) const {
     
     if (vptr_) {
       dst->s_dists = vptr_->s_dists;
@@ -1858,17 +1858,17 @@ class UniRecordAccessor<stock_value> : public RecordAccessor<UniRecordAccessor<s
   }
 
 
-  const stock_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<stock_value>, stock_value>;
+  const tpcc::stock_value* vptr_;
+  friend RecordAccessor<UniRecordAccessor<tpcc::stock_value>, tpcc::stock_value>;
 };
 
 template <>
-class SplitRecordAccessor<stock_value> : public RecordAccessor<SplitRecordAccessor<stock_value>, stock_value> {
+class SplitRecordAccessor<tpcc::stock_value> : public RecordAccessor<SplitRecordAccessor<tpcc::stock_value>, tpcc::stock_value> {
  public:
-   static constexpr size_t num_splits = SplitParams<stock_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<tpcc::stock_value>::num_splits;
 
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
-     : vptr_0_(reinterpret_cast<stock_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<stock_value_frequpd*>(vptrs[1])) {}
+     : vptr_0_(reinterpret_cast<tpcc::stock_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::stock_value_frequpd*>(vptrs[1])) {}
 
  private:
   
@@ -1903,7 +1903,7 @@ class SplitRecordAccessor<stock_value> : public RecordAccessor<SplitRecordAccess
 
 
   
-  void copy_into_impl(stock_value* dst) const {
+  void copy_into_impl(tpcc::stock_value* dst) const {
     
     if (vptr_0_) {
       dst->s_dists = vptr_0_->s_dists;
@@ -1921,29 +1921,29 @@ class SplitRecordAccessor<stock_value> : public RecordAccessor<SplitRecordAccess
   }
 
 
-  const stock_value_infreq* vptr_0_;
-  const stock_value_frequpd* vptr_1_;
+  const tpcc::stock_value_infreq* vptr_0_;
+  const tpcc::stock_value_frequpd* vptr_1_;
 
-  friend RecordAccessor<SplitRecordAccessor<stock_value>, stock_value>;
+  friend RecordAccessor<SplitRecordAccessor<tpcc::stock_value>, tpcc::stock_value>;
 };
 
 
 template <>
-struct SplitParams<customer_idx_value> {
-  using split_type_list = std::tuple<customer_idx_value>;
+struct SplitParams<tpcc::customer_idx_value> {
+  using split_type_list = std::tuple<tpcc::customer_idx_value>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
   static constexpr auto split_builder = std::make_tuple(
-    [](const customer_idx_value& in) -> customer_idx_value {
-      customer_idx_value out;
+    [](const tpcc::customer_idx_value& in) -> tpcc::customer_idx_value {
+      tpcc::customer_idx_value out;
       out.c_ids = in.c_ids;
       return out;
     }
   );
 
   static constexpr auto split_merger = std::make_tuple(
-    [](customer_idx_value* out, const customer_idx_value& in) -> void {
+    [](tpcc::customer_idx_value* out, const tpcc::customer_idx_value& in) -> void {
       out->c_ids = in.c_ids;
     }
   );
@@ -1956,7 +1956,7 @@ struct SplitParams<customer_idx_value> {
 
 
 template <typename A>
-class RecordAccessor<A, customer_idx_value> {
+class RecordAccessor<A, tpcc::customer_idx_value> {
  public:
   
   const std::list<uint64_t>& c_ids() const {
@@ -1964,7 +1964,7 @@ class RecordAccessor<A, customer_idx_value> {
   }
 
 
-  void copy_into(customer_idx_value* dst) const {
+  void copy_into(tpcc::customer_idx_value* dst) const {
     return impl().copy_into_impl(dst);
   }
 
@@ -1975,9 +1975,9 @@ class RecordAccessor<A, customer_idx_value> {
 };
 
 template <>
-class UniRecordAccessor<customer_idx_value> : public RecordAccessor<UniRecordAccessor<customer_idx_value>, customer_idx_value> {
+class UniRecordAccessor<tpcc::customer_idx_value> : public RecordAccessor<UniRecordAccessor<tpcc::customer_idx_value>, tpcc::customer_idx_value> {
  public:
-  UniRecordAccessor(const customer_idx_value* const vptr) : vptr_(vptr) {}
+  UniRecordAccessor(const tpcc::customer_idx_value* const vptr) : vptr_(vptr) {}
 
  private:
   
@@ -1987,7 +1987,7 @@ class UniRecordAccessor<customer_idx_value> : public RecordAccessor<UniRecordAcc
 
 
   
-  void copy_into_impl(customer_idx_value* dst) const {
+  void copy_into_impl(tpcc::customer_idx_value* dst) const {
     
     if (vptr_) {
       dst->c_ids = vptr_->c_ids;
@@ -1995,17 +1995,17 @@ class UniRecordAccessor<customer_idx_value> : public RecordAccessor<UniRecordAcc
   }
 
 
-  const customer_idx_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<customer_idx_value>, customer_idx_value>;
+  const tpcc::customer_idx_value* vptr_;
+  friend RecordAccessor<UniRecordAccessor<tpcc::customer_idx_value>, tpcc::customer_idx_value>;
 };
 
 template <>
-class SplitRecordAccessor<customer_idx_value> : public RecordAccessor<SplitRecordAccessor<customer_idx_value>, customer_idx_value> {
+class SplitRecordAccessor<tpcc::customer_idx_value> : public RecordAccessor<SplitRecordAccessor<tpcc::customer_idx_value>, tpcc::customer_idx_value> {
  public:
-   static constexpr size_t num_splits = SplitParams<customer_idx_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<tpcc::customer_idx_value>::num_splits;
 
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
-     : vptr_0_(reinterpret_cast<customer_idx_value*>(vptrs[0])) {}
+     : vptr_0_(reinterpret_cast<tpcc::customer_idx_value*>(vptrs[0])) {}
 
  private:
   
@@ -2015,7 +2015,7 @@ class SplitRecordAccessor<customer_idx_value> : public RecordAccessor<SplitRecor
 
 
   
-  void copy_into_impl(customer_idx_value* dst) const {
+  void copy_into_impl(tpcc::customer_idx_value* dst) const {
     
     if (vptr_0_) {
       dst->c_ids = vptr_0_->c_ids;
@@ -2024,9 +2024,9 @@ class SplitRecordAccessor<customer_idx_value> : public RecordAccessor<SplitRecor
   }
 
 
-  const customer_idx_value* vptr_0_;
+  const tpcc::customer_idx_value* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<customer_idx_value>, customer_idx_value>;
+  friend RecordAccessor<SplitRecordAccessor<tpcc::customer_idx_value>, tpcc::customer_idx_value>;
 };
 
 } // namespace bench

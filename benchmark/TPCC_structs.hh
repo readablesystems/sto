@@ -171,13 +171,13 @@ struct district_value_frequpd {
 
 struct district_value {
     enum class NamedColumn : int { d_name = 0,
-        d_street_1,
-        d_street_2,
-        d_city,
-        d_state,
-        d_zip,
-        d_tax,
-        d_ytd };
+                                   d_street_1,
+                                   d_street_2,
+                                   d_city,
+                                   d_state,
+                                   d_zip,
+                                   d_tax,
+                                   d_ytd };
 
     var_string<10> d_name;
     var_string<20> d_street_1;
@@ -297,23 +297,23 @@ struct customer_value_frequpd {
 // Unsplit customer table
 struct customer_value {
     enum class NamedColumn : int { c_first = 0,
-        c_middle,
-        c_last,
-        c_street_1,
-        c_street_2,
-        c_city,
-        c_state,
-        c_zip,
-        c_phone,
-        c_since,
-        c_credit,
-        c_credit_lim,
-        c_discount,
-        c_balance,
-        c_ytd_payment,
-        c_payment_cnt,
-        c_delivery_cnt,
-        c_data };
+                                   c_middle,
+                                   c_last,
+                                   c_street_1,
+                                   c_street_2,
+                                   c_city,
+                                   c_state,
+                                   c_zip,
+                                   c_phone,
+                                   c_since,
+                                   c_credit,
+                                   c_credit_lim,
+                                   c_discount,
+                                   c_balance,
+                                   c_ytd_payment,
+                                   c_payment_cnt,
+                                   c_delivery_cnt,
+                                   c_data };
 
     var_string<16>  c_first;
     fix_string<2>   c_middle;
@@ -465,16 +465,16 @@ struct order_value_frequpd {
 
 struct order_value{
     enum class NamedColumn : int { o_c_id = 0,
-                                   o_carrier_id,
                                    o_entry_d,
                                    o_ol_cnt,
-                                   o_all_local };
+                                   o_all_local,
+                                   o_carrier_id };
 
     uint64_t o_c_id;
-    uint64_t o_carrier_id;
     uint32_t o_entry_d;
     uint32_t o_ol_cnt;
     uint32_t o_all_local;
+    uint64_t o_carrier_id;
 };
 
 // ORDER-LINE
@@ -523,17 +523,17 @@ struct orderline_value_frequpd {
 struct orderline_value {
     enum class NamedColumn : int { ol_i_id = 0,
                                    ol_supply_w_id,
-                                   ol_delivery_d,
                                    ol_quantity,
                                    ol_amount,
-                                   ol_dist_info };
+                                   ol_dist_info,
+                                   ol_delivery_d };
 
     uint64_t       ol_i_id;
     uint64_t       ol_supply_w_id;
-    uint32_t       ol_delivery_d;
     uint32_t       ol_quantity;
     int32_t        ol_amount;
     fix_string<24> ol_dist_info;
+    uint32_t       ol_delivery_d;
 };
 
 // ITEM
@@ -599,7 +599,7 @@ struct stock_key {
 };
 
 struct stock_value_infreq {
-    fix_string<24> s_dists[NUM_DISTRICTS_PER_WAREHOUSE];
+    std::array<fix_string<24>, NUM_DISTRICTS_PER_WAREHOUSE> s_dists;
     var_string<50> s_data;
 };
 
@@ -611,19 +611,19 @@ struct stock_value_frequpd {
 };
 
 struct stock_value {
-    enum class NamedColumn : int { s_quantity = 0,
+    enum class NamedColumn : int { s_dists = 0,
+                                   s_data,
+                                   s_quantity,
                                    s_ytd,
                                    s_order_cnt,
-                                   s_remote_cnt,
-                                   s_dists,
-                                   s_data };
+                                   s_remote_cnt };
 
+    std::array<fix_string<24>, NUM_DISTRICTS_PER_WAREHOUSE> s_dists;
+    var_string<50> s_data;
     int32_t        s_quantity;
     uint32_t       s_ytd;
     uint32_t       s_order_cnt;
     uint32_t       s_remote_cnt;
-    std::array<fix_string<24>, NUM_DISTRICTS_PER_WAREHOUSE> s_dists;
-    var_string<50> s_data;
 };
 
 }; // namespace tpcc
