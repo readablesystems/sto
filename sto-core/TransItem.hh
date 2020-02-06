@@ -396,6 +396,10 @@ class TransProxy {
         return version.observe_read(item(), add_read);
     }
     template <typename VersImpl>
+    bool observe(VersionBase<VersImpl>& version, VersImpl& snapshot) {
+        return version.observe_read(item(), snapshot);
+    }
+    template <typename VersImpl>
     bool observe_opacity(VersionBase<VersImpl>& version) {
         return version.observe_read(item(), false);
     }

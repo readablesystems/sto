@@ -298,6 +298,9 @@ public:
     bool observe_read(TransItem& item, bool add_read) {
         return impl().observe_read_impl(item, add_read);
     }
+    bool observe_read(TransItem& item, VersImpl& snapshot) {
+        return impl().observe_read_impl(item, snapshot);
+    }
 
     // Optional interface exposed to data types so that things like bucket/node
     // version are easier to handle

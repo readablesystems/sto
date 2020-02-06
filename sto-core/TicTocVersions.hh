@@ -202,8 +202,16 @@ public:
     explicit TicTocVersion(type v) : BV(v), wts_(v) {}
     explicit TicTocVersion(type v, bool insert) : BV(v), wts_(v) {(void)insert;}
 
-    bool operator==(const TicTocVersion<Opaque, Extend>& other) const {
+    bool operator==(const TicTocVersion& other) const {
         return BV::v_ == other.v_ && wts_ == other.wts_;
+    }
+
+    // Only used to take a snapshot of a TicTocVersion.
+    TicTocVersion& operator=(const TicTocVersion& rhs) {
+        this->v_ = rhs.v_;
+        fence();
+        this->wts_ = rhs.wts_;
+        return *this;
     }
 
     bool is_locked() const {
@@ -262,6 +270,8 @@ public:
     inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
     inline bool observe_read_impl(TransItem& item, bool add_read);
+    // Observe using a snapshot timestamp value.
+    inline bool observe_read_impl(TransItem& item, TicTocVersion& snapshot);
 
     void compute_commit_ts_step_impl(type& tictoc_ts, bool is_write) {
         this->tictoc_compute_commit_ts_step(tictoc_ts, is_write);

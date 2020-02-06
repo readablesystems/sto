@@ -52,7 +52,7 @@ public:
         typedef Masstree::value_print<value_type> value_print_type;
         typedef threadinfo threadinfo_type;
 
-        static constexpr bool track_nodes = DBParams::NodeTrack && DBParams::TicToc;
+        static constexpr bool track_nodes = (DBParams::NodeTrack && DBParams::TicToc);
         typedef std::conditional_t<track_nodes, version_type, int> aux_tracker_type;
     };
 
@@ -118,7 +118,7 @@ public:
         if (found) {
             return select_row(reinterpret_cast<uintptr_t>(e), acc);
         } else {
-            if (!register_internode_version(lp.node(), lp.full_version_value()))
+            if (!register_internode_version(lp.node(), lp))
                 goto abort;
             return sel_return_type(true, false, 0, nullptr);
         }
@@ -135,7 +135,7 @@ public:
         if (found) {
             return select_row(reinterpret_cast<uintptr_t>(e), accesses);
         } else {
-            if (!register_internode_version(lp.node(), lp.full_version_value()))
+            if (!register_internode_version(lp.node(), lp))
                 return sel_return_type(false, false, 0, nullptr);
             return sel_return_type(true, false, 0, nullptr);
         }
@@ -379,7 +379,7 @@ public:
             }
             row_item.add_flags(delete_bit);
         } else {
-            if (!register_internode_version(lp.node(), lp.full_version_value())) {
+            if (!register_internode_version(lp.node(), lp)) {
                 goto abort;
             }
         }
@@ -396,7 +396,7 @@ public:
         assert((limit == -1) || (limit > 0));
         auto node_callback = [&] (leaf_type* node,
             typename unlocked_cursor_type::nodeversion_value_type version) {
-            return ((!phantom_protection) || register_internode_version(node, version));
+            return ((!phantom_protection) || scan_track_node_version(node, version));
         };
 
         auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
@@ -460,7 +460,7 @@ public:
         assert((limit == -1) || (limit > 0));
         auto node_callback = [&] (leaf_type* node,
                                   typename unlocked_cursor_type::nodeversion_value_type version) {
-            return ((!phantom_protection) || register_internode_version(node, version));
+            return ((!phantom_protection) || scan_track_node_version(node, version));
         };
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
@@ -802,14 +802,34 @@ private:
         return (!e->valid() && !has_insert(item));
     }
 
-    bool register_internode_version(node_type *node, nodeversion_value_type nodeversion) {
-        TransProxy item = Sto::item(this, get_internode_key(node));
-        if constexpr (DBParams::Opaque) {
-            return item.add_read_opaque(nodeversion) && ttnv_register_node_read(node);
+    bool register_internode_version(node_type *node, unlocked_cursor_type& cursor) {
+        if constexpr (table_params::track_nodes) {
+            return ttnv_register_node_read_with_snapshot(node, *cursor.get_aux_tracker());
         } else {
-            return item.add_read(nodeversion) && ttnv_register_node_read(node);
+            TransProxy item = Sto::item(this, get_internode_key(node));
+            if constexpr (DBParams::Opaque) {
+                return item.add_read_opaque(cursor.full_version_value());
+            } else {
+                return item.add_read(cursor.full_version_value());
+            }
         }
     }
+
+    // Used in scan helpers to track leaf node timestamps for phantom protection.
+    bool scan_track_node_version(node_type *node, nodeversion_value_type nodeversion) {
+        if constexpr (table_params::track_nodes) {
+            (void)nodeversion;
+            return ttnv_register_node_read(node);
+        } else {
+            TransProxy item = Sto::item(this, get_internode_key(node));
+            if constexpr (DBParams::Opaque) {
+                return item.add_read_opaque(nodeversion);
+            } else {
+                return item.add_read(nodeversion);
+            }
+        }
+    }
+
     bool update_internode_version(node_type *node,
             nodeversion_value_type prev_nv, nodeversion_value_type new_nv) {
         ttnv_register_node_write(node);
@@ -831,6 +851,18 @@ private:
             always_assert(node->isleaf(), "Tracking non-leaf node!!");
             auto tt_item = Sto::item(this, get_ttnv_key(node));
             tt_item.acquire_write(*static_cast<leaf_type*>(node)->get_aux_tracker());
+        }
+    }
+
+    bool ttnv_register_node_read_with_snapshot(node_type* node, typename table_params::aux_tracker_type& snapshot) {
+        (void)node; (void)snapshot;
+        if constexpr (table_params::track_nodes) {
+            static_assert(DBParams::TicToc, "Node tracking requires TicToc.");
+            always_assert(node->isleaf(), "Tracking non-leaf node!!");
+            auto tt_item = Sto::item(this, get_ttnv_key(node));
+            return tt_item.observe(*static_cast<leaf_type*>(node)->get_aux_tracker(), snapshot);
+        } else {
+            return true;
         }
     }
 

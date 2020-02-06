@@ -530,6 +530,24 @@ inline bool TicTocVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bo
     return true;
 }
 
+template <bool Opaque, bool Extend>
+inline bool TicTocVersion<Opaque, Extend>::observe_read_impl(TransItem& item, TicTocVersion<Opaque, Extend>& snapshot) {
+    static_assert(!Opaque, "Opacity not implemented.");
+    item.cc_mode_check_tictoc(this, false);
+    assert(!item.has_stash());
+    if (snapshot.is_locked_elsewhere()) {
+        t().mark_abort_because(&item, "locked", BV::value());
+        TXP_INCREMENT(txp_observe_lock_aborts);
+        return false;
+    }
+    if (!item.has_read()) {
+        VersionDelegate::txn_set_any_nonopaque(t(), true);
+        VersionDelegate::item_or_flags(item, TransItem::read_bit);
+        TicTocTid::pack_wide(item.wide_read_value(), snapshot.v_, snapshot.wts_);
+    }
+    return true;
+}
+
 // TicToc concurrency control, compressed
 
 template <bool Opaque, bool Extend>
