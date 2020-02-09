@@ -399,9 +399,12 @@ struct c_data_info {
 // HISTORY
 
 struct history_key {
-    history_key(uint64_t id) : h_id(bswap(id)) {}
+    history_key(uint64_t wid, uint64_t did, uint64_t cid, uint64_t hid)
+        : w_id(bswap(static_cast<uint32_t>(wid))), d_id(bswap(static_cast<uint32_t>(did))),
+          c_id(bswap(cid)), h_id(bswap(hid)) {}
     bool operator==(const history_key& other) const {
-        return h_id == other.h_id;
+        return (w_id == other.w_id && d_id == other.d_id &&
+                c_id == other.c_id && h_id == other.h_id);
     }
     bool operator!=(const history_key& other) const {
         return h_id != other.h_id;
@@ -409,7 +412,9 @@ struct history_key {
     operator lcdf::Str() const {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
-
+    uint32_t w_id;
+    uint32_t d_id;
+    uint64_t c_id;
     uint64_t h_id;
 };
 
@@ -769,12 +774,12 @@ inline ostream& operator<<(ostream& os, const tpcc::customer_key& ck) {
 template <>
 struct hash<tpcc::history_key> {
     size_t operator()(const tpcc::history_key& arg) const {
-        return arg.h_id;
+        return XXH64(&arg, sizeof(tpcc::history_key), xxh_seed);
     }
 };
 
-inline ostream& operator<<(ostream& os, const tpcc::history_key& hk) {
-    os << "history_key:" << bswap(hk.h_id);
+inline ostream& operator<<(ostream& os, const tpcc::history_key&) {
+    os << "history_key";
     return os;
 }
 
