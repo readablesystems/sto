@@ -33,7 +33,7 @@ CREATE TABLE bids (
    max_bid FLOAT UNSIGNED NOT NULL,
    date    DATETIME,
 
-   PRIMARY KEY(id)
+   PRIMARY KEY(id, user_id, item_id)
 );
 
 CREATE TABLE buy_now (
@@ -42,7 +42,7 @@ CREATE TABLE buy_now (
    item_id  INTEGER UNSIGNED NOT NULL,
    qty      INTEGER UNSIGNED NOT NULL,
    date     DATETIME,
-   PRIMARY KEY(id),
+   PRIMARY KEY(id, buyer_id, item_id),
    INDEX buyer (buyer_id),
    INDEX item (item_id)
 );
@@ -133,9 +133,12 @@ struct item_row {
 #endif
 
 struct bid_key_bare {
+    uint64_t item_id;
+    uint64_t user_id;
     uint64_t bid_id;
 
-    explicit bid_key_bare(uint64_t id) : bid_id(bswap(id)) {}
+    explicit bid_key_bare(uint64_t iid, uint64_t uid, uint64_t bid)
+        : item_id(bswap(iid)), user_id(bswap(uid)), bid_id(bswap(bid)) {}
     friend masstree_key_adapter<bid_key_bare>;
 private:
     bid_key_bare() = default;
@@ -145,16 +148,12 @@ typedef masstree_key_adapter<bid_key_bare> bid_key;
 
 struct bid_row {
     enum class NamedColumn : int {
-        user_id = 0,
-        item_id,
-        quantity,
+        quantity = 0,
         bid,
         max_bid,
         date
     };
 
-    uint64_t user_id;
-    uint64_t item_id;
     uint32_t quantity;
     uint32_t bid;
     uint32_t max_bid;
@@ -162,9 +161,12 @@ struct bid_row {
 };
 
 struct buynow_key_bare {
+    uint64_t item_id;
+    uint64_t user_id;
     uint64_t buynow_id;
 
-    explicit buynow_key_bare(uint64_t id) : buynow_id(bswap(id)) {}
+    explicit buynow_key_bare(uint64_t iid, uint64_t uid, uint64_t bid)
+        : item_id(bswap(iid)), user_id(bswap(uid)), buynow_id(bswap(bid)) {}
     friend masstree_key_adapter<buynow_key_bare>;
 private:
     buynow_key_bare() = default;
@@ -174,30 +176,12 @@ typedef masstree_key_adapter<buynow_key_bare> buynow_key;
 
 struct buynow_row {
     enum class NamedColumn : int {
-        buyer_id = 0,
-        item_id,
-        quantity,
+        quantity = 0,
         date
     };
 
-    uint64_t buyer_id;
-    uint64_t item_id;
     uint32_t quantity;
     uint32_t date;
 };
-
-struct idx_item_bid_key_bare {
-    uint64_t item_id;
-    uint64_t bid;
-
-    explicit idx_item_bid_key_bare(uint64_t iid, uint32_t bid) : item_id(bswap(iid)), bid((uint64_t)bswap(bid)) {}
-    friend masstree_key_adapter<idx_item_bid_key_bare>;
-private:
-    idx_item_bid_key_bare() = default;
-};
-
-typedef masstree_key_adapter<idx_item_bid_key_bare> idx_item_bid_key;
-
-using idx_item_bid_row = dummy_row;
 
 }

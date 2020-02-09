@@ -451,7 +451,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     hv->h_amount = h_amount;
     hv->h_data = std::string(out_w_name.c_str()) + "    " + std::string(out_d_name.c_str());
 
-    history_key hk(db.tbl_histories(q_c_w_id).gen_key());
+    history_key hk(q_w_id, q_d_id, q_c_id, db.tbl_histories(q_c_w_id).gen_key());
     std::tie(success, result) = db.tbl_histories(q_c_w_id).insert_row(hk, hv);
     assert(success);
     assert(!result);

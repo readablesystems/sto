@@ -46,7 +46,6 @@ public:
 #endif
     typedef OIndex<bid_key, bid_row>       bid_tbl_type;
     typedef OIndex<buynow_key, buynow_row> buynow_tbl_type;
-    typedef OIndex<idx_item_bid_key, idx_item_bid_row> itb_idx_type;
 
     explicit rubis_db()
 #if TPCC_SPLIT_TABLE
@@ -56,8 +55,7 @@ public:
         : tbl_items_(),
 #endif
           tbl_bids_(),
-          tbl_buynow_(),
-          idx_itb_() {}
+          tbl_buynow_() {}
 
 #if TPCC_SPLIT_TABLE
     item_const_tbl_type& tbl_items_const() {
@@ -77,9 +75,6 @@ public:
     buynow_tbl_type& tbl_buynow() {
         return tbl_buynow_;
     }
-    itb_idx_type& idx_itembids() {
-        return idx_itb_;
-    }
 
     void thread_init_all() {
 #if TPCC_SPLIT_TABLE
@@ -90,7 +85,6 @@ public:
 #endif
         tbl_bids_.thread_init();
         tbl_buynow_.thread_init();
-        idx_itb_.thread_init();
     }
 
 private:
@@ -102,7 +96,6 @@ private:
 #endif
     bid_tbl_type    tbl_bids_;
     buynow_tbl_type tbl_buynow_;
-    itb_idx_type    idx_itb_;
 };
 
 enum class TxnType : int { PlaceBid = 0, BuyNow, ViewItem };
@@ -281,32 +274,23 @@ void rubis_loader<DBParams>::load() {
 
         for (uint64_t i = 0; i < constants::num_bids_per_item; ++i) {
             auto bid_id = db.tbl_bids().gen_key();
-            bid_key bk(bid_id);
+            bid_key bk(iid, ig.generate_user_id(), bid_id);
             bid_row br{};
-            br.item_id = iid;
-            br.user_id = ig.generate_user_id();
             br.max_bid = 40;
             br.bid = 40;
             br.quantity = 1;
             br.date = ig.generate_random_date();
 
             db.tbl_bids().nontrans_put(bk, br);
-
-            idx_item_bid_key ibk(iid, bid_id);
-            idx_item_bid_row ibr{};
-
-            db.idx_itembids().nontrans_put(ibk, ibr);
         }
     }
 
     for (uint64_t n = 0; n < constants::buynow_prepop; ++n) {
         auto id = db.tbl_buynow().gen_key();
-        buynow_key bnk(id);
+        buynow_key bnk(ig.generate_user_id(), ig.generate_user_id(), id);
         buynow_row bnr{};
-        bnr.buyer_id = ig.generate_user_id();
         bnr.quantity = 1;
         bnr.date = ig.generate_random_date();
-        bnr.item_id = ig.generate_user_id();
 
         db.tbl_buynow().nontrans_put(bnk, bnr);
     }

@@ -64,10 +64,8 @@ size_t rubis_runner<DBParams>::run_txn_placebid(uint64_t item_id, uint64_t user_
     }
 #endif
 
-    bid_key bk(db.tbl_bids().gen_key());
+    bid_key bk(item_id, user_id, db.tbl_bids().gen_key());
     auto br = Sto::tx_alloc<bid_row>();
-    br->item_id = item_id;
-    br->user_id = user_id;
     br->max_bid = max_bid;
     br->bid = bid;
     br->quantity = qty;
@@ -143,10 +141,8 @@ size_t rubis_runner<DBParams>::run_txn_buynow(uint64_t item_id, uint64_t user_id
     }
 #endif
 
-    buynow_key bnk(db.tbl_buynow().gen_key());
+    buynow_key bnk(item_id, user_id, db.tbl_buynow().gen_key());
     auto bnr = Sto::tx_alloc<buynow_row>();
-    bnr->buyer_id = user_id;
-    bnr->item_id = item_id;
     bnr->quantity = qty;
     bnr->date = curr_date;
 
@@ -170,25 +166,6 @@ size_t rubis_runner<DBParams>::run_txn_viewitem(uint64_t item_id) {
     const void* value;
 
     ++execs;
-
-    size_t count = 0;
-    uint32_t max_bid = 0;
-
-    auto scan_callback = [&count, &max_bid](const idx_item_bid_key& k, const idx_item_bid_row&) {
-        max_bid = (uint32_t)bswap(k.bid);
-        count += 1;
-        return true;
-    };
-    if (count > 0) {
-        always_assert(max_bid > 0, "max_bid must be non-zero.");
-    }
-
-    idx_item_bid_key k0(item_id, 0);
-    idx_item_bid_key k1(item_id, std::numeric_limits<uint32_t>::max());
-
-    abort = db.idx_itembids().template range_scan<decltype(scan_callback), false>(k0, k1, scan_callback,
-        RowAccess::ObserveExists, /*no phantom protection, one-shot*/false);
-    TXN_DO(abort);
 
 #if TPCC_SPLIT_TABLE
     std::tie(abort, result, row, value) = db.tbl_items_comm().select_row(item_key(item_id), RowAccess::ObserveValue);
