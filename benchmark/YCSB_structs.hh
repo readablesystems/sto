@@ -35,27 +35,26 @@ struct ycsb_key {
     uint64_t w_id;
 };
 
-struct ycsb_half_value {
-    static constexpr size_t col_width = 100;
-    static constexpr size_t num_cols = 5;
-    enum class NamedColumn : int {
-        odd_columns = 0
-    };
+#define COL_WIDTH 100
+#define HALF_NUM_COLUMNS 5
+typedef fix_string<COL_WIDTH> col_type;
 
-    typedef fix_string<col_width> col_type;
-    col_type cols[num_cols];
+struct ycsb_odd_half_value {
+    std::array<col_type, HALF_NUM_COLUMNS> odd_columns;
+};
+
+struct ycsb_even_half_value {
+    std::array<col_type, HALF_NUM_COLUMNS> even_columns;
 };
 
 struct ycsb_value {
-    static constexpr size_t col_width = 100;
-    static constexpr size_t num_cols = 10;
     enum class NamedColumn : int {
         odd_columns = 0,
         even_columns
     };
 
-    typedef fix_string<col_width> col_type;
-    col_type cols[num_cols];
+    std::array<col_type, HALF_NUM_COLUMNS> odd_columns;
+    std::array<col_type, HALF_NUM_COLUMNS> even_columns;
 };
 
 class ycsb_input_generator {
@@ -66,8 +65,9 @@ public:
     template <typename value_type>
     value_type random_ycsb_value() {
         value_type ret;
-        for (size_t i = 0; i < value_type::num_cols; i++) {
-            ret.cols[i] = random_a_string(value_type::col_width);
+        for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
+            ret.odd_columns[i] = random_a_string(COL_WIDTH);
+            ret.even_columns[i] = random_a_string(COL_WIDTH);
         }
         return ret;
     }
@@ -76,8 +76,8 @@ public:
         return gen;
     }
 
-    void random_ycsb_col_value_inplace(ycsb_value::col_type *dst) {
-        for (size_t i = 0; i < ycsb_value::col_width; ++i)
+    void random_ycsb_col_value_inplace(col_type *dst) {
+        for (size_t i = 0; i < COL_WIDTH; ++i)
             (*dst)[i] = random_char();
     }
 
