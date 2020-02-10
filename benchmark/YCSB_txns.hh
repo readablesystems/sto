@@ -63,7 +63,7 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                     = db.ycsb_table().select_split_row(key,
                     {{col_group, Commute ? access_t::write : access_t::update}}
                 );
-                (void)row;
+                (void)result;
                 TXN_DO(success);
                 assert(result);
 
