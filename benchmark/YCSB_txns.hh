@@ -28,7 +28,7 @@ void ycsb_runner<DBParams>::gen_workload(int txn_size) {
             ycsb_op_t op {};
             op.is_write = is_write;
             op.key = *it;
-            op.col_n = ud->sample() % ycsb_value::num_cols; /*column number*/
+            op.col_n = ud->sample() % (2*HALF_NUM_COLUMNS); /*column number*/
             if (is_write) {
                 any_write = true;
                 ig.random_ycsb_col_value_inplace(&op.write_value);
@@ -40,17 +40,16 @@ void ycsb_runner<DBParams>::gen_workload(int txn_size) {
     }
 }
 
-using bench::RowAccess;
+using bench::access_t;
 
 template <typename DBParams>
 void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
-    volatile ycsb_value::col_type output;
+    volatile col_type output;
     typedef ycsb_value::NamedColumn nm;
 
+    (void)output;
+
     TRANSACTION {
-        bool success, result;
-        uintptr_t row;
-        const void* value;
         if (DBParams::MVCC && txn.rw_txn) {
             Sto::mvcc_rw_upgrade();
         }
@@ -60,69 +59,41 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
             (void)col_group;
             if (op.is_write) {
                 ycsb_key key(op.key);
-#if TPCC_SPLIT_TABLE
-                std::tie(success, result, row, value)
-                    = db.ycsb_half_tables(col_parity).select_row(key,
-                        Commute ? RowAccess::None : RowAccess::ObserveValue);
-                TXN_DO(success);
-                assert(result);
-
-                if (Commute) {
-                    commutators::Commutator<ycsb_half_value> comm(op.col_n/2, op.write_value);
-                    db.ycsb_half_tables(col_parity).update_row(row, comm);
-                } else {
-                    auto old_val = reinterpret_cast<const ycsb_half_value*>(value);
-                    auto new_val = Sto::tx_alloc(old_val);
-                    new_val->cols[op.col_n/2] = op.write_value;
-                    db.ycsb_half_tables(col_parity).update_row(row, new_val);
-                }
-#else
-                std::tie(success, result, row, value)
-                    = db.ycsb_table().select_row(key,
-#if TABLE_FINE_GRINED
+                auto [success, result, row, value]
+                    = db.ycsb_table().select_split_row(key,
                     {{col_group, Commute ? access_t::write : access_t::update}}
-#else
-                    Commute ? RowAccess::None : RowAccess::ObserveValue
-#endif
                 );
+                (void)row;
                 TXN_DO(success);
                 assert(result);
 
-                if (Commute) {
+                if constexpr (Commute) {
                     commutators::Commutator<ycsb_value> comm(op.col_n, op.write_value);
                     db.ycsb_table().update_row(row, comm);
                 } else {
-                    auto old_val = reinterpret_cast<const ycsb_value*>(value);
-                    auto new_val = Sto::tx_alloc(old_val);
-                    new_val->cols[op.col_n] = op.write_value;
+                    auto new_val = Sto::tx_alloc<ycsb_value>();
+                    if (col_parity) {
+                        new_val->odd_columns = value.odd_columns();
+                        new_val->odd_columns[op.col_n/2] = op.write_value;
+                    } else {
+                        new_val->even_columns = value.even_columns();
+                        new_val->even_columns[op.col_n/2] = op.write_value;
+                    }
                     db.ycsb_table().update_row(row, new_val);
                 }
-#endif
             } else {
                 ycsb_key key(op.key);
-#if TPCC_SPLIT_TABLE
-                std::tie(success, result, row, value)
-                    = db.ycsb_half_tables(col_parity).select_row(key,
-                        RowAccess::ObserveValue);
+                auto [success, result, row, value]
+                    = db.ycsb_table().select_split_row(key, {{col_group, access_t::read}});
+                (void)result; (void)row;
                 TXN_DO(success);
                 assert(result);
 
-                output = reinterpret_cast<const ycsb_half_value*>(value)->cols[op.col_n/2];
-#else
-                std::tie(success, result, row, value)
-                    = db.ycsb_table().select_row(key,
-#if TABLE_FINE_GRINED
-                    {{col_group, access_t::read}}
-#else
-                    RowAccess::ObserveValue
-#endif
-                );
-                TXN_DO(success);
-                assert(result);
-
-                output = reinterpret_cast<const ycsb_value*>(value)->cols[op.col_n];
-#endif
-                (void)output;
+                if (col_parity) {
+                    output = value.odd_columns()[op.col_n/2];
+                } else {
+                    output = value.even_columns()[op.col_n/2];
+                }
             }
         }
     } RETRY(true);

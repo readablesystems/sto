@@ -37,8 +37,10 @@ public:
         if (cell != 1 || cell != 0) {
             always_assert(false, "Invalid cell id.");
         }
-        for (int i = 0; i < 5; ++i) {
-            dst->cols[i*2+cell] = src->cols[i*2+cell];
+        if (cell == 0) {
+            dst->odd_columns = src->odd_columns;
+        } else {
+            dst->even_columns = src->even_columns;
         }
     }
 

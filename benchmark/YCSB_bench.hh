@@ -15,6 +15,12 @@
 #include "DB_index.hh"
 #include "DB_params.hh"
 
+#if TABLE_FINE_GRAINED
+#include "ycsb_split_params_ts.hh"
+#else
+#include "ycsb_split_params_default.hh"
+#endif
+
 namespace ycsb {
 
 using bench::mvcc_ordered_index;
@@ -37,42 +43,21 @@ public:
         unordered_index<K, V, DBParams>>::type;
 
     typedef UIndex<ycsb_key, ycsb_value> ycsb_table_type;
-    typedef UIndex<ycsb_key, ycsb_half_value> ycsb_half_table_type;
 
-#if TPCC_SPLIT_TABLE
-    explicit ycsb_db()
-        : ycsb_odd_table_(ycsb_table_size),
-          ycsb_even_table_(ycsb_table_size) {}
-
-    ycsb_half_table_type& ycsb_half_tables(bool parity) {
-        return parity ? ycsb_odd_table_ : ycsb_even_table_;
-    }
-#else
     explicit ycsb_db() : ycsb_table_(ycsb_table_size) {}
 
     ycsb_table_type& ycsb_table() {
         return ycsb_table_;
     }
-#endif
 
     void table_thread_init() {
-#if TPCC_SPLIT_TABLE
-        ycsb_odd_table_.thread_init();
-        ycsb_even_table_.thread_init();
-#else
         ycsb_table_.thread_init();
-#endif
     }
 
     void prepopulate();
 
 private:
-#if TPCC_SPLIT_TABLE
-    ycsb_half_table_type ycsb_odd_table_;
-    ycsb_half_table_type ycsb_even_table_;
-#else
     ycsb_table_type ycsb_table_;
-#endif
 };
 
 struct ycsb_op_t {
@@ -82,7 +67,7 @@ struct ycsb_op_t {
     bool is_write;
     uint32_t key;
     int16_t col_n;
-    ycsb_value::col_type write_value;
+    col_type write_value;
 };
 
 struct ycsb_txn_t {
