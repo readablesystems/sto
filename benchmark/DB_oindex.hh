@@ -1571,6 +1571,8 @@ private:
             if (el->row.is_head(hp)) {
                 lp.finish(-1, *ip->ti);
                 Transaction::rcu_delete(el);
+            } else {
+                lp.finish(0, *ip->ti);
             }
         } else {
             lp.finish(0, *ip->ti);
