@@ -116,6 +116,7 @@ public:
         std::thread advancer;
         std::cout << "Garbage collection: " << (p.enable_gc ? "enabled" : "disabled") << std::endl;
         if (p.enable_gc) {
+            Transaction::set_epoch_cycle(1000);
             advancer = std::thread(&Transaction::epoch_advancer, nullptr);
             advancer.detach();
         }
