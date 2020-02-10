@@ -50,9 +50,6 @@ size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
     if (name_space == 0) {
         std::tie(abort, std::ignore) = db.tbl_watchlist().insert_row(watchlist_key(user_id, 1, page_title), wv);
         TXN_DO(abort);
-
-        std::tie(abort, std::ignore) = db.idx_watchlist().insert_row(watchlist_idx_key(name_space, page_title, user_id), wiv);
-        TXN_DO(abort);
     }
 
 #if TPCC_SPLIT_TABLE
