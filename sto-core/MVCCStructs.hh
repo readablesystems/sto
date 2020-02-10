@@ -33,6 +33,12 @@ struct MvLocation {
 };
 
 template <typename T>
+struct MvDelLocation {
+    MvObject<T>* obj;
+    MvHistory<T>* h_del;
+};
+
+template <typename T>
 class MvHistory {
 public:
     typedef TransactionTid::type type;
@@ -95,7 +101,10 @@ public:
         if (!status_is(COMMITTED_DELETED)) {
             return;
         }
-        Transaction::rcu_call(delete_prep_cb, this);
+        auto location = new MvDelLocation<T>();
+        location->h_del = this;
+        location->obj = object();
+        Transaction::rcu_call(delete_prep_cb, location);
     }
 
     // Enqueues the delta version for future forced flattening
@@ -286,8 +295,9 @@ public:
 
 private:
     static void delete_prep_cb(void *ptr) {
-        history_type* hd = static_cast<history_type*>(ptr);  // DELETED version
-        history_type* h = hd->object()->h_;
+        auto location = reinterpret_cast<MvDelLocation<T>*>(ptr);
+        history_type* hd = location->h_del;  // DELETED version
+        history_type* h = location->obj->h_;
         while (h) {
             if (h == hd) {
                 if (hd->delete_cb) {
@@ -303,6 +313,7 @@ private:
 
             h = h->prev();
         }
+        delete location;
     }
 
     // Initializes the flattening process
