@@ -5,11 +5,9 @@
 
 namespace commutators {
 
-#if TPCC_SPLIT_TABLE
-using item_row = rubis::item_comm_row;
-#else
 using item_row = rubis::item_row;
-#endif
+using item_row_infreq = rubis::item_row_infreq;
+using item_row_frequpd = rubis::item_row_frequpd;
 
 template <>
 class Commutator<item_row> {
@@ -33,9 +31,49 @@ public:
         return val;
     }
 
+    friend Commutator<item_row_infreq>;
+    friend Commutator<item_row_frequpd>;
+
 private:
     uint32_t max_bid;
     uint32_t date;
+};
+
+template <>
+class Commutator<item_row_infreq> : public Commutator<item_row> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<item_row>(std::forward<Args>(args)...) {}
+
+    item_row_infreq& operate(item_row_infreq& val) const {
+        return val;
+    }
+};
+
+template <>
+class Commutator<item_row_frequpd> : public Commutator<item_row> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<item_row>(std::forward<Args>(args)...) {}
+
+    item_row_frequpd& operate(item_row_frequpd& val) const {
+        if (date != 0) {
+            val.quantity -= max_bid;
+            if (val.quantity == 0) {
+                val.end_date = date;
+            }
+        } else {
+            if (max_bid > val.max_bid) {
+                val.max_bid = max_bid;
+            }
+            val.nb_of_bids += 1;
+        }
+        return val;
+    }
 };
 
 }
