@@ -5,13 +5,12 @@
 
 namespace commutators {
 
-#if TPCC_SPLIT_TABLE
-using useracct_row = wikipedia::useracct_comm_row;
-using page_row = wikipedia::page_comm_row;
-#else
 using useracct_row = wikipedia::useracct_row;
+using useracct_row_infreq = wikipedia::useracct_row_infreq;
+using useracct_row_frequpd = wikipedia::useracct_row_frequpd;
 using page_row = wikipedia::page_row;
-#endif
+using page_row_infreq = wikipedia::page_row_infreq;
+using page_row_frequpd = wikipedia::page_row_frequpd;
 
 using watchlist_row = wikipedia::watchlist_row;
 
@@ -29,9 +28,41 @@ public:
         return val;
     }
 
+    friend Commutator<useracct_row_infreq>;
+    friend Commutator<useracct_row_frequpd>;
+
 private:
     bool inc_edit_count;
     bench::var_string<14> new_timestamp;
+};
+
+template <>
+class Commutator<useracct_row_infreq> : public Commutator<useracct_row> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<useracct_row>(std::forward<Args>(args)...) {}
+
+    useracct_row_infreq& operate(useracct_row_infreq& val) const {
+        return val;
+    }
+};
+
+template <>
+class Commutator<useracct_row_frequpd> : public Commutator<useracct_row> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<useracct_row>(std::forward<Args>(args)...) {}
+
+    useracct_row_frequpd& operate(useracct_row_frequpd& val) const {
+        if (inc_edit_count)
+            val.user_editcount += 1;
+        val.user_touched = new_timestamp;
+        return val;
+    }
 };
 
 template <>
@@ -50,12 +81,46 @@ public:
         return val;
     }
 
+    friend Commutator<page_row_infreq>;
+    friend Commutator<page_row_frequpd>;
+
 private:
     int32_t new_is_redirect;
     int32_t new_is_new;
     bench::var_string<14> new_touched;
     int32_t new_latest;
     int32_t new_len;
+};
+
+template <>
+class Commutator<page_row_infreq> : public Commutator<page_row> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<page_row>(std::forward<Args>(args)...) {}
+
+    page_row_infreq& operate(page_row_infreq& val) const {
+        return val;
+    }
+};
+
+template <>
+class Commutator<page_row_frequpd> : public Commutator<page_row> {
+public:
+    Commutator() = default;
+
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<page_row>(std::forward<Args>(args)...) {}
+
+    page_row_frequpd& operate(page_row_frequpd& val) const {
+        val.page_is_redirect = new_is_redirect;
+        val.page_is_new = new_is_new;
+        val.page_touched = new_touched;
+        val.page_latest = new_latest;
+        val.page_len = new_len;
+        return val;
+    }
 };
 
 template <>
