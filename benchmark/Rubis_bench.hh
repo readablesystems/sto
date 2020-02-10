@@ -18,6 +18,12 @@
 #include "DB_index.hh"
 #include "DB_params.hh"
 
+#if TABLE_FINE_GRAINED
+#include "rubis_split_params_ts.hh"
+#else
+#include "rubis_split_params_default.hh"
+#endif
+
 namespace rubis {
 
 struct constants {
@@ -38,37 +44,18 @@ public:
             mvcc_ordered_index<K, V, DBParams>,
             ordered_index<K, V, DBParams>>::type;
 
-#if TPCC_SPLIT_TABLE
-    typedef OIndex<item_key, item_const_row> item_const_tbl_type;
-    typedef OIndex<item_key, item_comm_row>  item_comm_tbl_type;
-#else
     typedef OIndex<item_key, item_row>     item_tbl_type;
-#endif
     typedef OIndex<bid_key, bid_row>       bid_tbl_type;
     typedef OIndex<buynow_key, buynow_row> buynow_tbl_type;
 
     explicit rubis_db()
-#if TPCC_SPLIT_TABLE
-        : tbl_items_const_(),
-          tbl_items_comm_(),
-#else
         : tbl_items_(),
-#endif
           tbl_bids_(),
           tbl_buynow_() {}
 
-#if TPCC_SPLIT_TABLE
-    item_const_tbl_type& tbl_items_const() {
-        return tbl_items_const_;
-    }
-    item_comm_tbl_type& tbl_items_comm() {
-        return tbl_items_comm_;
-    }
-#else
     item_tbl_type& tbl_items() {
         return tbl_items_;
     }
-#endif
     bid_tbl_type& tbl_bids() {
         return tbl_bids_;
     }
@@ -77,23 +64,13 @@ public:
     }
 
     void thread_init_all() {
-#if TPCC_SPLIT_TABLE
-        tbl_items_const_.thread_init();
-        tbl_items_comm_.thread_init();
-#else
         tbl_items_.thread_init();
-#endif
         tbl_bids_.thread_init();
         tbl_buynow_.thread_init();
     }
 
 private:
-#if TPCC_SPLIT_TABLE
-    item_const_tbl_type tbl_items_const_;
-    item_comm_tbl_type tbl_items_comm_;
-#else
     item_tbl_type   tbl_items_;
-#endif
     bid_tbl_type    tbl_bids_;
     buynow_tbl_type tbl_buynow_;
 };
@@ -244,21 +221,6 @@ template <typename DBParams>
 void rubis_loader<DBParams>::load() {
     for (uint64_t iid = 1; iid <= constants::num_items; ++iid) {
         item_key ik(iid);
-#if TPCC_SPLIT_TABLE
-        item_const_row ic{};
-        item_comm_row im{};
-        ic.seller = ig.generate_user_id();
-        ic.reserve_price = 50;
-        ic.initial_price = 50;
-        ic.start_date = ig.generate_random_date();
-        im.quantity = 10;
-        im.nb_of_bids = 10;
-        im.max_bid = 40;
-        im.end_date = ig.generate_random_date();
-
-        db.tbl_items_const().nontrans_put(ik, ic);
-        db.tbl_items_comm().nontrans_put(ik, im);
-#else
         item_row ir;
         ir.seller = ig.generate_user_id();
         ir.reserve_price = 50;
@@ -270,7 +232,6 @@ void rubis_loader<DBParams>::load() {
         ir.end_date = ig.generate_random_date();
 
         db.tbl_items().nontrans_put(ik, ir);
-#endif
 
         for (uint64_t i = 0; i < constants::num_bids_per_item; ++i) {
             auto bid_id = db.tbl_bids().gen_key();

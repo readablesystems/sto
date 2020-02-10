@@ -64,19 +64,7 @@ private:
 
 typedef masstree_key_adapter<item_key_bare> item_key;
 
-#if TPCC_SPLIT_TABLE
-struct item_const_row {
-    enum class NamedColumn : int {
-        name = 0,
-        description,
-        initial_price,
-        reserve_price,
-        buy_now,
-        start_date,
-        seller,
-        category
-    };
-
+struct item_row_infreq {
     var_string<100> name;
     var_string<255> description;
     uint32_t initial_price;
@@ -87,20 +75,13 @@ struct item_const_row {
     uint64_t category;
 };
 
-struct item_comm_row {
-    enum class NamedColumn : int {
-        quantity = 0,
-        nb_of_bids,
-        max_bid,
-        end_date
-    };
-
+struct item_row_frequpd {
     uint32_t quantity;
     uint32_t nb_of_bids;
     uint32_t max_bid;
     uint32_t end_date;
 };
-#else
+
 struct item_row {
     enum class NamedColumn : int {
         name = 0,
@@ -130,7 +111,6 @@ struct item_row {
     uint32_t max_bid;
     uint32_t end_date;
 };
-#endif
 
 struct bid_key_bare {
     uint64_t item_id;

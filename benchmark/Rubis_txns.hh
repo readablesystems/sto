@@ -7,62 +7,36 @@ namespace rubis {
 template <typename DBParams>
 size_t rubis_runner<DBParams>::run_txn_placebid(uint64_t item_id, uint64_t user_id, uint32_t max_bid, uint32_t qty,
                                                 uint32_t bid) {
-#if TABLE_FINE_GRAINED
     typedef item_row::NamedColumn nc;
-#endif
     size_t execs = 0;
 
     RWTRANSACTION {
 
-    bool abort, result;
-    uintptr_t row;
-    const void* value;
-
     ++execs;
 
-#if TPCC_SPLIT_TABLE
-    std::tie(abort, result, row, value) = db.tbl_items_comm().select_row(item_key(item_id),
-            Commute ? RowAccess::None : RowAccess::ObserveValue);
-    TXN_DO(abort);
-    assert(result);
-
-    if (Commute) {
-        commutators::Commutator<item_comm_row> comm(max_bid);
-        db.tbl_items_comm().update_row(row, comm);
-    } else {
-        auto iv = reinterpret_cast<const item_comm_row*>(value);
-        auto new_iv = Sto::tx_alloc(iv);
-        if (max_bid > iv->max_bid) {
-            new_iv->max_bid = max_bid;
-        }
-        new_iv->nb_of_bids += 1;
-        db.tbl_items_comm().update_row(row, new_iv);
-    }
-#else
-    std::tie(abort, result, row, value) = db.tbl_items().select_row(item_key(item_id),
-#if TABLE_FINE_GRAINED
+    {
+    auto [abort, result, row, value] = db.tbl_items().select_split_row(item_key(item_id),
         {{nc::max_bid,    Commute ? access_t::write : access_t::update},
          {nc::nb_of_bids, Commute ? access_t::write : access_t::update}}
-#else
-        Commute ? RowAccess::None : RowAccess::ObserveValue
-#endif
     );
+    (void)result;
     TXN_DO(abort);
     assert(result);
 
-    if (Commute) {
+    if constexpr (Commute) {
+        (void)value;
         commutators::Commutator<item_row> comm(max_bid);
         db.tbl_items().update_row(row, comm);
     } else {
-        auto iv = reinterpret_cast<const item_row*>(value);
-        auto new_iv = Sto::tx_alloc(iv);
-        if (max_bid > iv->max_bid) {
+        auto new_iv = Sto::tx_alloc<item_row>();
+        value.copy_into(new_iv);
+        if (max_bid > new_iv->max_bid) {
             new_iv->max_bid = max_bid;
         }
         new_iv->nb_of_bids += 1;
         db.tbl_items().update_row(row, new_iv);
     }
-#endif
+    }
 
     bid_key bk(item_id, user_id, db.tbl_bids().gen_key());
     auto br = Sto::tx_alloc<bid_row>();
@@ -71,9 +45,12 @@ size_t rubis_runner<DBParams>::run_txn_placebid(uint64_t item_id, uint64_t user_
     br->quantity = qty;
     br->date = ig.generate_date();
 
-    std::tie(abort, result) = db.tbl_bids().insert_row(bk, br);
+    {
+    auto [abort, result] = db.tbl_bids().insert_row(bk, br);
+    (void)result;
     TXN_DO(abort);
     assert(!result);
+    }
 
     } RETRY(true);
 
@@ -82,73 +59,50 @@ size_t rubis_runner<DBParams>::run_txn_placebid(uint64_t item_id, uint64_t user_
 
 template <typename DBParams>
 size_t rubis_runner<DBParams>::run_txn_buynow(uint64_t item_id, uint64_t user_id, uint32_t qty) {
-#if TABLE_FINE_GRAINED
     typedef item_row::NamedColumn nc;
-#endif
     size_t execs = 0;
 
     RWTRANSACTION {
-
-    bool abort, result;
-    uintptr_t row;
-    const void* value;
 
     ++execs;
 
     auto curr_date = ig.generate_date();
 
-#if TPCC_SPLIT_TABLE
-    std::tie(abort, result, row, value) = db.tbl_items_comm().select_row(item_key(item_id),
-            Commute ? RowAccess::None : RowAccess::ObserveValue);
-    TXN_DO(abort);
-    assert(result);
-
-    if (Commute) {
-        commutators::Commutator<item_comm_row> comm(qty, curr_date);
-        db.tbl_items_comm().update_row(row, comm);
-    } else {
-        auto iv = reinterpret_cast<const item_comm_row*>(value);
-        auto new_iv = Sto::tx_alloc(iv);
-        new_iv->quantity -= qty;
-        if (new_iv->quantity == 0) {
-            new_iv->end_date = curr_date;
-        }
-        db.tbl_items_comm().update_row(row, new_iv);
-    }
-#else
-    std::tie(abort, result, row, value) = db.tbl_items().select_row(item_key(item_id),
-#if TABLE_FINE_GRAINED
+    {
+    auto [abort, result, row, value] = db.tbl_items().select_split_row(item_key(item_id),
         {{nc::quantity, Commute ? access_t::write : access_t::update},
          {nc::end_date, Commute ? access_t::write : access_t::update}}
-#else
-        Commute ? RowAccess::None : RowAccess::ObserveValue
-#endif
     );
+    (void)result;
     TXN_DO(abort);
     assert(result);
 
-    if (Commute) {
+    if constexpr (Commute) {
+        (void)value;
         commutators::Commutator<item_row> comm(qty, curr_date);
         db.tbl_items().update_row(row, comm);
     } else {
-        auto iv = reinterpret_cast<const item_row*>(value);
-        auto new_iv = Sto::tx_alloc(iv);
+        auto new_iv = Sto::tx_alloc<item_row>();
+        value.copy_into(new_iv);
         new_iv->quantity -= qty;
         if (new_iv->quantity == 0) {
             new_iv->end_date = curr_date;
         }
         db.tbl_items().update_row(row, new_iv);
     }
-#endif
+    }
 
     buynow_key bnk(item_id, user_id, db.tbl_buynow().gen_key());
     auto bnr = Sto::tx_alloc<buynow_row>();
     bnr->quantity = qty;
     bnr->date = curr_date;
 
-    std::tie(abort, result) = db.tbl_buynow().insert_row(bnk, bnr);
+    {
+    auto [abort, result] = db.tbl_buynow().insert_row(bnk, bnr);
+    (void)result;
     TXN_DO(abort);
     assert(!result);
+    }
 
     } RETRY(true);
 
@@ -157,23 +111,21 @@ size_t rubis_runner<DBParams>::run_txn_buynow(uint64_t item_id, uint64_t user_id
 
 template <typename DBParams>
 size_t rubis_runner<DBParams>::run_txn_viewitem(uint64_t item_id) {
+    typedef item_row::NamedColumn nc;
     size_t execs = 0;
 
     TRANSACTION {
 
-    bool abort, result;
-    uintptr_t row;
-    const void* value;
-
     ++execs;
 
-#if TPCC_SPLIT_TABLE
-    std::tie(abort, result, row, value) = db.tbl_items_comm().select_row(item_key(item_id), RowAccess::ObserveValue);
-#else
-    std::tie(abort, result, row, value) = db.tbl_items().select_row(item_key(item_id), RowAccess::ObserveValue);
-#endif
+    auto [abort, result, row, value] = db.tbl_items().select_split_row(item_key(item_id),
+        {{nc::quantity, access_t::read},
+         {nc::nb_of_bids, access_t::read},
+         {nc::max_bid, access_t::read},
+         {nc::end_date, access_t::read}});
+    (void)result; (void)row; (void)value;
     TXN_DO(abort);
-    always_assert(result, "Item should always exist.");
+    assert(result);
 
     } RETRY(true);
 
