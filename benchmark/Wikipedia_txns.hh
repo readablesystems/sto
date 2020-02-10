@@ -71,7 +71,7 @@ size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
 #else
     std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
 #if TABLE_FINE_GRAINED
-        {{nc::user_touched, access_t::update}}
+        {{nc::user_touched, Commute ? access_t::write : access_t::update}}
 #else
         Commute ? RowAccess::None : RowAccess::ObserveValue
 #endif
@@ -133,7 +133,7 @@ size_t wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
 #else
     std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
 #if TABLE_FINE_GRAINED
-        {{nc::user_touched, access_t::update}}
+        {{nc::user_touched, Commute ? access_t::write : access_t::update}}
 #else
         Commute ? RowAccess::None : RowAccess::ObserveValue
 #endif
@@ -528,26 +528,32 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     std::tie(abort, result, row, value) =
         db.tbl_page().select_row(page_key(page_id),
 #if TABLE_FINE_GRAINED
-            {{page_nc::page_latest, access_t::update},
-             {page_nc::page_touched, access_t::update},
-             {page_nc::page_is_new, access_t::update},
-             {page_nc::page_is_redirect, access_t::update},
-             {page_nc::page_len, access_t::update}}
+            {{page_nc::page_latest, Commute ? access_t::write : access_t::update},
+             {page_nc::page_touched, Commute ? access_t::write : access_t::update},
+             {page_nc::page_is_new, Commute ? access_t::write : access_t::update},
+             {page_nc::page_is_redirect, Commute ? access_t::write : access_t::update},
+             {page_nc::page_len, Commute ? access_t::write : access_t::update}}
 #else
-            RowAccess::ObserveValue
+            Commute ? RowAccess::None : RowAccess::ObserveValue
 #endif
         );
     TXN_CHECK(abort);
     assert(result);
 
-    auto new_pv = Sto::tx_alloc(reinterpret_cast<const page_row *>(value));
-    new_pv->page_latest = bswap(new_rev_k.rev_id);
-    new_pv->page_touched = timestamp_str;
-    new_pv->page_is_new = 0;
-    new_pv->page_is_redirect = 0;
-    new_pv->page_len = (int32_t)page_text.length();
+    if (Commute) {
+        commutators::Commutator<page_row> comm(0, 0, timestamp_str,
+            bswap(new_rev_k.rev_id), (int32_t)page_text.length());
+        db.tbl_page().update_row(row, comm);
+    } else {
+        auto new_pv = Sto::tx_alloc(reinterpret_cast<const page_row *>(value));
+        new_pv->page_latest = bswap(new_rev_k.rev_id);
+        new_pv->page_touched = timestamp_str;
+        new_pv->page_is_new = 0;
+        new_pv->page_is_redirect = 0;
+        new_pv->page_len = (int32_t)page_text.length();
 
-    db.tbl_page().update_row(row, new_pv);
+        db.tbl_page().update_row(row, new_pv);
+    }
 #endif
 
     // INSERT RECENT CHANGES
@@ -656,8 +662,8 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 #else
         std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
 #if TABLE_FINE_GRAINED
-            {{user_nc::user_editcount, access_t::update},
-             {user_nc::user_touched,   access_t::update}}
+            {{user_nc::user_editcount, Commute ? access_t::write : access_t::update},
+             {user_nc::user_touched,   Commute ? access_t::write : access_t::update}}
 #else
             RowAccess::ObserveValue
 #endif
@@ -718,10 +724,10 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 #else
     std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
 #if TABLE_FINE_GRAINED
-        {{user_nc::user_editcount, access_t::update},
-         {user_nc::user_touched,   access_t::update}}
+        {{user_nc::user_editcount, Commute ? access_t::write : access_t::update},
+         {user_nc::user_touched,   Commute ? access_t::write : access_t::update}}
 #else
-        RowAccess::ObserveValue
+        Commute ? RowAccess::None : RowAccess::ObserveValue
 #endif
     );
     TXN_CHECK(abort);
