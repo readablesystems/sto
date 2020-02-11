@@ -1567,8 +1567,7 @@ private:
         cursor_type lp(ip->table_, el->key);
         bool found = lp.find_locked(*ip->ti);
         if (found) {
-            assert(lp.value() == el);
-            if (el->row.is_head(hp)) {
+            if ((lp.value() == el) && el->row.is_head(hp)) {
                 lp.finish(-1, *ip->ti);
                 Transaction::rcu_delete(el);
             } else {
