@@ -290,7 +290,8 @@ public:
     inline void run_txn_neworder();
     inline void run_txn_payment();
     inline void run_txn_orderstatus();
-    inline void run_txn_delivery(uint64_t wid);
+    inline void run_txn_delivery(uint64_t wid,
+        std::array<uint64_t, NUM_DISTRICTS_PER_WAREHOUSE>& last_delivered);
     inline void run_txn_stocklevel();
 
     inline uint64_t owned_warehouse() const {
@@ -694,6 +695,9 @@ public:
 
         uint64_t local_cnt = 0;
 
+        std::array<uint64_t, NUM_DISTRICTS_PER_WAREHOUSE> last_delivered;
+        std::fill(last_delivered.begin(), last_delivered.end(), 0);
+
         ::TThread::set_id(runner_id);
         set_affinity(runner_id);
         db.thread_init_all();
@@ -711,7 +715,7 @@ public:
 
                 if (num_to_run > 0) {
                     for (num_run = 0; num_run < num_to_run; ++num_run) {
-                        runner.run_txn_delivery(own_w_id);
+                        runner.run_txn_delivery(own_w_id, last_delivered);
                         if ((read_tsc() - start_t) >= tsc_diff) {
                             stop = true;
                             ++num_run;
