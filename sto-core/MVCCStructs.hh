@@ -301,7 +301,7 @@ private:
         while (h) {
             if (h == hd) {
                 if (hd->delete_cb) {
-                    hd->delete_cb(hd->index_ptr, hd->delete_param, ptr);
+                    hd->delete_cb(hd->index_ptr, hd->delete_param, hd);
                 }
                 break;
             }
