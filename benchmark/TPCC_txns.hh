@@ -891,7 +891,8 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 }
 
 template <typename DBParams>
-void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
+void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
+                                             std::array<uint64_t, NUM_DISTRICTS_PER_WAREHOUSE>& last_delivered) {
 #if TABLE_FINE_GRAINED
     typedef order_value::NamedColumn od_nc;
     typedef orderline_value::NamedColumn ol_nc;
@@ -906,6 +907,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
     const void *value;
 
     uint64_t order_id;
+    std::array<uint64_t, NUM_DISTRICTS_PER_WAREHOUSE> delivered_order_ids;
     std::vector<uint64_t> ol_nums;
     int32_t ol_amount_sum;
 
@@ -926,7 +928,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
         //printf("district %lu\n", q_d_id);
         //Sto::print_read_set_size("0");
 
-        order_key k0(q_w_id, q_d_id, 0);
+        order_key k0(q_w_id, q_d_id, last_delivered[q_d_id - 1]);
         order_key k1(q_w_id, q_d_id, std::numeric_limits<order_key::oid_type>::max());
         success = db.tbl_neworders(q_w_id)
                 .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, true, 1);
@@ -935,6 +937,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 
         TXP_INCREMENT(txp_tpcc_dl_stage2);
 
+        delivered_order_ids[q_d_id - 1] = order_id;
         if (order_id == 0)
             continue;
 
@@ -1106,6 +1109,8 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
     }
 
     } TEND(true);
+
+    last_delivered = delivered_order_ids;
 
     TXP_INCREMENT(txp_tpcc_dl_commits);
     TXP_ACCOUNT(txp_tpcc_dl_aborts, starts - 1);
