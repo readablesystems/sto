@@ -722,7 +722,11 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
             hv.h_amount = 1000;
             hv.h_data = random_a_string(12, 24);
 
+#if HISTORY_SEQ_INSERT
+            history_key hk(db.tbl_histories(wid).gen_key());
+#else
             history_key hk(wid, did, cid, db.tbl_histories(wid).gen_key());
+#endif
             db.tbl_histories(wid).nontrans_put(hk, hv);
         }
     }

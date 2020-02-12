@@ -20,6 +20,10 @@
 #define CONTENTION_AWARE_IDX 1
 #endif
 
+#ifndef HISTORY_SEQ_INSERT
+#define HISTORY_SEQ_INSERT 0
+#endif
+
 namespace tpcc {
 
 // singleton class used for fast oid generation
@@ -398,6 +402,22 @@ struct c_data_info {
 
 // HISTORY
 
+#if HISTORY_SEQ_INSERT
+struct history_key {
+    history_key(uint64_t hid)
+        : h_id(bswap(hid)) {}
+    bool operator==(const history_key& other) const {
+        return (h_id == other.h_id);
+    }
+    bool operator!=(const history_key& other) const {
+        return h_id != other.h_id;
+    }
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
+    }
+    uint64_t h_id;
+};
+#else
 struct history_key {
     history_key(uint64_t wid, uint64_t did, uint64_t cid, uint64_t hid)
         : w_id(bswap(static_cast<uint32_t>(wid))), d_id(bswap(static_cast<uint32_t>(did))),
@@ -417,6 +437,7 @@ struct history_key {
     uint64_t c_id;
     uint64_t h_id;
 };
+#endif
 
 struct history_value {
     enum class NamedColumn : int { h_c_id = 0,
