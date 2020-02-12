@@ -309,7 +309,11 @@ private:
         if (status_is(COMMITTED_DELTA)) {
             assert(prev());
             TXP_INCREMENT(txp_mvcc_flat_runs);
+#if CU_READ_AT_PRESENT
             prev()->flatten(v, wtid_);
+#else
+            prev()->flatten(v);
+#endif
             v = c_.operate(v);
         }
         MvStatus expected = COMMITTED_DELTA;
@@ -324,16 +328,23 @@ private:
         }
     }
 
+#if CU_READ_AT_PRESENT
     void flatten(T &v, type next_wtid) {
+#else
+    void flatten(T &v) {
+#endif
         std::stack<history_type*> trace;
         history_type* curr = this;
+#if CU_READ_AT_PRESENT
         while (true) {
             type ets = curr->rtid();
             if (ets >= next_wtid) break;
             if (curr->rtid(ets, next_wtid)) break;
         }
+#endif
         trace.push(curr);
         TXP_INCREMENT(txp_mvcc_flat_versions);
+#if CU_READ_AT_PRESENT
         while (true) {
             // Wait for pending versions to resolve.
             while (curr->status_is(PENDING)) { relax_fence(); }
@@ -347,7 +358,10 @@ private:
                 if (ets >= next_wtid) break;
                 if (curr->rtid(ets, next_wtid)) break;
             }
-
+#else
+        while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
+            curr = curr->prev();
+#endif
             trace.push(curr);
             TXP_INCREMENT(txp_mvcc_flat_versions);
             curr->gc_push(object()->is_inlined(curr));
