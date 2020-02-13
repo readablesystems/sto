@@ -280,7 +280,7 @@ public:
                 item.add_write();
             }
             if ((cell_accesses[I] & access_t::read) != access_t::none) {
-                auto h = mvobj->find(Sto::read_tid<false>());
+                auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
                 if (h->status_is(COMMITTED_DELETED)) {
                     return false;
                 } else if (!h->status_is(UNUSED) && !IndexType::template is_phantom<First>(h, item)) {
@@ -618,6 +618,8 @@ public:
     // tag TItem key for special treatment
     static constexpr uintptr_t item_key_tag = 1;
 
+    static constexpr bool Commute = DBParams::Commute;
+
     typedef typename value_type::NamedColumn NamedColumn;
     typedef typename get_version<DBParams>::type version_type;
     typedef IndexValueContainer<V, version_type> value_container_type;
@@ -749,7 +751,7 @@ bool mvcc_chain_operations<K, V, DBParams>::check_impl_per_chain(TransItem &item
     using history_type = typename MvObject<TSplit>::history_type;
 
     auto h = item.template read_value<history_type*>();
-    auto result = chain->cp_check(Sto::read_tid<false>(), h);
+    auto result = chain->cp_check(Sto::read_tid<DBParams::Commute>(), h);
     TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
     return result;
 }
