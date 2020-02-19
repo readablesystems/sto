@@ -11,8 +11,7 @@
 #include "TMvBox.hh"
 
 typedef TMvCommuteIntegerBox tbox_t;
-
-using std::chrono_literals::operator""ms;
+using namespace std::chrono_literals;
 
 std::mutex io_mu;
 
@@ -24,6 +23,7 @@ void ConcurrentThreadIncrement(int thread_id, tbox_t& box) {
 
     for (size_t i = 0; i < INCREMENTS_PER_THREAD; ++i) {
         RWTRANSACTION {
+            TXN_DO(true);
             box.increment(1);
         } RETRY(true);
     }
@@ -50,7 +50,7 @@ void ReaderThread(int thread_id, tbox_t& box, std::atomic<bool>& stop) {
     }
 
     int64_t final_value= -1;
-    TRANSACTION {
+    RWTRANSACTION {
         auto [success, v] = box.read_nothrow();
         TXN_DO(success);
         final_value = v;
@@ -90,4 +90,5 @@ int main() {
     for (int i = NUM_WRITER_THREADS; i < NUM_WRITER_THREADS + 2; ++i) {
         thrs[i].join();
     }
+    std::cout << "Test pass!" << std::endl;
 }
