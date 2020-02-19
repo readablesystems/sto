@@ -182,7 +182,8 @@ UNIT_PROGRAMS = \
 	unit-tmvarray \
 	unit-dboindex \
 	unit-mvcc-access-all \
-	unit-tmvbox-concurrent
+	unit-tmvbox-concurrent \
+	unit-dbindex-concurrent
 
 ACT_UNIT_PROGRAMS = \
 	unit-tarray \
@@ -202,7 +203,8 @@ ACT_UNIT_PROGRAMS = \
 	unit-tmvarray \
 	unit-dboindex \
 	unit-mvcc-access-all \
-	unit-tmvbox-concurrent
+	unit-tmvbox-concurrent \
+	unit-dbindex-concurrent
 
 PROGRAMS = \
 	concurrent \
@@ -362,6 +364,9 @@ unit-mvcc-access-all: $(OBJ)/unit-mvcc-access-all.o $(INDEX_DEPS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 unit-tmvbox-concurrent: $(OBJ)/unit-tmvbox-concurrent.o $(INDEX_DEPS) $(XXHASH_OBJ)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+
+unit-dbindex-concurrent: $(OBJ)/unit-dbindex-concurrent.o $(INDEX_DEPS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 list1: $(OBJ)/list1.o $(STO_DEPS)
