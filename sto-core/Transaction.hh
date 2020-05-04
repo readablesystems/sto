@@ -348,6 +348,7 @@ enum TimingCounters {
     tc_abort,
     tc_cleanup,
     tc_opacity,
+    tc_elapsed,
     tc_count
 };
 
