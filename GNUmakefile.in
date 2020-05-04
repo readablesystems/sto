@@ -217,6 +217,7 @@ PROGRAMS = \
 	tpcc_bench \
 	micro_bench \
 	ycsb_bench \
+	ht_bench \
 	gc_bench \
 	pred_bench \
 	wiki_bench \
@@ -391,6 +392,9 @@ tpcc_bench: $(OBJ)/TPCC_bench.o $(TPCC_TMPLS) $(INDEX_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 ycsb_bench: $(OBJ)/YCSB_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+
+ht_bench: $(OBJ)/HT_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 micro_bench: $(OBJ)/MicroBenchmarks.o $(INDEX_OBJS)
