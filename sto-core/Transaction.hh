@@ -577,9 +577,6 @@ public:
         auto& thr = tinfo[TThread::id()];
         thr.rcu_set.add(thr.write_snapshot_epoch, function, argument);
     }
-    static void rcu_quiesce() {
-        tinfo[TThread::id()].epoch = 0;
-    }
 
 #if STO_PROFILE_COUNTERS
     template <unsigned P> static void txp_account(txp_counter_type n) {
@@ -650,17 +647,19 @@ private:
         start_tsc_ = read_tsc();
 #endif
         special_txp = false;
-        //thr.epoch = global_epochs.global_epoch;
-        thr.write_snapshot_epoch = global_epochs.global_epoch.load();
-        thr.epoch = global_epochs.read_epoch.load();
+        thr.write_snapshot_epoch.store(global_epochs.global_epoch.load(), std::memory_order_relaxed);
+        thr.epoch.store(global_epochs.read_epoch.load(), std::memory_order_relaxed);
         thr.rcu_set.clean_until(global_epochs.active_epoch.load());
-        thr.rtid = thr.wtid = 0;
+        thr.wtid = 0;
+        thr.rtid.store(0, std::memory_order_relaxed);
         if (thr.trans_start_callback)
             thr.trans_start_callback();
         hash_base_ += tset_size_ + 1;
         tset_size_ = 0;
         tset_next_ = tset0_;
+#if CICADA_HASHTABLE
         cht_.clear();
+#endif
 #if CICADA_HASHTABLE == 0 && TRANSACTION_HASHTABLE
         if (hash_base_ >= hash_size) {
             memset(hashtable_, 0, sizeof(hashtable_));
@@ -1053,36 +1052,43 @@ public:
             threadinfo_t& thr = tinfo[TThread::id()];
 #if SAFE_FLATTEN
             if (mvcc_rw) {
-                thr.rtid = read_tid_ = _TID;
+                read_tid_ = _TID;
+                thr.rtid.store(read_tid_, std::memory_order_relaxed);
             } else {
                 epoch_advance_once();
-                thr.rtid = read_tid_ = _RTID.load();
+                read_tid_ = _RTID;
+                thr.rtid.store(read_tid_, std::memory_order_relaxed);
             }
             // Can't we just get the most recent tid (_TID?)
 #else
 #if CU_READ_AT_PRESENT
             // Experimental: always read at the present for mvcc r/w transactions.
             if (mvcc_rw) {
-                thr.rtid = read_tid_ = _TID;
+                read_tid_ = _TID;
+                thr.rtid.store(read_tid_, std::memory_order_relaxed);
             } else {
                 epoch_advance_once();
-                thr.rtid = read_tid_ = _RTID;
+                read_tid_ = _RTID;
+                thr.rtid.store(read_tid_, std::memory_order_relaxed);
             }
 #else
             if constexpr (!Commute) {
                 if (mvcc_rw) {
                     //thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
-                    thr.rtid = read_tid_ = _TID;
+                    read_tid_ = _TID;
+                    thr.rtid.store(read_tid_, std::memory_order_relaxed);
                 } else {
                     epoch_advance_once();
-                    thr.rtid = read_tid_ = _RTID;
+                    read_tid_ = _RTID;
+                    thr.rtid.store(read_tid_, std::memory_order_relaxed);
                 }
             } else {
                 // When we use CU we can't do the timestamp hack above because
                 // flattening delta versions require the invariant that all
                 // reads never observe information based on pending versions
                 epoch_advance_once();
-                thr.rtid = read_tid_ = _RTID;
+                read_tid_ = _RTID;
+                thr.rtid.store(read_tid_, std::memory_order_relaxed);
             }
 #endif
 #endif
