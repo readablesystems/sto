@@ -13,6 +13,14 @@ public:
             : spawn_perf_(spawn_perf), perf_pid_(),
               start_tsc_(), end_tsc_() {}
 
+    static double ticks_to_secs(const uint64_t ticks) {
+        return (double)ticks / constants::billion / constants::processor_tsc_frequency;
+    }
+
+    static uint64_t secs_to_ticks(const double secs) {
+        return (uint64_t)(secs * constants::billion * constants::processor_tsc_frequency);
+    }
+
     void start(Profiler::perf_mode mode) {
         if (spawn_perf_)
             perf_pid_ = Profiler::spawn("perf", mode);
