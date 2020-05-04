@@ -373,6 +373,7 @@ public:
             buck.head = new_head;
         } else {
             copy_row(e, &v);
+            buck.version.inc_nonopaque();
         }
         buck.version.unlock_exclusive();
     }
