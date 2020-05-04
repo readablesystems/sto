@@ -292,7 +292,7 @@ unlock_all:
     threadinfo_t& thr = tinfo[TThread::id()];
     if (thr.trans_end_callback)
         thr.trans_end_callback();
-    thr.rtid = thr.wtid = 0;
+    thr.rtid.store(thr.wtid = 0, std::memory_order_relaxed);
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
     restarted = true;
@@ -594,7 +594,6 @@ void Transaction::print_stats() {
         fprintf(stderr, "$      Check Abort 1: %llu\n", out.p(txp_tpcc_check_abort1));
         fprintf(stderr, "$      Check Abort 2: %llu\n", out.p(txp_tpcc_check_abort2));
     }
-    fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID);
 
 #if STO_TSC_PROFILE
     tc_counters out_tcs = tc_counters_combined();
@@ -610,6 +609,8 @@ void Transaction::print_stats() {
 
     fprintf(stderr, "%s\n", ss.str().c_str());
 #endif
+
+    fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID);
 }
 
 const char* Transaction::state_name(int state) {
