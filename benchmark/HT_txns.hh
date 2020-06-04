@@ -80,7 +80,8 @@ typename htbench_runner<DBParams>::txn_type htbench_runner<DBParams>::run_txn(
         //uint64_t txn_start_tick = read_tsc();
 
         TRANSACTION {
-            bool success, result;
+            //bool success, result;
+            bool failure, result;
             uintptr_t row;
             const void* value;
             if (DBParams::MVCC && txn.rw_txn) {
@@ -90,27 +91,35 @@ typename htbench_runner<DBParams>::txn_type htbench_runner<DBParams>::run_txn(
                 //op_start_tick = read_tsc();
                 if (op.is_write) {
                     ht_key key(op.key);
+                    /*
                     std::tie(success, result, row, value)
                         = table.table().select_row(key,
                         Commute ? RowAccess::None : RowAccess::ObserveValue
                     );
+                    */
+                    std::tie(failure, result, row, value)
+                        = table.table().transGet(key, true).to_tuple();
 
                     //op_end_tick = read_tsc();
                     //TSC_ACCOUNT(tc_txn_write, op_end_tick - op_start_tick);
 
-                    TXN_DO(success);
+                    //TXN_DO(success);
+                    TXN_DO(!failure);
                     assert(result);
 
                     //op_start_tick = read_tsc();
 
                     if (Commute) {
+                        /*
                         commutators::Commutator<ht_value> comm(op.value);
                         table.table().update_row(row, comm);
+                        */
                     } else {
                         auto old_val = reinterpret_cast<const ht_value*>(value);
                         auto new_val = Sto::tx_alloc(old_val);
                         new_val->value = op.value;
-                        table.table().update_row(row, new_val);
+                        //table.table().update_row(row, new_val);
+                        table.table().transUpdate(row, new_val);
                     }
 
                     //op_end_tick = read_tsc();
@@ -125,20 +134,25 @@ typename htbench_runner<DBParams>::txn_type htbench_runner<DBParams>::run_txn(
                     //TSC_ACCOUNT(tc_table, read_tsc() - table_start_t);
 
                     //auto sel_start_t = read_tsc();
+                    /*
                     auto res
                         = tbl.select_row(key,
                         RowAccess::ObserveValue
                     );
+                    */
+                    auto res = tbl.transGet(key, true).to_tuple();
                     //TSC_ACCOUNT(tc_select_call, read_tsc() - sel_start_t);
 
                     //auto untie_start_t = read_tsc();
-                    std::tie(success, result, row, value) = res;
+                    //std::tie(success, result, row, value) = res;
+                    std::tie(failure, result, row, value) = res;
                     //TSC_ACCOUNT(tc_untie, read_tsc() - untie_start_t);
 
                     //op_end_tick = read_tsc();
                     //TSC_ACCOUNT(tc_txn_read, op_end_tick - op_start_tick);
 
-                    TXN_DO(success);
+                    //TXN_DO(success);
+                    TXN_DO(!failure);
                     assert(result);
 
                     //op_start_tick = read_tsc();
