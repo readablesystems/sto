@@ -180,6 +180,7 @@ UNIT_PROGRAMS = \
 	unit-masstree \
 	unit-tmvbox \
 	unit-tmvarray \
+	unit-hashtable \
 	unit-dboindex
 
 ACT_UNIT_PROGRAMS = \
@@ -198,6 +199,7 @@ ACT_UNIT_PROGRAMS = \
 	unit-masstree \
 	unit-tmvbox \
 	unit-tmvarray \
+	unit-hashtable \
 	unit-dboindex
 
 PROGRAMS = \
@@ -350,6 +352,9 @@ unit-tmvarray: $(OBJ)/unit-tmvarray.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tmvbox: $(OBJ)/unit-tmvbox.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-hashtable: $(OBJ)/unit-hashtable.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
