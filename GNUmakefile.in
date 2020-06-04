@@ -181,9 +181,10 @@ UNIT_PROGRAMS = \
 	unit-tmvbox \
 	unit-tmvarray \
 	unit-dboindex \
-	unit-mvcc-access-all \
+	unit-hashtable \
 	unit-tmvbox-concurrent \
 	unit-dbindex-concurrent
+	unit-mvcc-access-all
 
 ACT_UNIT_PROGRAMS = \
 	unit-tarray \
@@ -201,6 +202,7 @@ ACT_UNIT_PROGRAMS = \
 	unit-masstree \
 	unit-tmvbox \
 	unit-tmvarray \
+	unit-hashtable \
 	unit-dboindex \
 	unit-mvcc-access-all \
 	unit-tmvbox-concurrent \
@@ -356,6 +358,9 @@ unit-tmvarray: $(OBJ)/unit-tmvarray.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tmvbox: $(OBJ)/unit-tmvbox.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-hashtable: $(OBJ)/unit-hashtable.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
