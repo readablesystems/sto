@@ -14,6 +14,7 @@
 #endif
 #include "DB_index.hh"
 #include "DB_params.hh"
+#include "Hashtable.hh"
 
 namespace htbench {
 
@@ -36,7 +37,8 @@ public:
         mvcc_unordered_index<K, V, DBParams>,
         unordered_index<K, V, DBParams>>::type;
 
-    typedef UIndex<ht_key, ht_value> ht_table_type;
+    //typedef UIndex<ht_key, ht_value> ht_table_type;
+    typedef Hashtable<Hashtable_params<ht_key, ht_value>> ht_table_type;
 
     explicit ht_table() : ht_table_(ht_table_size) {}
 
@@ -45,7 +47,7 @@ public:
     }
 
     void table_thread_init() {
-        ht_table_.thread_init();
+        //ht_table_.thread_init();
     }
 
     void prepopulate();
