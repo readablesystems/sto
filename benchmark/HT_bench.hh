@@ -41,7 +41,11 @@ public:
     typedef std::conditional_t<
         DBParams::MVCC,
         Hashtable_mvcc_params<ht_key, ht_value>,
-        Hashtable_params<ht_key, ht_value>> ht_params_type;
+        std::conditional_t<
+            DBParams::Opaque,
+            Hashtable_opaque_params<ht_key, ht_value>,
+            Hashtable_params<ht_key, ht_value>>
+            > ht_params_type;
     typedef Hashtable<ht_params_type> ht_table_type;
     static constexpr auto BlindAccess = ht_table_type::BlindAccess;
     static constexpr auto ReadOnlyAccess = ht_table_type::ReadOnlyAccess;
