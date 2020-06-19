@@ -47,6 +47,14 @@ public:
     static constexpr bool MVCC = true;
 };
 
+template <
+    typename K, typename V,
+    typename H=std::hash<K>, typename P=std::equal_to<K>>
+class Hashtable_opaque_params : public Hashtable_params<K, V, H, P> {
+public:
+    static constexpr bool Opacity = true;
+};
+
 template <typename Params>
 #ifdef STO_NO_STM
 class Hashtable {

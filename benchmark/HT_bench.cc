@@ -564,10 +564,14 @@ int main(int argc, const char *const *argv) {
             ret_code = ht_access<db_default_params>::execute(argc, argv);
         }
         break;
-    /*
     case db_params_id::Opaque:
-        ret_code = ycsb_access<db_opaque_params>::execute(argc, argv);
+        if (enable_commute) {
+            ret_code = ht_access<db_opaque_commute_params>::execute(argc, argv);
+        } else {
+            ret_code = ht_access<db_opaque_params>::execute(argc, argv);
+        }
         break;
+    /*
     case db_params_id::TwoPL:
         ret_code = ycsb_access<db_2pl_params>::execute(argc, argv);
         break;
