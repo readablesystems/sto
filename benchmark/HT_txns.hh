@@ -98,7 +98,8 @@ typename htbench_runner<DBParams>::txn_type htbench_runner<DBParams>::run_txn(
                     );
                     */
                     std::tie(failure, result, row, value)
-                        = table.table().transGet(key, true).to_tuple();
+                        = table.table().transGet(
+                                key, table_type::ReadOnlyAccess).to_tuple();
 
                     //op_end_tick = read_tsc();
                     //TSC_ACCOUNT(tc_txn_write, op_end_tick - op_start_tick);
@@ -140,7 +141,8 @@ typename htbench_runner<DBParams>::txn_type htbench_runner<DBParams>::run_txn(
                         RowAccess::ObserveValue
                     );
                     */
-                    auto res = tbl.transGet(key, true).to_tuple();
+                    auto res = tbl.transGet(
+                            key, table_type::ReadOnlyAccess).to_tuple();
                     //TSC_ACCOUNT(tc_select_call, read_tsc() - sel_start_t);
 
                     //auto untie_start_t = read_tsc();
@@ -244,7 +246,7 @@ using bench::RowAccess;
 template <typename DBParams>
 typename htbench_barerunner<DBParams>::txn_type
 htbench_barerunner<DBParams>::run_txn(
-        const htbench_txn_t& txn) {
+        const htbench_txn_t&) {
     volatile ht_value::col_type output;
 
     if (!nontrans) {

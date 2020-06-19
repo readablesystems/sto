@@ -33,8 +33,18 @@ public:
     typedef P Pred;
 
     static constexpr uint32_t Capacity = 129;
+    static constexpr bool Commute = false;
     static constexpr bool Opacity = false;
     static constexpr bool ReadMyWrite = false;
+    static constexpr bool MVCC = false;
+};
+
+template <
+    typename K, typename V,
+    typename H=std::hash<K>, typename P=std::equal_to<K>>
+class Hashtable_mvcc_params : public Hashtable_params<K, V, H, P> {
+public:
+    static constexpr bool MVCC = true;
 };
 
 template <typename Params>
@@ -46,11 +56,16 @@ class Hashtable : public TObject {
 public:
     typedef typename Params::Key key_type;
     typedef typename Params::Value value_type;
+    typedef commutators::Commutator<value_type> comm_type;
     typedef typename Params::Hash Hash;
     typedef typename Params::Pred Pred;
-    typedef typename std::conditional<Params::Opacity, TVersion, TNonopaqueVersion>::type version_type;
-    typedef typename std::conditional<Params::Opacity, TWrapped<value_type>, TNonopaqueWrapped<value_type>>::type wrapped_type;
+    typedef typename std::conditional_t<Params::Opacity, TVersion, TNonopaqueVersion> version_type;
+    typedef typename std::conditional_t<Params::Opacity, TWrapped<value_type>, TNonopaqueWrapped<value_type>> wrapped_type;
     typedef IndexValueContainer<value_type, version_type> value_container_type;
+
+    // MVCC typedefs
+    typedef MvObject<value_type> object_type;
+    typedef typename object_type::history_type history_type;
 
 #ifdef STO_NO_STM
     static constexpr bool enable_stm = false;
@@ -58,19 +73,32 @@ public:
     static constexpr bool enable_stm = true;
 #endif
 
-    struct select_result_type {
+    enum AccessMethod {
+        Blind = 0,
+        ReadOnly,
+        ReadWrite,
+    };
+
+    static constexpr AccessMethod BlindAccess = AccessMethod::Blind;
+    static constexpr AccessMethod ReadOnlyAccess = AccessMethod::ReadOnly;
+    static constexpr AccessMethod ReadWriteAccess = AccessMethod::ReadWrite;
+
+    struct delete_result_type {
         bool abort;  // Whether the transaction should abort
         bool success;  // Whether the action succeeded
-        uintptr_t ref;  // An internally-held reference
-        const value_type* value;  // The selected value
 
-        static constexpr select_result_type Abort = {
-            .abort = true, .success = false, .ref = 0, .value = nullptr
+        static constexpr delete_result_type Abort = {
+            .abort = true, .success = false
+        };
+
+        // Non-aborting failure
+        static constexpr delete_result_type Fail = {
+            .abort = false, .success = false
         };
 
         // Converts to an unstructure tuple of the result
-        std::tuple<bool, bool, uintptr_t, const value_type*> to_tuple() const {
-            return { abort, success, ref, value };
+        std::tuple<bool, bool> to_tuple() const {
+            return { abort, success };
         }
     };
 
@@ -82,35 +110,48 @@ public:
             .abort = true, .existed = false
         };
 
+        // Non-aborting failure
+        static constexpr insert_result_type Fail = {
+            .abort = false, .existed = false
+        };
+
         // Converts to an unstructure tuple of the result
         std::tuple<bool, bool> to_tuple() const {
             return { abort, existed };
         }
     };
 
-    struct delete_result_type {
+    struct select_result_type {
         bool abort;  // Whether the transaction should abort
         bool success;  // Whether the action succeeded
+        uintptr_t ref;  // An internally-held reference
+        const value_type* value;  // The selected value
 
-        static constexpr delete_result_type Abort = {
-            .abort = true, .success = false
+        static constexpr select_result_type Abort = {
+            .abort = true, .success = false, .ref = 0, .value = nullptr
+        };
+
+        // Non-aborting failure
+        static constexpr select_result_type Fail = {
+            .abort = false, .success = false, .ref = 0, .value = nullptr
         };
 
         // Converts to an unstructure tuple of the result
-        std::tuple<bool, bool> to_tuple() const {
-            return { abort, success };
+        std::tuple<bool, bool, uintptr_t, const value_type*> to_tuple() const {
+            return { abort, success, ref, value };
         }
     };
 
+private:
     // Our hashtable is an array of linked lists.
     // An internal_elem is the node type for these linked lists.
-    struct internal_elem {
-        internal_elem *next;
+    struct occ_internal_elem {
+        occ_internal_elem* next;
         key_type key;
         value_container_type row_container;
         bool deleted;
 
-        internal_elem(const key_type& k, const value_type& v, bool valid)
+        occ_internal_elem(const key_type& k, const value_type& v, bool valid)
             : next(nullptr), key(k),
               row_container(
                       Sto::initialized_tid() |
@@ -127,6 +168,18 @@ public:
         }
     };
 
+    // And the MVCC version of the internal element
+    struct mvcc_internal_elem {
+        mvcc_internal_elem* next;
+        key_type key;
+        object_type obj;
+
+        mvcc_internal_elem(const key_type& k): next(nullptr), key(k), obj() {}
+    };
+
+public:
+    typedef typename std::conditional_t<Params::MVCC, mvcc_internal_elem, occ_internal_elem> internal_elem;
+
 private:
     // For concurrency control of buckets
     typedef version_type bucket_version_type;
@@ -142,7 +195,7 @@ private:
     static constexpr TransItem::flags_type update_bit = TransItem::user0_bit << 2;
 
     struct bucket_entry {
-        internal_elem *head;
+        internal_elem* head;
         // this is the bucket version number, which is incremented on insert
         // we use it to make sure that an unsuccessful key lookup will still be
         // unsuccessful at commit time (because this will always be true if no
@@ -213,11 +266,17 @@ public:
     value_type* nontrans_get(const key_type& key) {
         bucket_entry& buck = map_[find_bucket_idx(key)];
         internal_elem* e = find_in_bucket(buck, key);
-        if (!e || !e->valid() || e->deleted) {
-            return nullptr;
+        if constexpr (Params::MVCC) {
+            if (!e) {
+                return nullptr;
+            }
+            return &(e->obj.nontrans_access());
+        } else {
+            if (!e || !e->valid() || e->deleted) {
+                return nullptr;
+            }
+            return &(e->row_container.row);
         }
-
-        return &(e->row_container.row);
     }
 
     void nontrans_put(const key_type& key, const value_type& value) {
@@ -226,17 +285,27 @@ public:
         internal_elem* e = find_in_bucket(buck, key);
 
         if (!e) {
-            internal_elem* new_head = new internal_elem(key, value, true);
+            internal_elem* new_head;
+            if constexpr (Params::MVCC) {
+                new_head = new internal_elem(key);
+                new_head->obj.nontrans_access() = value;
+            } else {
+                new_head = new internal_elem(key, value, true);
+            }
             new_head->next = buck.head;
             buck.head = new_head;
         } else {
-            copy_row(e, &value);
-            buck.version.inc_nonopaque();
+            if constexpr (Params::MVCC) {
+                e->obj.nontrans_access() = value;
+            } else {
+                copy_row(e, &value);
+                buck.version.inc_nonopaque();
+            }
         }
         buck.version.unlock_exclusive();
     }
 
-    typename std::enable_if<enable_stm, delete_result_type>::type
+    typename std::enable_if_t<enable_stm, delete_result_type>
     // Transactional delete of the given key.
     transDelete(const key_type& key) {
         bucket_entry& buck = map_[find_bucket_idx(key)];
@@ -245,43 +314,78 @@ public:
 
         internal_elem* e = find_in_bucket(buck, key);
         if (e) {
-            fence();
-
             auto item = Sto::item(this, e);
-            bool valid = e->valid();
-
-            if (is_phantom(e, item)) {
-                return delete_result_type::Abort;
+            history_type* h = nullptr;
+            bool valid = true;
+            if constexpr (Params::MVCC) {
+                h = e->obj.find(txn_read_tid());
+                (void) valid;  // Avoid set-but-not-used error
+            } else {
+                valid = e->valid();
+                (void) h;  // Avoid set-but-not-used error
             }
 
-            if (Params::ReadMyWrite && has_insert(item)) {
-                if (!valid && has_insert(item)) {
-                    // Deleting own insert
-                    remove(e);
-                    // Make item ignored and queue for garbage collection later
-                    item.remove_read().remove_write().clear_flags(
-                            insert_bit | delete_bit);
-                    Sto::item(this, make_bucket_key(buck)).observe(buck_vers);
-                    return { .abort = false, .success = true };
+            if constexpr (Params::MVCC) {
+                if (is_phantom(h, item)) {
+                    return delete_result_type::Fail;
                 }
-
-                assert(valid);
-
-                if (has_delete(item)) {
-                    return { .abort = false, .success = false };
+            } else {
+                if (is_phantom(e, item)) {
+                    return delete_result_type::Abort;
                 }
             }
 
+            if constexpr (Params::MVCC) {
+                if (Params::ReadMyWrite) {
+                    if (has_delete(item)) {
+                        return delete_result_type::Fail;
+                    }
+                    if (h->status_is(DELETED) && has_insert(item)) {
+                        item.add_flags(delete_bit);
+                        return { .abort = false, .success = true };
+                    }
+                }
+            } else {
+                if (Params::ReadMyWrite && has_insert(item)) {
+                    if (!valid && has_insert(item)) {
+                        // Deleting own insert
+                        remove(e);
+                        // Make item ignored and queue for gc later
+                        item.remove_read().remove_write().clear_flags(
+                                insert_bit | delete_bit);
+                        Sto::item(this, make_bucket_key(buck))
+                            .observe(buck_vers);
+                        return { .abort = false, .success = true };
+                    }
+
+                    assert(valid);
+
+                    if (has_delete(item)) {
+                        return delete_result_type::Fail;
+                    }
+                }
+            }
+
+                
             // Add this to read set
-            if (!item.observe(e->version())) {
-                return delete_result_type::Abort;
-            }
-            item.add_write();
-            fence();
+            if constexpr (Params::MVCC) {
+                MvAccess::template read<value_type>(item, h);
+                if (h->status_is(DELETED)) {
+                    // Deleting an already-deleted element
+                    return delete_result_type::Fail;
+                }
+                item.add_write();
+            } else {
+                if (!item.observe(e->version())) {
+                    return delete_result_type::Abort;
+                }
+                item.add_write();
+                fence();
 
-            // Double check deleted status after observation
-            if (e->deleted) {  // Another thread beat us to it
-                return delete_result_type::Abort;
+                // Double check deleted status after observation
+                if (e->deleted) {  // Another thread beat us to it
+                    return delete_result_type::Abort;
+                }
             }
 
             item.add_flags(delete_bit);
@@ -294,12 +398,12 @@ public:
             return delete_result_type::Abort;
         }
 
-        return { .abort = false, .success = false };
+        return delete_result_type::Fail;
     }
 
-    typename std::enable_if<enable_stm, select_result_type>::type
+    typename std::enable_if_t<enable_stm, select_result_type>
     // Transactional get on the given key.
-    transGet(const key_type& key, const bool readonly) {
+    transGet(const key_type& key, const AccessMethod access) {
         bucket_entry& buck = map_[find_bucket_idx(key)];
         version_type buck_vers = buck.version;
         fence();
@@ -307,38 +411,55 @@ public:
         internal_elem* e = find_in_bucket(buck, key);
 
         if (e) {
-            return transGet(reinterpret_cast<uintptr_t>(e), readonly);
+            return transGet(reinterpret_cast<uintptr_t>(e), access);
         }
 
         if (!Sto::item(this, make_bucket_key(buck)).observe(buck_vers)) {
             return select_result_type::Abort;
         }
 
-        return { .abort = false, .success = false, .ref = 0, .value = nullptr };
+        return select_result_type::Fail;
     }
 
-    typename std::enable_if<enable_stm, select_result_type>::type
+    typename std::enable_if_t<enable_stm, select_result_type>
     // Transactional get on the given reference.
-    transGet(uintptr_t ref, const bool readonly) {
+    transGet(uintptr_t ref, const AccessMethod access) {
         auto e = reinterpret_cast<internal_elem*>(ref);
-        bool abort = false;
 
         TransProxy item = Sto::item(this, e);
-        if (is_phantom(e, item)) {
-            return select_result_type::Abort;
+        history_type* h = nullptr;
+        if constexpr (Params::MVCC) {
+            h = e->obj.find(txn_read_tid());
+        } else {
+            (void) h;  // Avoid set-but-not-used error
+        }
+
+        if constexpr (Params::MVCC) {
+            if (h->status_is(UNUSED)) {
+                return select_result_type::Fail;
+            }
+            if (is_phantom(h, item)) {
+                return select_result_type::Fail;
+            }
+        } else {
+            if (is_phantom(e, item)) {
+                return select_result_type::Abort;
+            }
         }
 
         if (Params::ReadMyWrite) {
             if (has_delete(item)) {
-                return {
-                    .abort = false, .success = false, .ref = 0,
-                    .value = nullptr };
+                return select_result_type::Fail;
             }
 
             if (has_update(item)) {
                 value_type* vp = nullptr;
                 if (has_insert(item)) {
-                    vp = &(e->row_container.row);
+                    if constexpr (Params::MVCC) {
+                        vp = h->vp();
+                    } else {
+                        vp = &(e->row_container.row);
+                    }
                 } else {
                     vp = item.template raw_write_value<value_type*>();
                 }
@@ -348,27 +469,48 @@ public:
             }
         }
 
-        if (readonly) {
-            abort = !item.observe(e->version());
-        } else {
-            if (item.observe(e->version())) {
-                item.add_write();
-            } else {
-                abort = true;
-            }
-            item.add_flags(update_bit);
-        }
+        value_type* vp = nullptr;
+        switch (access) {
+            case Blind:
+                // Do nothing
+                break;
+            case ReadOnly:
+                if constexpr (Params::MVCC) {
+                    MvAccess::template read<value_type>(item, h);
+                    vp = h->vp();
+                    assert(vp);
+                } else {
+                    if (!item.observe(e->version())) {
+                        return select_result_type::Abort;
+                    }
+                    vp = &(e->row_container.row);
+                }
+                break;
+            case ReadWrite:
+                if constexpr (Params::MVCC) {
+                    MvAccess::template read<value_type>(item, h);
+                    vp = h->vp();
+                    assert(vp);
+                } else {
+                    bool abort = !item.observe(e->version());
+                    if (!abort) {
+                        item.add_write();
+                    }
+                    item.add_flags(update_bit);
 
-        if (abort) {
-            return select_result_type::Abort;
+                    if (abort) {
+                        return select_result_type::Abort;
+                    }
+                    vp = &(e->row_container.row);
+                }
+                break;
         }
 
         return {
-            .abort = false, .success = true, .ref = ref,
-            .value = &(e->row_container.row) };
+            .abort = false, .success = true, .ref = ref, .value = vp };
     }
 
-    typename std::enable_if<enable_stm, insert_result_type>::type
+    typename std::enable_if_t<enable_stm, insert_result_type>
     // Transactional put on the given key. By default, will not overwrite the
     // existing value if the key already exists in the table.
     transPut(
@@ -382,24 +524,41 @@ public:
             buck.version.unlock_exclusive();
 
             auto item = Sto::item(this, e);
-            if (is_phantom(e, item)) {
-                return insert_result_type::Abort;
+            history_type* h = nullptr;
+
+            if constexpr (Params::MVCC) {
+                h = e->obj.find(txn_read_tid());
+                if (is_phantom(h, item)) {
+                    return insert_result_type::Abort;
+                }
+            } else {
+                (void) h;  // Avoid set-but-not-used error
+                if (is_phantom(e, item)) {
+                    return insert_result_type::Abort;
+                }
             }
 
             if (Params::ReadMyWrite) {
                 if (has_delete(item)) {
                     item.clear_flags(delete_bit).clear_write().
                         template add_write<value_type*>(value);
-                    return {
-                        .abort = false, .existed = false };
+                    return insert_result_type::Fail;
                 }
             }
 
-            if (overwrite) {
-                item.add_write(value);
-                if (Params::ReadMyWrite) {
-                    if (has_insert(item)) {
-                        copy_row(e, value);
+            if constexpr (Params::MVCC) {
+                if (overwrite) {
+                    item.template add_write<value_type*>(value);
+                } else {
+                    MvAccess::template read<value_type>(item, h);
+                }
+            } else {
+                if (overwrite) {
+                    item.template add_write<value_type*>(value);
+                    if (Params::ReadMyWrite) {
+                        if (has_insert(item)) {
+                            copy_row(e, value);
+                        }
                     }
                 } else {
                     if (!item.observe(e->version())) {
@@ -435,20 +594,74 @@ public:
         return { .abort = false, .existed = false };
     }
 
-    typename std::enable_if<enable_stm, void>::type
+    typename std::enable_if_t<enable_stm, void>
     // Transactional update on the given reference. Since the reference is
     // given, it is assumed that the row already exists.
     transUpdate(uintptr_t ref, value_type* value) {
         auto e = reinterpret_cast<internal_elem*>(ref);
         auto item = Sto::item(this, e);
-        item.acquire_write(e->version(), value);
+        if constexpr (Params::MVCC) {
+            item.add_write(value);
+        } else {
+            item.acquire_write(e->version(), value);
+        }
     }
 
     // TObject interface method
     bool lock(TransItem& item, Transaction& txn) override {
         assert(!is_bucket(item));
         auto e = item.key<internal_elem*>();
-        return txn.try_lock(item, e->version());
+
+        if constexpr (Params::MVCC) {
+            history_type* hprev = nullptr;
+
+            if (item.has_read()) {
+                hprev = item.read_value<history_type*>();
+                // Lock fails if prev history element has already been read
+                // in the future
+                if (Sto::commit_tid() < hprev->rtid()) {
+                    TransProxy(txn, item).add_write(nullptr);
+                    return false;
+                }
+            }
+
+            history_type* h;
+            if (item.has_commute()) {
+                // Create a delta version
+                auto wval = item.template write_value<comm_type>();
+                h = e->obj.new_history(
+                    Sto::commit_tid(), &e->obj, std::move(wval), hprev);
+            } else {
+                // Create a full version
+                auto wval = item.template write_value<value_type*>();
+                if (has_delete(item)) {
+                    // Handling delete versions
+                    h = e->obj.new_history(
+                        Sto::commit_tid(), &e->obj, nullptr, hprev);
+                    h->status_delete();
+                    h->set_delete_cb(this, delete_cb, e);
+                } else {
+                    // Just a regular write
+                    h = e->obj.new_history(
+                        Sto::commit_tid(), &e->obj, wval, hprev);
+                }
+            }
+
+            assert(h);  // Ensure that we actually managed to generate something
+
+            bool result = e->obj.cp_lock(Sto::commit_tid(), h);
+            if (!result && !h->status_is(MvStatus::ABORTED)) {
+                // Our version didn't make it onto the chain; simply deallocate
+                e->obj.delete_history(h);
+                TransProxy(txn, item).add_mvhistory(nullptr);
+            } else {
+                // Version is on the version chain
+                TransProxy(txn, item).add_mvhistory(h);
+            }
+            return result;
+        } else {
+            return txn.try_lock(item, e->version());
+        }
     }
 
     // TObject interface method
@@ -459,7 +672,12 @@ public:
         }
 
         auto e = item.key<internal_elem*>();
-        return e->version().cp_check_version(txn, item);
+        if constexpr (Params::MVCC) {
+            auto h = item.template read_value<history_type*>();
+            return e->obj.cp_check(txn_read_tid(), h);
+        } else {
+            return e->version().cp_check_version(txn, item);
+        }
     }
 
     // TObject interface method
@@ -467,38 +685,60 @@ public:
         assert(!is_bucket(item));
         auto e = item.key<internal_elem*>();
 
-        if (has_delete(item)) {
-            assert(e->valid() && !e->deleted);
-            e->deleted = true;
-            fence();
-            txn.set_version(e->version());
-            return;
-        }
+        if constexpr (Params::MVCC) {
+            auto h = item.template write_value<history_type*>();
+            e->obj.cp_install(h);
+        } else {
+            if (has_delete(item)) {
+                assert(e->valid() && !e->deleted);
+                e->deleted = true;
+                fence();
+                txn.set_version(e->version());
+                return;
+            }
 
-        // Is an update
-        if (!has_insert(item)) {
-            auto value = item.write_value<value_type*>();
-            copy_row(e, value);
-        }
+            // Is an update
+            if (!has_insert(item)) {
+                auto value = item.write_value<value_type*>();
+                copy_row(e, value);
+            }
 
-        txn.set_version_unlock(e->version(), item);
+            txn.set_version_unlock(e->version(), item);
+        }
     }
 
     // TObject interface method
     void unlock(TransItem& item) override {
         assert(!is_bucket(item));
-        auto e = item.key<internal_elem*>();
-        e->version().cp_unlock(item);
+        if constexpr (Params::MVCC) {
+            (void) item;  // Avoid set-but-not-used error
+        } else {
+            auto e = item.key<internal_elem*>();
+            e->version().cp_unlock(item);
+        }
     }
 
     // TObject interface method
     void cleanup(TransItem& item, bool committed) override {
-        if (committed ? has_delete(item) : has_insert(item)) {
-            assert(!is_bucket(item));
-            auto e = item.key<internal_elem*>();
-            assert(!e->valid() || e->deleted);
-            remove(e);
-            item.clear_needs_unlock();
+        if constexpr (Params::MVCC) {
+            if (!committed) {
+                // Abort all unaborted history elements
+                auto e = item.key<internal_elem*>();
+                if (item.has_mvhistory()) {
+                    auto h = item.template write_value<history_type*>();
+                    if (h) {
+                        e->obj.abort(h);
+                    }
+                }
+            }
+        } else {
+            if (committed ? has_delete(item) : has_insert(item)) {
+                assert(!is_bucket(item));
+                auto e = item.key<internal_elem*>();
+                assert(!e->valid() || e->deleted);
+                remove(e);
+                item.clear_needs_unlock();
+            }
         }
     }
 
@@ -514,16 +754,62 @@ private:
         }
     }
 
+    // Callback function for enqueueing the physical deletes
+    template <typename P=Params>
+    static typename std::enable_if_t<P::MVCC, void>
+    delete_cb(void* ht_ptr, void* ele_ptr, void* history_ptr) {
+        auto ht = reinterpret_cast<Hashtable<Params>*>(ht_ptr);
+        auto el = reinterpret_cast<internal_elem*>(ele_ptr);
+        auto hp = reinterpret_cast<history_type*>(history_ptr);
+
+        bucket_entry& buck = ht->map_[ht->find_bucket_idx(el->key)];
+        buck.version.lock_exclusive();
+
+        internal_elem* prev = nullptr;
+        internal_elem* curr = buck.head;
+        while (curr && (curr != el)) {
+            prev = curr;
+            curr = curr->next;
+        }
+
+        assert(curr);
+
+        if (prev) {
+            prev->next = curr->next;
+        } else {
+            buck.head = curr->next;
+        }
+        if (el->obj.is_head(hp)) {
+            // Delete is still the latest version, so just gc the entire object
+            buck.version.unlock_exclusive();
+            Transaction::rcu_delete(el);
+        } else {
+            buck.version.unlock_exclusive();
+        }
+    }
+
     static bool is_bucket(const TransItem& item) {
         return item.key<uintptr_t>() & bucket_bit;
     }
 
-    static bool is_phantom(internal_elem* e, const TransItem& item) {
+    template <typename P=Params>
+    static typename std::enable_if_t<P::MVCC, bool>
+    is_phantom(history_type* h, const TransItem& item) {
+        return (h->status_is(DELETED) && !has_insert(item));
+    }
+
+    template <typename P=Params>
+    static typename std::enable_if_t<!P::MVCC, bool>
+    is_phantom(internal_elem* e, const TransItem& item) {
         return (!e->valid() && !has_insert(item));
     }
 
     static uintptr_t make_bucket_key(const bucket_entry& bucket) {
         return (reinterpret_cast<uintptr_t>(&bucket) | bucket_bit);
+    }
+
+    static TransactionTid::type txn_read_tid() {
+        return Sto::read_tid<Params::Commute>();
     }
 
     // Find a key's corresponding internal_elem in a bucket

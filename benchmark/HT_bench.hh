@@ -38,7 +38,14 @@ public:
         unordered_index<K, V, DBParams>>::type;
 
     //typedef UIndex<ht_key, ht_value> ht_table_type;
-    typedef Hashtable<Hashtable_params<ht_key, ht_value>> ht_table_type;
+    typedef std::conditional_t<
+        DBParams::MVCC,
+        Hashtable_mvcc_params<ht_key, ht_value>,
+        Hashtable_params<ht_key, ht_value>> ht_params_type;
+    typedef Hashtable<ht_params_type> ht_table_type;
+    static constexpr auto BlindAccess = ht_table_type::BlindAccess;
+    static constexpr auto ReadOnlyAccess = ht_table_type::ReadOnlyAccess;
+    static constexpr auto ReadWriteAccess = ht_table_type::ReadWriteAccess;
 
     explicit ht_table() : ht_table_(ht_table_size) {}
 
@@ -109,7 +116,8 @@ public:
     std::vector<htbench_txn_t> workload;
 
 protected:
-    ht_table<DBParams>& table;
+    typedef ht_table<DBParams> table_type;
+    table_type table;
     ht_input_generator ig;
     int runner_id;
     mode_id mode;
