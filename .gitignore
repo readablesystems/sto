@@ -61,6 +61,7 @@
 /perf.data
 /perf.data.old
 /perf.txt
+/bin
 .ycm_*
 **/.idea/workspace.xml
 **/.idea/tasks.xml

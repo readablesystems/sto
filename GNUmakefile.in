@@ -14,7 +14,7 @@ CC = @CC@
 CXX = @CXX@
 CPPFLAGS := -std=c++17
 DEPSDIR := .deps
-DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
+DEPCFLAGS = -MD -MF $(DEPSDIR)/$$(basename $*).d -MP
 LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a $(LIBMALLOC) -lpthread -lm -lnuma
 LIBOBJS = @LIBOBJS@
 LDFLAGS = @LDFLAGS@
@@ -227,6 +227,11 @@ PROGRAMS = \
 	rubis_bench \
 	$(UNIT_PROGRAMS)
 
+STORIA_UNIT_TESTS = \
+	dataflow/OperatorTest
+
+STORIA_UNIT_OBJS = $(OBJ)/storia/test/$(STORIA_UNIT_TESTS).o
+
 all: check
 
 .PHONY: deps
@@ -261,6 +266,15 @@ $(OBJ)/%.o: test/%.cc config.h $(DEPSDIR)/stamp
 $(OBJ)/%.o: benchmark/%.cc config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
 
+$(OBJ)/storia/%.o: CPPFLAGS += -Istoria
+$(OBJ)/storia/%.o: storia/%.cc config.h $(DEPSDIR)/stamp
+	mkdir -p $(shell dirname $@)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
+$(OBJ)/storia/test/%.o: storia/test/%.cc config.h $(DEPSDIR)/stamp
+	mkdir -p $(shell dirname $@)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
 $(OBJ)/xxhash.o: third-party/xxHash/xxhash.c
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -c -o $@ $<
 
@@ -285,6 +299,8 @@ STO_OBJS = $(OBJ)/Packer.o $(OBJ)/Transaction.o $(OBJ)/TRcu.o $(OBJ)/clp.o \
 INDEX_OBJS = $(STO_OBJS) $(MASSTREE_OBJS) $(OBJ)/DB_index.o
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 INDEX_DEPS = $(INDEX_OBJS) $(MASSTREEDIR)/libjson.a
+STORIA_DEPS = $(STO_OBJS) $(MASSTREE_OBJS)
+STORIA_TEST_DEPS = $(STORIA_DEPS) $(STORIA_UNIT_OBJS)
 
 
 TPCC_TMPLS = $(OBJ)/tpcc_d.o $(OBJ)/tpcc_dc.o $(OBJ)/tpcc_dn.o $(OBJ)/tpcc_dcn.o \
@@ -419,6 +435,14 @@ voter_bench: $(OBJ)/Voter_bench.o $(OBJ)/Voter_data.o $(INDEX_OBJS)
 
 rubis_bench: $(OBJ)/Rubis_bench.o $(INDEX_OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+storia: $(OBJ)/storia/Storia.o $(STORIA_DEPS)
+	@mkdir -p bin
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o bin/$@ $^ $(LDFLAGS) $(LIBS)
+
+storia-test: $(OBJ)/storia/test/StoriaTest.o $(STORIA_TEST_DEPS)
+	@mkdir -p bin
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o bin/$@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
 
