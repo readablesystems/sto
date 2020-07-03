@@ -14,7 +14,7 @@ CC = @CC@
 CXX = @CXX@
 CPPFLAGS := -std=c++17
 DEPSDIR := .deps
-DEPCFLAGS = -MD -MF $(DEPSDIR)/$$(basename $*).d -MP
+DEPCFLAGS = -MD -MF $(DEPSDIR)/$(shell basename $*).d -MP
 LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a $(LIBMALLOC) -lpthread -lm -lnuma
 LIBOBJS = @LIBOBJS@
 LDFLAGS = @LDFLAGS@
@@ -228,9 +228,10 @@ PROGRAMS = \
 	$(UNIT_PROGRAMS)
 
 STORIA_UNIT_TESTS = \
+	dataflow/LogicTest \
 	dataflow/OperatorTest
 
-STORIA_UNIT_OBJS = $(OBJ)/storia/test/$(STORIA_UNIT_TESTS).o
+STORIA_UNIT_OBJS = $(addsuffix .o,$(addprefix $(OBJ)/storia/test/,$(STORIA_UNIT_TESTS)))
 
 all: check
 
