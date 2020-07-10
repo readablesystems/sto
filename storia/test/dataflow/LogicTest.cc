@@ -31,7 +31,7 @@ TEST_END
 
 void testMain() {
     TestUtil::run_suite(
-            "Predicate",
+            "logics::Predicate",
             testPredicateSimpleUnary,
             testPredicateSimpleBinary);
 }

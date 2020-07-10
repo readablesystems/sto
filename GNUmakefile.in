@@ -229,7 +229,8 @@ PROGRAMS = \
 
 STORIA_UNIT_TESTS = \
 	dataflow/LogicTest \
-	dataflow/OperatorTest
+	dataflow/OperatorTest \
+	dataflow/StateTest
 
 STORIA_UNIT_OBJS = $(addsuffix .o,$(addprefix $(OBJ)/storia/test/,$(STORIA_UNIT_TESTS)))
 

@@ -93,6 +93,7 @@ int main(int argc, const char* const argv[]) {
     if (run_unit) {
         logics::testMain();
         operators::testMain();
+        state::testMain();
     } else {
         std::cout << "Readers: " << num_readers << std::endl;
         std::cout << "Writers: " << num_writers << std::endl;

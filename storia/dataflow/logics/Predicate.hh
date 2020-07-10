@@ -8,7 +8,7 @@
 namespace storia {
 
 template <
-    typename V, typename B=V, bool U=std::is_class_v<void, B>>
+    typename V, typename B=V, bool U=std::is_same_v<void, B>>
     class Predicate;
 
 template <typename V, typename B>
