@@ -615,6 +615,16 @@ public:
         }
     }
 
+    typename std::enable_if_t<enable_stm, void>
+    // Transactional update on the given reference. Since the reference is
+    // given, it is assumed that the row already exists.
+    transUpdate(uintptr_t ref, const comm_type& comm) {
+        assert(&comm);
+        auto e = reinterpret_cast<internal_elem*>(ref);
+        auto item = Sto::item(this, e);
+        item.add_commute(comm);
+    }
+
     // TObject interface method
     bool lock(TransItem& item, Transaction& txn) override {
         assert(!is_bucket(item));
