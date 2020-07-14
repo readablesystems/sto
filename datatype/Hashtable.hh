@@ -615,6 +615,16 @@ public:
         }
     }
 
+    typename std::enable_if_t<enable_stm, void>
+    // Transactional update on the given reference. Since the reference is
+    // given, it is assumed that the row already exists.
+    transUpdate(uintptr_t ref, const comm_type& comm) {
+        assert(&comm);
+        auto e = reinterpret_cast<internal_elem*>(ref);
+        auto item = Sto::item(this, e);
+        item.add_commute(comm);
+    }
+
     // TObject interface method
     bool lock(TransItem& item, Transaction& txn) override {
         assert(!is_bucket(item));
@@ -638,7 +648,7 @@ public:
                 // Create a delta version
                 auto wval = item.template write_value<comm_type>();
                 h = e->obj.new_history(
-                    Sto::commit_tid(), &e->obj, std::move(wval), hprev);
+                    Sto::commit_tid(), &e->obj, std::move(*wval), hprev);
             } else {
                 // Create a full version
                 auto wval = item.template write_value<value_type*>();
