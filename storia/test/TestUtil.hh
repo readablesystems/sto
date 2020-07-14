@@ -85,7 +85,7 @@ public:
                     case Result::Status::FAILURE:
                         std::cout
                             << "  Failed: " << result.file << ":"
-                            << result.test << " on line " << result.line;
+                            << result.line << ":" << result.test;
                         break;
                     case Result::Status::SUCCESS:
                         // no-op

@@ -10,101 +10,125 @@ namespace test {
 namespace operators {
 
 TEST_BEGIN(testCountSimple) {
+    typedef storia::state::BlindWriteUpdate<int> update_type;
     auto counter = storia::Count<int>();
 
-    ASSERT(!counter.process()->value);
+    ASSERT(!counter.produce()->value());
 
-    counter.receive(StateUpdate<int>::NewBlindWrite(41));
+    counter.consume(update_type(41));
 
-    ASSERT(counter.process()->value == 1);
+    ASSERT(counter.produce()->value() == 1);
 
-    counter.receive(StateUpdate<int>::NewBlindWrite(99));
+    counter.consume(update_type(99));
 
-    ASSERT(counter.process()->value == 2);
+    ASSERT(counter.produce()->value() == 2);
 
     // Do nothing
 
-    ASSERT(counter.process()->value == 2);
+    ASSERT(counter.produce()->value() == 2);
+}
+TEST_END
+
+TEST_BEGIN(testCountWithFunction) {
+    typedef storia::state::BlindWriteUpdate<int> update_type;
+    auto comparator = [] (const update_type& update) -> bool {
+        return update.value() < 50;
+    };
+    auto counter = storia::Count<int, void>(comparator);
+
+    ASSERT(!counter.produce()->value());
+
+    counter.consume(update_type(41));
+
+    ASSERT(counter.produce()->value() == 1);
+
+    counter.consume(update_type(99));
+
+    ASSERT(counter.produce()->value() == 1);
 }
 TEST_END
 
 TEST_BEGIN(testCountWithPredicate) {
-    auto comparator = [] (const StateUpdate<int>& update) -> bool {
-        return update.value < 50;
+    typedef storia::state::BlindWriteUpdate<int> update_type;
+    auto comparator = [] (const update_type& update) -> bool {
+        return update.value() < 50;
     };
-    auto predicate = storia::PredicateUtil::Make<StateUpdate<int>>(comparator);
+    auto predicate = storia::PredicateUtil::Make<update_type>(comparator);
     auto counter = storia::Count<int, void>(predicate);
 
-    ASSERT(!counter.process()->value);
+    ASSERT(!counter.produce()->value());
 
-    counter.receive(StateUpdate<int>::NewBlindWrite(41));
+    counter.consume(update_type(41));
 
-    ASSERT(counter.process()->value == 1);
+    ASSERT(counter.produce()->value() == 1);
 
-    counter.receive(StateUpdate<int>::NewBlindWrite(99));
+    counter.consume(update_type(99));
 
-    ASSERT(counter.process()->value == 1);
+    ASSERT(counter.produce()->value() == 1);
 }
 TEST_END
 
 TEST_BEGIN(testFilterSimpleFunction) {
-    auto comparator = [] (const StateUpdate<int>& update) -> bool {
-        return update.value > 0;
+    typedef storia::state::BlindWriteUpdate<int> update_type;
+    auto comparator = [] (const update_type& update) -> bool {
+        return update.value() > 0;
     };
     auto filter = storia::Filter<int>(comparator);
 
-    filter.receive(StateUpdate<int>::NewBlindWrite(-1));
+    filter.consume(update_type(-1));
     {
-        auto next = filter.process();
+        auto next = filter.produce();
         ASSERT(!next);
     }
 
-    filter.receive(StateUpdate<int>::NewBlindWrite(-1));
-    filter.receive(StateUpdate<int>::NewBlindWrite(2));
-    filter.receive(StateUpdate<int>::NewBlindWrite(1));
-    filter.receive(StateUpdate<int>::NewBlindWrite(-2));
+    filter.consume(update_type(-1));
+    filter.consume(update_type(2));
+    filter.consume(update_type(1));
+    filter.consume(update_type(-2));
     {
-        auto next = filter.process();
-        ASSERT(next->value == 2);
+        auto next = filter.produce();
+        ASSERT(next->value() == 2);
     }
     {
-        auto next = filter.process();
-        ASSERT(next->value == 1);
+        auto next = filter.produce();
+        ASSERT(next->value() == 1);
     }
     {
-        auto next = filter.process();
+        auto next = filter.produce();
         ASSERT(!next);
     }
 }
 TEST_END
 
 TEST_BEGIN(testFilterSimplePredicate) {
-    auto comparator = [] (const StateUpdate<int>& update) -> bool {
-        return update.value > 0;
+    typedef storia::state::BlindWriteUpdate<int> update_type;
+    auto comparator = [] (const update_type& update) -> bool {
+        return update.value() > 0;
     };
-    auto predicate = storia::PredicateUtil::Make<StateUpdate<int>>(comparator);
+    auto predicate = storia::PredicateUtil::Make<update_type>(comparator);
     auto filter = storia::Filter<int>(predicate);
 
-    filter.receive(StateUpdate<int>::NewBlindWrite(-1));
+    filter.consume(update_type(-1));
     {
-        auto next = filter.process();
+        auto next = filter.produce();
         ASSERT(!next);
     }
 
-    filter.receive(StateUpdate<int>::NewBlindWrite(-1));
-    filter.receive(StateUpdate<int>::NewBlindWrite(2));
-    filter.receive(StateUpdate<int>::NewBlindWrite(1));
-    filter.receive(StateUpdate<int>::NewBlindWrite(-2));
+    filter.consume(update_type(-1));
+    filter.consume(update_type(2));
+    filter.consume(update_type(1));
+    filter.consume(update_type(-2));
+
     {
-        auto next = filter.process();
-        ASSERT(next->value == 2);
+        auto next = filter.produce();
+        ASSERT(next->value() == 2);
     }
     {
-        auto next = filter.process();
-        ASSERT(next->value == 1);
+        auto next = filter.produce();
+        ASSERT(next->value() == 1);
     }
     {
-        auto next = filter.process();
+        auto next = filter.produce();
         ASSERT(!next);
     }
 }
@@ -114,7 +138,8 @@ void testMain() {
     TestUtil::run_suite(
             "operators::Count",
             testCountSimple,
-            testCountWithPredicate);
+            testCountWithPredicate,
+            testCountWithFunction);
     TestUtil::run_suite(
             "operators::Filter",
             testFilterSimplePredicate,

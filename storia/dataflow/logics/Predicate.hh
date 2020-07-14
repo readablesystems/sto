@@ -2,8 +2,7 @@
 
 #include <functional>
 
-#include "../StateEntry.hh"
-#include "../StateUpdate.hh"
+#include "../State.hh"
 
 namespace storia {
 
