@@ -361,6 +361,8 @@ class TransProxy {
     }
 
     template <typename T>
+    inline TransProxy& add_commute(const T*);
+    template <typename T>
     inline TransProxy& add_commute(const T&);
     inline TransProxy& clear_commute() {
         item().__rm_flags(TransItem::commute_bit);
