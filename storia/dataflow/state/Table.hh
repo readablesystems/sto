@@ -8,8 +8,6 @@
 
 namespace storia {
 
-namespace state {
-
 template <typename K, typename V>
 class Table {
 public:
@@ -29,30 +27,64 @@ public:
     }
 
     template <typename UpdateType>
-    std::enable_if_t<std::is_base_of_v<Update, UpdateType>, void>
+    std::enable_if_t<std::is_base_of_v<Update, UpdateType>, bool>
     apply(UpdateType& update) {
+        bool success = false;
         if constexpr (UpdateType::TYPE == UpdateType::Type::BlindWrite) {
-            TRANSACTION {
+            TXN {
                 const key_type key = update.template key<key_type>();
                 auto result = table_.transPut(key, update.vp(), true);
                 CHK(!result.abort);
             } RETRY(true);
-        } else if constexpr (UpdateType::TYPE == UpdateType::Type::DeltaWrite) {
-            TRANSACTION {
+            success = true;
+        } else if constexpr (
+                UpdateType::TYPE == UpdateType::Type::ReadWrite) {
+            bool retry = true;
+            RWTXN {
+                const key_type key = update.template key<key_type>();
+                auto read_result = table_.transGet(
+                        key, table_type::AccessMethod::ReadWrite);
+                CHK(!read_result.abort);
+                if (!update.predicate().eval(*read_result.value)) {
+                    retry = false;  // Give up
+                    CHK(false);
+                }
+                auto write_result = table_.transPut(key, update.vp(), true);
+                CHK(!write_result.abort);
+            } RETRY(retry);
+            success = retry;
+        } else if constexpr (
+                UpdateType::TYPE == UpdateType::Type::PartialBlindWrite) {
+            TXN {
                 const key_type key = update.key();
                 auto read_result = table_.transGet(
                         key, table_type::AccessMethod::Blind);
                 CHK(!read_result.abort);
-                auto write_result = table_.transUpdate(
-                        read_result.ref, update.updater());
-                CHK(!write_result.abort);
+                table_.transUpdate(read_result.ref, update.updater());
             } RETRY(true);
+            success = true;
+        } else if constexpr (
+                UpdateType::TYPE == UpdateType::Type::PartialReadWrite) {
+            bool retry = true;
+            TXN {
+                const key_type key = update.key();
+                auto read_result = table_.transGet(
+                        key, table_type::AccessMethod::ReadWrite);
+                CHK(!read_result.abort);
+                if (!update.predicate().eval(*read_result.value)) {
+                    retry = false;  // Give up
+                    CHK(false);
+                }
+                table_.transUpdate(read_result.ref, update.updater());
+            } RETRY(true);
+            success = retry;
         }
+        return success;
     }
 
     std::optional<value_type> get(const key_type& key) {
         std::optional<value_type> value = std::nullopt;
-        TRANSACTION {
+        TXN {
             auto result = table_.transGet(
                     key, table_type::AccessMethod::ReadOnly);
             CHK(!result.abort);
@@ -63,10 +95,12 @@ public:
         return value;
     }
 
+    void nontrans_put(const key_type& key, const value_type& value) {
+        table_.nontrans_put(key, value);
+    }
+
 private:
     table_type table_;
 };
-
-};  // namespace
 
 };  // namespace storia

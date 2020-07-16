@@ -14,7 +14,7 @@ class TestUtil {
 public:
     class Result {
     public:
-        enum Status {
+        enum class Status {
             SUCCESS=0, FAILURE, ERROR
         };
 
@@ -27,11 +27,11 @@ public:
 
         char as_char() const {
             switch (status) {
-                case SUCCESS:
+                case Status::SUCCESS:
                     return '.';
-                case FAILURE:
+                case Status::FAILURE:
                     return 'x';
-                case ERROR:
+                case Status::ERROR:
                     return 'E';
             }
             return '?';

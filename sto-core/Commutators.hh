@@ -12,7 +12,7 @@ public:
     // Each type must define its own Commutator variant
     Commutator() = default;
 
-    T& operate(T& v) const {
+    virtual T& operate(T& v) const {
         always_assert(false, "Should never operate on the default commutator.");
         return v;
     }
@@ -30,7 +30,7 @@ public:
     Commutator() = default;
     explicit Commutator(int64_t delta) : delta(delta) {}
 
-    int64_t& operate(int64_t& v) const {
+    virtual int64_t& operate(int64_t& v) const {
         v += delta;
         return v;
     }

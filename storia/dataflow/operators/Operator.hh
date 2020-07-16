@@ -7,14 +7,14 @@
 namespace storia {
 
 template 
-    <typename T, typename U=T, typename InputType=state::BlindWriteUpdate<T>,
-    typename OutputType=state::BlindWriteUpdate<U>>
+    <typename T, typename U=T, typename InputType=BlindWrite<T>,
+    typename OutputType=BlindWrite<U>>
 class Operator {
 public:
     typedef U update_type;
     typedef T value_type;
 
-    typedef state::Entry entry_type;
+    typedef Entry entry_type;
     typedef InputType input_type;
     typedef OutputType output_type;
 

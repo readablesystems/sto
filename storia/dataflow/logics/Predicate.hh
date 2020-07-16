@@ -2,8 +2,6 @@
 
 #include <functional>
 
-#include "../State.hh"
-
 namespace storia {
 
 template <

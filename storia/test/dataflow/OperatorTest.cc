@@ -10,7 +10,7 @@ namespace test {
 namespace operators {
 
 TEST_BEGIN(testCountSimple) {
-    typedef storia::state::BlindWriteUpdate<int> update_type;
+    typedef storia::BlindWrite<int> update_type;
     auto counter = storia::Count<int>();
 
     ASSERT(!counter.produce()->value());
@@ -30,7 +30,7 @@ TEST_BEGIN(testCountSimple) {
 TEST_END
 
 TEST_BEGIN(testCountWithFunction) {
-    typedef storia::state::BlindWriteUpdate<int> update_type;
+    typedef storia::BlindWrite<int> update_type;
     auto comparator = [] (const update_type& update) -> bool {
         return update.value() < 50;
     };
@@ -49,7 +49,7 @@ TEST_BEGIN(testCountWithFunction) {
 TEST_END
 
 TEST_BEGIN(testCountWithPredicate) {
-    typedef storia::state::BlindWriteUpdate<int> update_type;
+    typedef storia::BlindWrite<int> update_type;
     auto comparator = [] (const update_type& update) -> bool {
         return update.value() < 50;
     };
@@ -69,7 +69,7 @@ TEST_BEGIN(testCountWithPredicate) {
 TEST_END
 
 TEST_BEGIN(testFilterSimpleFunction) {
-    typedef storia::state::BlindWriteUpdate<int> update_type;
+    typedef storia::BlindWrite<int> update_type;
     auto comparator = [] (const update_type& update) -> bool {
         return update.value() > 0;
     };
@@ -101,7 +101,7 @@ TEST_BEGIN(testFilterSimpleFunction) {
 TEST_END
 
 TEST_BEGIN(testFilterSimplePredicate) {
-    typedef storia::state::BlindWriteUpdate<int> update_type;
+    typedef storia::BlindWrite<int> update_type;
     auto comparator = [] (const update_type& update) -> bool {
         return update.value() > 0;
     };
