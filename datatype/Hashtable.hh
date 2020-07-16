@@ -622,7 +622,7 @@ public:
         assert(&comm);
         auto e = reinterpret_cast<internal_elem*>(ref);
         auto item = Sto::item(this, e);
-        item.add_commute(comm);
+        item.add_commute(&comm);
     }
 
     // TObject interface method
@@ -646,7 +646,7 @@ public:
             history_type* h;
             if (item.has_commute()) {
                 // Create a delta version
-                auto wval = item.template write_value<comm_type>();
+                auto wval = item.template write_value<comm_type*>();
                 h = e->obj.new_history(
                     Sto::commit_tid(), &e->obj, std::move(*wval), hprev);
             } else {
@@ -717,8 +717,13 @@ public:
 
             // Is an update
             if (!has_insert(item)) {
-                auto value = item.write_value<value_type*>();
-                copy_row(e, value);
+                if (item.has_commute()) {
+                    comm_type &comm = *item.write_value<comm_type*>();
+                    copy_row(e, comm);
+                } else {
+                    auto value = item.write_value<value_type*>();
+                    copy_row(e, value);
+                }
             }
 
             txn.set_version_unlock(e->version(), item);
@@ -764,6 +769,10 @@ private:
     static bucket_entry* bucket_address(const TransItem& item) {
         uintptr_t bucket_key = item.key<uintptr_t>();
         return reinterpret_cast<bucket_entry*>(bucket_key & ~bucket_bit);
+    }
+
+    static void copy_row(internal_elem *e, comm_type &comm) {
+        e->row_container.row = comm.operate(e->row_container.row);
     }
 
     static void copy_row(internal_elem* e, const value_type* value) {
