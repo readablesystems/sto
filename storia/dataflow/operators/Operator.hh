@@ -25,8 +25,7 @@ protected:
     Operator() {};
 
 public:
-    void consume(arg_type update);
-    ret_type produce();
+    virtual ret_type consume(arg_type update) = 0;
 };
 
 };  // namespace storia

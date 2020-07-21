@@ -230,7 +230,8 @@ PROGRAMS = \
 STORIA_UNIT_TESTS = \
 	dataflow/LogicTest \
 	dataflow/OperatorTest \
-	dataflow/StateTest
+	dataflow/StateTest \
+	integration/FilterCountTest
 
 STORIA_UNIT_OBJS = $(addsuffix .o,$(addprefix $(OBJ)/storia/test/,$(STORIA_UNIT_TESTS)))
 

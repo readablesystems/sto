@@ -18,6 +18,7 @@ public:
     using typename Base::input_type;
     using typename Base::output_type;
     using typename Base::ret_type;
+    using typename Base::update_type;
     using typename Base::value_type;
 
     typedef B base_type;
@@ -27,20 +28,11 @@ public:
     Filter(const typename predicate_type::comp_type& comparator)
         : predicate_(PredicateUtil::Make<input_type, base_type>(comparator)) {}
 
-    void consume(arg_type update) {
+    ret_type consume(arg_type update) override {
         if (predicate_.eval(update)) {
-            updates_.emplace(update);
+            return update;
         }
-    }
-
-    ret_type produce() {
-        if (updates_.empty()) {
-            return std::nullopt;
-        }
-
-        auto next = updates_.front();
-        updates_.pop();
-        return next;
+        return std::nullopt;
     }
 
 private:

@@ -28,11 +28,16 @@ class BlindWrite : public Update {
 public:
     static constexpr Type TYPE = Type::BlindWrite;
 
-    BlindWrite(const T& value) : value_(value) {}
+    BlindWrite(const T& value, bool overwrite=true)
+        : overwrite_(overwrite), value_(value) {}
 
     template <typename K>
     K key() const {
         return value_.key();
+    }
+
+    bool overwrite() const {
+        return overwrite_;
     }
 
     const T& value() const {
@@ -44,6 +49,7 @@ public:
     }
 
 private:
+    bool overwrite_;
     T value_;
 };
 
@@ -53,12 +59,16 @@ public:
     typedef Predicate<T, void, true> pred_type;
     static constexpr Type TYPE = Type::ReadWrite;
 
-    ReadWrite(const pred_type& pred, const T& value)
-        : pred_(pred), value_(value) {}
+    ReadWrite(const pred_type& pred, const T& value, bool overwrite=true)
+        : overwrite_(overwrite), pred_(pred), value_(value) {}
 
     template <typename K>
     K key() const {
         return value_.key();
+    }
+
+    bool overwrite() const {
+        return overwrite_;
     }
 
     const pred_type& predicate() const {
@@ -74,11 +84,12 @@ public:
     }
 
 private:
+    bool overwrite_;
     const pred_type pred_;
     T value_;
 };
 
-template <typename K, typename T>
+template <typename Key, typename T>
 class PartialBlindWrite : public Update {
 public:
     static constexpr Type TYPE = Type::PartialBlindWrite;
@@ -101,9 +112,10 @@ public:
         const func_type func_;
     };
 
-    PartialBlindWrite(const K& key, const func_type& update_func)
+    PartialBlindWrite(const Key& key, const func_type& update_func)
         : key_(key), updater_(update_func) {}
 
+    template <typename K>
     K key() const {
         return key_;
     }
@@ -113,11 +125,11 @@ public:
     }
 
 private:
-    const K key_;
+    const Key key_;
     const Updater updater_;
 };
 
-template <typename K, typename T>
+template <typename Key, typename T>
 class PartialReadWrite : public Update {
 public:
     typedef Predicate<T, void, true> pred_type;
@@ -142,9 +154,10 @@ public:
     };
 
     PartialReadWrite(
-        const K& key, const pred_type& pred, const func_type& update_func)
+        const Key& key, const pred_type& pred, const func_type& update_func)
         : key_(key), pred_(pred), updater_(update_func) {}
 
+    template <typename K>
     K key() const {
         return key_;
     }
@@ -158,7 +171,7 @@ public:
     }
 
 private:
-    const K key_;
+    const Key key_;
     const pred_type pred_;
     const Updater updater_;
 };

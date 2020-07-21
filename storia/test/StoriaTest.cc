@@ -7,13 +7,14 @@
 
 // Test suites
 #include "dataflow/Tests.hh"
+#include "integration/Tests.hh"
 
 namespace storia {
 
 namespace test {
 
 enum {
-    opt_cc = 1, opt_nrdrs, opt_nwtrs, opt_unit
+    opt_cc = 1, opt_inte, opt_nrdrs, opt_nwtrs, opt_unit
 };
 
 enum ConcurrencyControlOptions {
@@ -22,6 +23,7 @@ enum ConcurrencyControlOptions {
 
 static const Clp_Option options[] = {
     { "cc",         'c', opt_cc,    Clp_ValString, Clp_Optional },
+    { "integration",'i', opt_inte,  Clp_NoVal,     Clp_Negate | Clp_Optional }, 
     { "readers",    'r', opt_nrdrs, Clp_ValInt,    Clp_Optional },
     { "unit",       'u', opt_unit,  Clp_NoVal,     Clp_Negate | Clp_Optional }, 
     { "writers",    'w', opt_nwtrs, Clp_ValInt,    Clp_Optional },
@@ -34,6 +36,8 @@ static inline void print_usage(const char *argv_0) {
         << "    Specify the type of concurrency control used. "
         <<     "Can be one of the followings:" << std::endl
         << "      default, opaque, mvcc" << std::endl
+        << "  --integration (or -i)" << std::endl
+        << "    Run integration tests (ignores -r and -w)." << std::endl
         << "  --readers=<NUM> (or -r<NUM>)" << std::endl
         << "    Specify the number of reader threads (default 1)." << std::endl
         << "  --unit (or -u)" << std::endl
@@ -53,6 +57,7 @@ int main(int argc, const char* const argv[]) {
 
     size_t num_readers = 0;
     size_t num_writers = 0;
+    bool run_integration = false;
     bool run_unit = false;
 
     {
@@ -70,6 +75,9 @@ int main(int argc, const char* const argv[]) {
                 case opt_nwtrs:
                     num_writers = clp->val.i;
                     break;
+                case opt_inte:
+                    run_integration = !clp->negated;
+                    break;
                 case opt_unit:
                     run_unit = !clp->negated;
                     break;
@@ -79,8 +87,8 @@ int main(int argc, const char* const argv[]) {
                     ret = 1;
                     break;
             }
-            Clp_DeleteParser(clp);
         }
+        Clp_DeleteParser(clp);
 
         if (ret) {
             return ret;
@@ -90,11 +98,20 @@ int main(int argc, const char* const argv[]) {
     size_t num_threads = num_readers + num_writers;
     (void)num_threads;
 
+    bool run_toy = true;
     if (run_unit) {
+        run_toy = false;
         logics::testMain();
         operators::testMain();
         state::testMain();
-    } else {
+    }
+
+    if (run_integration) {
+        run_toy = false;
+        filtercount::testMain();
+    }
+    
+    if (run_toy) {
         std::cout << "Readers: " << num_readers << std::endl;
         std::cout << "Writers: " << num_writers << std::endl;
     }

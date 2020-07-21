@@ -15,7 +15,7 @@ public:
     typedef V value_type;
 
 private:
-    class table_params_ : public Hashtable_params<K, value_type> {};
+    class table_params_ : public Hashtable_params<key_type, value_type> {};
     typedef Hashtable<table_params_> table_type;
 
 public:
@@ -23,7 +23,7 @@ public:
     explicit Table() {
         static_assert(
             std::is_base_of_v<Entry, value_type>,
-            "Value type must derive from storia::StateEntry.");
+            "Value type must derive from storia::Entry.");
     }
 
     template <typename UpdateType>
@@ -31,12 +31,18 @@ public:
     apply(UpdateType& update) {
         bool success = false;
         if constexpr (UpdateType::TYPE == UpdateType::Type::BlindWrite) {
+            bool retry = true;
             TXN {
                 const key_type key = update.template key<key_type>();
-                auto result = table_.transPut(key, update.vp(), true);
+                auto result = table_.transPut(
+                        key, update.vp(), update.overwrite());
                 CHK(!result.abort);
-            } RETRY(true);
-            success = true;
+                if (!update.overwrite() && result.existed) {
+                    retry = false;
+                    CHK(false);
+                }
+            } RETRY(retry);
+            success = retry;
         } else if constexpr (
                 UpdateType::TYPE == UpdateType::Type::ReadWrite) {
             bool retry = true;
@@ -49,17 +55,19 @@ public:
                     retry = false;  // Give up
                     CHK(false);
                 }
-                auto write_result = table_.transPut(key, update.vp(), true);
+                auto write_result = table_.transPut(
+                        key, update.vp(), update.overwrite());
                 CHK(!write_result.abort);
             } RETRY(retry);
             success = retry;
         } else if constexpr (
                 UpdateType::TYPE == UpdateType::Type::PartialBlindWrite) {
             TXN {
-                const key_type key = update.key();
+                const key_type key = update.template key<key_type>();
                 auto read_result = table_.transGet(
                         key, table_type::AccessMethod::Blind);
                 CHK(!read_result.abort);
+                CHK(read_result.success);
                 table_.transUpdate(read_result.ref, update.updater());
             } RETRY(true);
             success = true;
@@ -67,10 +75,11 @@ public:
                 UpdateType::TYPE == UpdateType::Type::PartialReadWrite) {
             bool retry = true;
             TXN {
-                const key_type key = update.key();
+                const key_type key = update.template key<key_type>();
                 auto read_result = table_.transGet(
                         key, table_type::AccessMethod::ReadWrite);
                 CHK(!read_result.abort);
+                CHK(read_result.success);
                 if (!update.predicate().eval(*read_result.value)) {
                     retry = false;  // Give up
                     CHK(false);
@@ -78,6 +87,8 @@ public:
                 table_.transUpdate(read_result.ref, update.updater());
             } RETRY(true);
             success = retry;
+        } else {
+            static_assert("Unrecognized Update type provided.");
         }
         return success;
     }

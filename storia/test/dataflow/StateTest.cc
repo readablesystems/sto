@@ -359,4 +359,3 @@ void testMain() {
 };  // namespace test
 
 };  // namespace storia
-

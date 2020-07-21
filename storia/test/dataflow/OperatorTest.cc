@@ -13,19 +13,9 @@ TEST_BEGIN(testCountSimple) {
     typedef storia::BlindWrite<int> update_type;
     auto counter = storia::Count<int>();
 
-    ASSERT(!counter.produce()->value());
+    ASSERT(counter.consume(update_type(41))->value() == 1);
 
-    counter.consume(update_type(41));
-
-    ASSERT(counter.produce()->value() == 1);
-
-    counter.consume(update_type(99));
-
-    ASSERT(counter.produce()->value() == 2);
-
-    // Do nothing
-
-    ASSERT(counter.produce()->value() == 2);
+    ASSERT(counter.consume(update_type(99))->value() == 1);
 }
 TEST_END
 
@@ -36,15 +26,9 @@ TEST_BEGIN(testCountWithFunction) {
     };
     auto counter = storia::Count<int, void>(comparator);
 
-    ASSERT(!counter.produce()->value());
+    ASSERT(counter.consume(update_type(41))->value() == 1);
 
-    counter.consume(update_type(41));
-
-    ASSERT(counter.produce()->value() == 1);
-
-    counter.consume(update_type(99));
-
-    ASSERT(counter.produce()->value() == 1);
+    ASSERT(counter.consume(update_type(99))->value() == 0);
 }
 TEST_END
 
@@ -56,15 +40,9 @@ TEST_BEGIN(testCountWithPredicate) {
     auto predicate = storia::PredicateUtil::Make<update_type>(comparator);
     auto counter = storia::Count<int, void>(predicate);
 
-    ASSERT(!counter.produce()->value());
+    ASSERT(counter.consume(update_type(41))->value() == 1);
 
-    counter.consume(update_type(41));
-
-    ASSERT(counter.produce()->value() == 1);
-
-    counter.consume(update_type(99));
-
-    ASSERT(counter.produce()->value() == 1);
+    ASSERT(counter.consume(update_type(99))->value() == 0);
 }
 TEST_END
 
@@ -75,27 +53,12 @@ TEST_BEGIN(testFilterSimpleFunction) {
     };
     auto filter = storia::Filter<int>(comparator);
 
-    filter.consume(update_type(-1));
-    {
-        auto next = filter.produce();
-        ASSERT(!next);
-    }
+    ASSERT(!filter.consume(update_type(-1)));
 
-    filter.consume(update_type(-1));
-    filter.consume(update_type(2));
-    filter.consume(update_type(1));
-    filter.consume(update_type(-2));
     {
-        auto next = filter.produce();
-        ASSERT(next->value() == 2);
-    }
-    {
-        auto next = filter.produce();
-        ASSERT(next->value() == 1);
-    }
-    {
-        auto next = filter.produce();
-        ASSERT(!next);
+        auto update = filter.consume(update_type(2));
+        ASSERT(update);
+        ASSERT(update->value() == 2);
     }
 }
 TEST_END
@@ -108,28 +71,12 @@ TEST_BEGIN(testFilterSimplePredicate) {
     auto predicate = storia::PredicateUtil::Make<update_type>(comparator);
     auto filter = storia::Filter<int>(predicate);
 
-    filter.consume(update_type(-1));
-    {
-        auto next = filter.produce();
-        ASSERT(!next);
-    }
-
-    filter.consume(update_type(-1));
-    filter.consume(update_type(2));
-    filter.consume(update_type(1));
-    filter.consume(update_type(-2));
+    ASSERT(!filter.consume(update_type(-1)));
 
     {
-        auto next = filter.produce();
-        ASSERT(next->value() == 2);
-    }
-    {
-        auto next = filter.produce();
-        ASSERT(next->value() == 1);
-    }
-    {
-        auto next = filter.produce();
-        ASSERT(!next);
+        auto update = filter.consume(update_type(2));
+        ASSERT(update);
+        ASSERT(update->value() == 2);
     }
 }
 TEST_END
