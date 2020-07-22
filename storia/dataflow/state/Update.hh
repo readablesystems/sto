@@ -154,8 +154,8 @@ public:
     };
 
     PartialReadWrite(
-        const Key& key, const pred_type& pred, const func_type& update_func)
-        : key_(key), pred_(pred), updater_(update_func) {}
+            const Key& key, const pred_type& pred, const func_type& update_func)
+            : key_(key), pred_(pred), updater_(update_func) {}
 
     template <typename K>
     K key() const {

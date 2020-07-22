@@ -67,11 +67,11 @@ TEST_BEGIN(testPartialBlindWriteSimple) {
     };
 
     auto update = storia::PartialBlindWrite<int, entry_type>(
-        1,
-        [] (entry_type& value) -> entry_type& {
-            value.append("delta");
-            return value;
-        });
+            1,
+            [] (entry_type& value) -> entry_type& {
+                value.append("delta");
+                return value;
+            });
     auto updater = update.updater();
 
     entry_type entry(1, "test");
@@ -103,9 +103,9 @@ TEST_BEGIN(testReadWriteSimple) {
     };
 
     auto pred = PredicateUtil::Make<entry_type>(
-        [] (const entry_type& entry) -> bool {
-            return entry.value().length() < 6;
-        });
+            [] (const entry_type& entry) -> bool {
+                return entry.value().length() < 6;
+            });
 
     {
         entry_type entry(1, "test");
@@ -238,9 +238,9 @@ TEST_BEGIN(testTablePartialReadWriteSimple) {
     };
 
     auto pred = PredicateUtil::Make<entry_type>(
-        [] (const entry_type& entry) -> bool {
-            return entry.value().length() < 6;
-        });
+            [] (const entry_type& entry) -> bool {
+                return entry.value().length() < 6;
+            });
     auto table = storia::Table<int, entry_type>();
 
     // Check that the key doesn't already exist
@@ -263,10 +263,10 @@ TEST_BEGIN(testTablePartialReadWriteSimple) {
     // Now attempt the update
     {
         auto update = storia::PartialReadWrite<int, entry_type>(
-            1, pred, [] (entry_type& entry) -> entry_type& {
-                entry.append("test");
-                return entry;
-            });
+                1, pred, [] (entry_type& entry) -> entry_type& {
+                    entry.append("test");
+                    return entry;
+                });
         ASSERT(table.apply(update));
     }
 
@@ -303,9 +303,9 @@ TEST_BEGIN(testTableReadWriteSimple) {
     };
 
     auto pred = PredicateUtil::Make<entry_type>(
-        [] (const entry_type& entry) -> bool {
-            return entry.value().length() < 6;
-        });
+            [] (const entry_type& entry) -> bool {
+                return entry.value().length() < 6;
+            });
     auto table = storia::Table<int, entry_type>();
 
     // Check that the key doesn't already exist

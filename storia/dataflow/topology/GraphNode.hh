@@ -95,11 +95,11 @@ private:
             auto key = update_in.template key<key_type>();
             auto inc_value = update_out_opt->value().value();
             PartialBlindWrite<key_type, entry_type> update(
-                key,
-                [inc_value] (entry_type& entry) -> entry_type& {
-                    entry += inc_value;
-                    return entry;
-                });
+                    key,
+                    [inc_value] (entry_type& entry) -> entry_type& {
+                        entry += inc_value;
+                        return entry;
+                    });
 
             // Create base value first, if needed
             auto existing = table_.get(key);
@@ -153,4 +153,3 @@ private:
 };  // namespace nodes
 
 };  // namespace storia
-

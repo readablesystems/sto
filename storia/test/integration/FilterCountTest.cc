@@ -41,9 +41,9 @@ TEST_BEGIN(testFilterCount) {
 
     count_node_type count_node;
     filter_node_type filter_node(
-        [] (const update_type& value) -> bool {
-            return value.value().value().length() < 6;
-        });
+            [] (const update_type& value) -> bool {
+                return value.value().value().length() < 6;
+            });
     filter_node.add_subscriber(&count_node);
 
     {

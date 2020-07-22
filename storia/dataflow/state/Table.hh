@@ -22,8 +22,8 @@ public:
 
     explicit Table() {
         static_assert(
-            std::is_base_of_v<Entry, value_type>,
-            "Value type must derive from storia::Entry.");
+                std::is_base_of_v<Entry, value_type>,
+                "Value type must derive from storia::Entry.");
     }
 
     template <typename UpdateType>
