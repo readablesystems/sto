@@ -36,17 +36,15 @@ TEST_BEGIN(testFilterCount) {
     };
 
     typedef storia::BlindWrite<entry_type> update_type;
-    typedef storia::nodes::CountNode<int, entry_type> count_node_type;
-    typedef storia::nodes::FilterNode<int, entry_type> filter_node_type;
+    typedef storia::CountNode<int, entry_type> count_node_type;
+    typedef storia::FilterNode<int, entry_type> filter_node_type;
 
     count_node_type count_node;
     filter_node_type filter_node(
             [] (const update_type& value) -> bool {
                 return value.value().value().length() < 6;
             });
-    count_node.subscribe_to(
-            &filter_node,
-            &count_node_type::receive_update);
+    count_node.subscribe_to(&filter_node, &count_node_type::receive);
 
     {
         auto opt_v = count_node.get(1);
@@ -56,7 +54,8 @@ TEST_BEGIN(testFilterCount) {
     {
         entry_type entry(1, "test");
         auto update = typename filter_node_type::op_type::input_type(entry);
-        filter_node.receive_update(std::shared_ptr<Update>(&update));
+        filter_node_type::receive(
+                &filter_node, std::shared_ptr<Update>(&update));
         auto opt_v = count_node.get(1);
         ASSERT(opt_v);
         ASSERT(opt_v->value().value() == 1);
