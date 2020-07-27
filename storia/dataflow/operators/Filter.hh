@@ -8,18 +8,16 @@
 namespace storia {
 
 template <typename T, typename B=void>
-class Filter : Operator<T> {
+class Filter : Operator {
 private:
-    typedef Operator<T> Base;
+    typedef TypeSpec<T> Spec;
 
 public:
-    using typename Base::arg_type;
-    using typename Base::entry_type;
-    using typename Base::input_type;
-    using typename Base::output_type;
-    using typename Base::ret_type;
-    using typename Base::update_type;
-    using typename Base::value_type;
+    typedef typename Spec::arg_type arg_type;
+    typedef typename Spec::input_type input_type;
+    typedef typename Spec::output_type output_type;
+    typedef typename Spec::ret_type ret_type;
+    typedef typename Spec::update_type update_type;
 
     typedef B base_type;
     typedef Predicate<input_type, base_type> predicate_type;
@@ -28,7 +26,7 @@ public:
     Filter(const typename predicate_type::comp_type& comparator)
         : predicate_(PredicateUtil::Make<input_type, base_type>(comparator)) {}
 
-    ret_type consume(arg_type update) override {
+    ret_type consume(arg_type update) {
         if (predicate_.eval(update)) {
             return update;
         }

@@ -44,7 +44,9 @@ TEST_BEGIN(testFilterCount) {
             [] (const update_type& value) -> bool {
                 return value.value().value().length() < 6;
             });
-    filter_node.add_subscriber(&count_node);
+    count_node.subscribe_to(
+            &filter_node,
+            &count_node_type::receive_update);
 
     {
         auto opt_v = count_node.get(1);
@@ -54,7 +56,7 @@ TEST_BEGIN(testFilterCount) {
     {
         entry_type entry(1, "test");
         auto update = typename filter_node_type::op_type::input_type(entry);
-        filter_node.receive(std::shared_ptr<Update>(&update));
+        filter_node.receive_update(std::shared_ptr<Update>(&update));
         auto opt_v = count_node.get(1);
         ASSERT(opt_v);
         ASSERT(opt_v->value().value() == 1);
