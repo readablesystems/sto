@@ -11,22 +11,24 @@ namespace storia {
 
 class GraphNode {
 public:
+    typedef std::shared_ptr<Update> update_arg_type;
+    typedef std::shared_ptr<Upquery> upquery_arg_type;
+
     class Edge {
     public:
-        typedef std::shared_ptr<Update> update_arg_type;
+        typedef std::function<bool(update_arg_type&)> key_pred_type;
         typedef
             std::function<void(GraphNode*, update_arg_type)> update_func_type;
-        typedef std::shared_ptr<Upquery> upquery_arg_type;
-        typedef std::function<void(upquery_arg_type)> upquery_func_type;
+        typedef
+            std::function<void(upquery_arg_type)> upquery_func_type;
 
         // The edge points from src to dest, with src being the upstream parent
         // and dest being the downstream child in the graph.
         Edge(
                 GraphNode* src, GraphNode* dest,
                 update_func_type update_func, upquery_func_type upquery_func)
-            : dest_(dest), src_(src),
-              update_func_(update_func),
-              upquery_func_(upquery_func) {}
+            : dest_(dest), key_pred_(std::nullopt), src_(src),
+              update_func_(update_func), upquery_func_(upquery_func) {}
 
         void delete_edge() {
             auto sptr = std::shared_ptr<Edge>(this);
@@ -47,15 +49,22 @@ public:
         }
 
         void send_update(update_arg_type update) {
-            update_func_(dest_, update);
+            if (!key_pred_ || (*key_pred_)(update)) {
+                update_func_(dest_, update);
+            }
         }
 
         void send_upquery(upquery_arg_type upquery) {
             upquery_func_(upquery);
         }
 
+        void set_key_predicate(std::optional<key_pred_type> key_pred) {
+            key_pred_ = key_pred;
+        }
+
     private:
         GraphNode* dest_;
+        std::optional<key_pred_type> key_pred_;
         GraphNode* src_;
         update_func_type update_func_;
         upquery_func_type upquery_func_;
@@ -76,7 +85,7 @@ public:
         publishers_.insert(edge);
     }
 
-    void receive_upquery(std::shared_ptr<Upquery> upquery) {
+    void receive_upquery(upquery_arg_type upquery) {
         (void)upquery;
     }
 
@@ -85,7 +94,7 @@ protected:
         subscribers_.insert(edge);
     }
 
-    void propagate(std::shared_ptr<Update> update) {
+    void propagate(update_arg_type update) {
         for (auto subscriber : subscribers_) {
             subscriber->send_update(update);
         }
