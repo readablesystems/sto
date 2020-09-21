@@ -13,6 +13,7 @@
 #include "masstree_scan.hh"
 #include "string.hh"
 
+#include <any>
 #include <vector>
 #include "DB_structs.hh"
 #include "VersionSelector.hh"
@@ -39,58 +40,9 @@ public:
     static constexpr bool MVCC = false;
 };
 
-template <
-    typename K, typename V,
-    typename H=std::hash<K>, typename P=std::equal_to<K>>
-class Hashtable_mvcc_params : public Hashtable_params<K, V, H, P> {
+template <typename V>
+class Hashtable_results {
 public:
-    static constexpr bool MVCC = true;
-};
-
-template <
-    typename K, typename V,
-    typename H=std::hash<K>, typename P=std::equal_to<K>>
-class Hashtable_opaque_params : public Hashtable_params<K, V, H, P> {
-public:
-    static constexpr bool Opacity = true;
-};
-
-template <typename Params>
-#ifdef STO_NO_STM
-class Hashtable {
-#else
-class Hashtable : public TObject {
-#endif
-public:
-    typedef typename Params::Key key_type;
-    typedef typename Params::Value value_type;
-    typedef commutators::Commutator<value_type> comm_type;
-    typedef typename Params::Hash Hash;
-    typedef typename Params::Pred Pred;
-    typedef typename std::conditional_t<Params::Opacity, TVersion, TNonopaqueVersion> version_type;
-    typedef typename std::conditional_t<Params::Opacity, TWrapped<value_type>, TNonopaqueWrapped<value_type>> wrapped_type;
-    typedef IndexValueContainer<value_type, version_type> value_container_type;
-
-    // MVCC typedefs
-    typedef MvObject<value_type> object_type;
-    typedef typename object_type::history_type history_type;
-
-#ifdef STO_NO_STM
-    static constexpr bool enable_stm = false;
-#else
-    static constexpr bool enable_stm = true;
-#endif
-
-    enum AccessMethod {
-        Blind = 0,
-        ReadOnly,
-        ReadWrite,
-    };
-
-    static constexpr AccessMethod BlindAccess = AccessMethod::Blind;
-    static constexpr AccessMethod ReadOnlyAccess = AccessMethod::ReadOnly;
-    static constexpr AccessMethod ReadWriteAccess = AccessMethod::ReadWrite;
-
     struct delete_result_type {
         bool abort;  // Whether the transaction should abort
         bool success;  // Whether the action succeeded
@@ -112,20 +64,21 @@ public:
 
     struct insert_result_type {
         bool abort;  // Whether the transaction should abort
+        bool success;  // Whether the operation succeeded
         bool existed;  // Whether the key already existed
 
         static constexpr insert_result_type Abort = {
-            .abort = true, .existed = false
+            .abort = true, .success = false, .existed = false
         };
 
         // Non-aborting failure
         static constexpr insert_result_type Fail = {
-            .abort = false, .existed = false
+            .abort = false, .success = false, .existed = false
         };
 
         // Converts to an unstructure tuple of the result
-        std::tuple<bool, bool> to_tuple() const {
-            return { abort, existed };
+        std::tuple<bool, bool, bool> to_tuple() const {
+            return { abort, success, existed };
         }
     };
 
@@ -133,7 +86,7 @@ public:
         bool abort;  // Whether the transaction should abort
         bool success;  // Whether the action succeeded
         uintptr_t ref;  // An internally-held reference
-        const value_type* value;  // The selected value
+        const V* value;  // The selected value
 
         static constexpr select_result_type Abort = {
             .abort = true, .success = false, .ref = 0, .value = nullptr
@@ -145,10 +98,68 @@ public:
         };
 
         // Converts to an unstructure tuple of the result
-        std::tuple<bool, bool, uintptr_t, const value_type*> to_tuple() const {
+        std::tuple<bool, bool, uintptr_t, const V*> to_tuple() const {
             return { abort, success, ref, value };
         }
     };
+};
+
+template <
+    typename K, typename V,
+    typename H=std::hash<K>, typename P=std::equal_to<K>>
+class Hashtable_mvcc_params : public Hashtable_params<K, V, H, P> {
+public:
+    static constexpr bool MVCC = true;
+};
+
+template <
+    typename K, typename V,
+    typename H=std::hash<K>, typename P=std::equal_to<K>>
+class Hashtable_opaque_params : public Hashtable_params<K, V, H, P> {
+public:
+    static constexpr bool Opacity = true;
+};
+
+enum HashtableAccessMethod {
+    Blind = 0,
+    ReadOnly,
+    ReadWrite,
+};
+
+template <typename Params>
+#ifdef STO_NO_STM
+class Hashtable {
+#else
+class Hashtable : public TObject {
+#endif
+public:
+    typedef typename Params::Key key_type;
+    typedef typename Params::Value value_type;
+    typedef commutators::Commutator<value_type> comm_type;
+    typedef typename Params::Hash Hash;
+    typedef typename Params::Pred Pred;
+    typedef typename std::conditional_t<Params::Opacity, TVersion, TNonopaqueVersion> version_type;
+    typedef typename std::conditional_t<Params::Opacity, TWrapped<value_type>, TNonopaqueWrapped<value_type>> wrapped_type;
+    typedef IndexValueContainer<value_type, version_type> value_container_type;
+
+    typedef HashtableAccessMethod AccessMethod;
+    typedef typename Hashtable_results<value_type>::delete_result_type delete_result_type;
+    typedef typename Hashtable_results<value_type>::insert_result_type insert_result_type;
+    typedef typename Hashtable_results<value_type>::select_result_type select_result_type;
+
+    // MVCC typedefs
+    typedef MvObject<value_type> object_type;
+    typedef typename object_type::history_type history_type;
+
+#ifdef STO_NO_STM
+    static constexpr bool enable_stm = false;
+#else
+    static constexpr bool enable_stm = true;
+#endif
+
+    static constexpr AccessMethod BlindAccess = AccessMethod::Blind;
+    static constexpr AccessMethod ReadOnlyAccess = AccessMethod::ReadOnly;
+    static constexpr AccessMethod ReadWriteAccess = AccessMethod::ReadWrite;
 
 private:
     // Our hashtable is an array of linked lists.
@@ -234,6 +245,9 @@ public:
         return (item.flags() & update_bit) != 0;
     }
 
+    inline key_type coerce_key(const std::any& key) const {
+        return std::any_cast<key_type>(key);
+    }
     inline size_t find_bucket_idx(const key_type& k) const {
         return hash(k) % nbuckets();
     }
@@ -575,7 +589,7 @@ public:
                 }
             }
 
-            return { .abort = false, .existed = true };
+            return { .abort = false, .success = true, .existed = true };
         }
 
         // Key is not already in table
@@ -599,7 +613,7 @@ public:
         item.template add_write<value_type*>(value);  // XXX: is this necessary?
         item.add_flags(insert_bit);
 
-        return { .abort = false, .existed = false };
+        return { .abort = false, .success = true, .existed = false };
     }
 
     typename std::enable_if_t<enable_stm, void>
