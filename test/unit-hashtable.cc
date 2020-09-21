@@ -13,7 +13,8 @@
 
 // Test suite for basic nontransactional put and get functionality
 void testBasicNontransPutGet() {
-    Hashtable<Hashtable_params<int, int>> ht;
+    typedef Hashtable<Hashtable_params<int, int>> ht_type;
+    ht_type ht;
 
     // Test putting and getting the same element
     {
@@ -51,7 +52,8 @@ void testBasicNontransPutGet() {
 
 // Test suite for basic transactional put functionality
 void testBasicTransPut() {
-    Hashtable<Hashtable_params<int, int>> ht;
+    typedef Hashtable<Hashtable_params<int, int>> ht_type;
+    ht_type ht;
 
     // Test transactional put
     {
@@ -74,14 +76,14 @@ void testBasicTransPut() {
         TestTransaction t1(1);
 
         int value1 = 9001;
-        auto result1 = ht.transPut(1, &value1);
+        auto result1 = ht.transPut(1, &value1, true);
         assert(!result1.abort);
         assert(result1.existed);
 
         TestTransaction t2(2);
 
         int value2 = 9002;
-        auto result2 = ht.transPut(1, &value2);
+        auto result2 = ht.transPut(1, &value2, true);
         assert(!result2.abort);
         assert(result2.existed);
 
@@ -98,14 +100,15 @@ void testBasicTransPut() {
 
 // Test suite for basic transactional get functionality
 void testBasicTransGet() {
-    Hashtable<Hashtable_params<int, int>> ht;
+    typedef Hashtable<Hashtable_params<int, int>> ht_type;
+    ht_type ht;
 
     // Test transactional get
     {
         ht.nontrans_put(1, 42);
         TestTransaction t(1);
 
-        auto result = ht.transGet(1);
+        auto result = ht.transGet(1, ht_type::ReadWriteAccess);
         assert(result.value);
         assert(*result.value == 42);
 
@@ -123,7 +126,7 @@ void testBasicTransGet() {
 
         TestTransaction t2(2);
 
-        auto result2 = ht.transGet(3);
+        auto result2 = ht.transGet(3, ht_type::ReadWriteAccess);
         assert(!result2.value);
 
         assert(t1.try_commit());
@@ -135,14 +138,15 @@ void testBasicTransGet() {
 
 // Test suite for basic transactional update functionality
 void testBasicTransUpdate() {
-    Hashtable<Hashtable_params<int, int>> ht;
+    typedef Hashtable<Hashtable_params<int, int>> ht_type;
+    ht_type ht;
 
     // Test transactional update
     {
         ht.nontrans_put(1, 42);
         TestTransaction t(1);
 
-        auto result = ht.transGet(1);
+        auto result = ht.transGet(1, ht_type::ReadWriteAccess);
         assert(!result.abort);
         assert(result.success);
 
@@ -169,7 +173,8 @@ void testBasicTransUpdate() {
 
 // Test suite for basic transactional delete functionality
 void testBasicTransDelete() {
-    Hashtable<Hashtable_params<int, int>> ht;
+    typedef Hashtable<Hashtable_params<int, int>> ht_type;
+    ht_type ht;
 
     // Test transactional delete
     {
