@@ -319,7 +319,7 @@ private:
             assert(prev());
             TXP_INCREMENT(txp_mvcc_flat_runs);
 #if CU_READ_AT_PRESENT
-            prev()->flatten(v, wtid_);
+            flatten_present_time(v);
 #else
             prev()->flatten(v);
 #endif
@@ -337,44 +337,19 @@ private:
         }
     }
 
-#if CU_READ_AT_PRESENT
-    void flatten(T &v, type next_wtid) {
-#else
+    // To be called from the prev of the source of the flattening
     void flatten(T &v) {
-#endif
         std::stack<history_type*> trace;
         history_type* curr = this;
-#if CU_READ_AT_PRESENT
-        while (true) {
-            type ets = curr->rtid();
-            if (ets >= next_wtid) break;
-            if (curr->rtid(ets, next_wtid)) break;
-        }
-#endif
         trace.push(curr);
         TXP_INCREMENT(txp_mvcc_flat_versions);
-#if CU_READ_AT_PRESENT
-        while (true) {
-            // Wait for pending versions to resolve.
-            while (curr->status_is(PENDING)) { relax_fence(); }
-            // Means we have reached the "base" committed version.
-            if (curr->status_is(COMMITTED_DELTA, COMMITTED)) { break; }
-
-            curr = curr->prev();
-
-            while (true) {
-                type ets = curr->rtid();
-                if (ets >= next_wtid) break;
-                if (curr->rtid(ets, next_wtid)) break;
-            }
-#else
         while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
             curr = curr->prev();
-#endif
             trace.push(curr);
             TXP_INCREMENT(txp_mvcc_flat_versions);
             curr->gc_push(object()->is_inlined(curr));
         }
+
         while (!trace.empty()) {
             auto h = trace.top();
             trace.pop();
@@ -386,9 +361,66 @@ private:
                     v = h->v_;
                 }
             }
-
         }
     }
+
+#if CU_READ_AT_PRESENT
+    // To be called from the source of the flattening
+    void flatten_present_time(T &v) {
+        std::stack<history_type*> trace;
+        history_type* curr = this;
+        trace.push(curr);
+        TXP_INCREMENT(txp_mvcc_flat_versions);
+        while (true) {
+            // Wait for pending versions to resolve.
+            while (curr->status_is(PENDING)) { relax_fence(); }
+            // Means we have reached the "base" committed version.
+            if (curr->status_is(COMMITTED_DELTA, COMMITTED)) { break; }
+
+            curr = curr->prev();
+            trace.push(curr);
+            TXP_INCREMENT(txp_mvcc_flat_versions);
+            curr->gc_push(object()->is_inlined(curr));
+        }
+
+        history_type* hprev = nullptr;
+        while (!trace.empty()) {
+            auto h = trace.top();
+            trace.pop();
+
+            // Retrace our steps as needed
+            while (hprev && (h->wtid() > hprev->rtid())) {
+                // Wait for pending versions to resolve.
+                while (h->status_is(PENDING)) { relax_fence(); }
+                trace.push(h);
+                h = h->prev();
+            }
+            assert(h != hprev);
+
+            // If trace is empty, then we're at the sentinel element (which is
+            // the source of the flattening -- don't process this one yet).
+            if (trace.empty()) {
+                break;
+            }
+
+            // Set rtid to wtid of next element if it exists
+            auto next_wtid = trace.top()->wtid();
+            type ets = curr->rtid();
+            if (ets >= next_wtid) break;
+            if (curr->rtid(ets, next_wtid)) break;
+
+            if (h->status_is(COMMITTED)) {
+                if (h->status_is(DELTA)) {
+                    v = h->c_.operate(v);
+                } else if (!h->status_is(COMMITTED_DELETED)) {
+                    v = h->v_;
+                }
+            }
+
+            hprev = h;
+        }
+    }
+#endif
 
     static void gc_inlined_cb(void *ptr) {
         history_type* h = static_cast<history_type*>(ptr);
