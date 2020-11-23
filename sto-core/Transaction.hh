@@ -1078,7 +1078,7 @@ public:
             if constexpr (!Commute) {
                 if (mvcc_rw) {
                     //thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
-                    read_tid_ = _TID;
+                    read_tid_ = write_tid();
                     thr.rtid.store(read_tid_, std::memory_order_relaxed);
                 } else {
                     epoch_advance_once();
