@@ -35,6 +35,10 @@ public:
         return v;
     }
 
+    int64_t get() const {
+        return 0;
+    }
+
 private:
     int64_t delta;
 };

@@ -421,6 +421,9 @@ ycsb_bench: $(OBJ)/YCSB_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
 ht_bench: $(OBJ)/HT_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
+prcu_bench: $(OBJ)/PRCU_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+
 micro_bench: $(OBJ)/MicroBenchmarks.o $(INDEX_OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
