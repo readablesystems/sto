@@ -434,6 +434,7 @@ private:
 
             // Retrace our steps as needed
             auto h = hdeq.front();
+            hdeq.pop_front();
             bool restart = false;
             for (auto hcurr = hnext->prev(); hcurr != h; hcurr = hcurr->prev()) {
                 // Wait for pending versions to resolve.
