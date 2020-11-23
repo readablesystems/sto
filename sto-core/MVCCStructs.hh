@@ -2,7 +2,9 @@
 
 #pragma once
 
+#include <deque>
 #include <stack>
+#include <thread>
 
 #include "MVCCTypes.hh"
 #include "TRcu.hh"
@@ -319,7 +321,11 @@ private:
             assert(prev());
             TXP_INCREMENT(txp_mvcc_flat_runs);
 #if CU_READ_AT_PRESENT
-            flatten_present_time(v);
+            ssize_t ct = 0;
+            while (!flatten_present_time(v)) {
+                ++ct;
+                //printf("%p looping %zd on %p\n", std::this_thread::get_id(), ct, obj_);
+            }
 #else
             prev()->flatten(v);
 #endif
@@ -365,17 +371,30 @@ private:
     }
 
 #if CU_READ_AT_PRESENT
-    // To be called from the source of the flattening
-    void flatten_present_time(T &v) {
-        std::stack<history_type*> trace;
+    // To be called from the source of the flattening; returns true on success
+    // and false on failure.
+    bool flatten_present_time(T &v) {
+        std::stack<history_type*> trace;  // Of history elements to process
+        std::stack<history_type*> committed_trace;  // Of committed histories
+        std::deque<history_type*> hdeq;
+
+        // Current element is the one initiating the flattening here. It is not
+        // included in the trace, but it is included in the committed trace.
         history_type* curr = this;
-        trace.push(curr);
+
         TXP_INCREMENT(txp_mvcc_flat_versions);
         while (true) {
             // Wait for pending versions to resolve.
             while (curr->status_is(PENDING)) { relax_fence(); }
-            // Means we have reached the "base" committed version.
-            if (curr->status_is(COMMITTED_DELTA, COMMITTED)) { break; }
+            if (curr->status_is(COMMITTED)) {
+                // Means we have reached the "base" committed version.
+                if (curr->status_is(COMMITTED_DELTA, COMMITTED)) {
+                    break;
+                }
+
+                // Use this as the backtrace source from hereon out
+                committed_trace.push(curr);
+            }
 
             curr = curr->prev();
             trace.push(curr);
@@ -383,31 +402,86 @@ private:
             curr->gc_push(object()->is_inlined(curr));
         }
 
-        history_type* hprev = nullptr;
         while (!trace.empty()) {
-            auto h = trace.top();
-            trace.pop();
+            assert(trace.top()->status_is(COMMITTED));
+
+            auto hnext = committed_trace.top();  // Next committed history
+            while (hnext->wtid() < trace.top()->wtid()) {
+                committed_trace.pop();
+                hnext = committed_trace.top();
+            }
+
+            // hdeq contains the versions to process until the next committed
+            // version
+            hdeq.clear();
+            do {
+                auto h = trace.top();
+
+                // Attempt rtid expansion
+                while (true) {
+                    type ets = h->rtid();
+                    if (ets >= hnext->wtid()) {  // Already expanded
+                        break;
+                    }
+                    if (h->rtid(ets, hnext->wtid())) {  // CAS on rtid
+                        break;
+                    }
+                }
+
+                hdeq.push_back(h);
+                trace.pop();
+            } while (!trace.empty() && !trace.top()->status_is(COMMITTED_DELTA, COMMITTED));
 
             // Retrace our steps as needed
-            while (hprev && (h->wtid() > hprev->rtid())) {
+            auto h = hdeq.front();
+            bool restart = false;
+            for (auto hcurr = hnext->prev(); hcurr != h; hcurr = hcurr->prev()) {
                 // Wait for pending versions to resolve.
-                while (h->status_is(PENDING)) { relax_fence(); }
-                trace.push(h);
-                h = h->prev();
-            }
-            assert(h != hprev);
+                while (hcurr->status_is(PENDING)) { relax_fence(); }
 
-            // If trace is empty, then we're at the sentinel element (which is
-            // the source of the flattening -- don't process this one yet).
-            if (trace.empty()) {
-                break;
-            }
+                // This should be our hnext... unless it was a blind write
+                if (hcurr->status_is(COMMITTED)) {
+                    // Readjust our deque to account for new hnext
+                    while (!hdeq.empty() && (hdeq.back() != hcurr->prev())) {
+                        trace.push(hdeq.back());
+                        hdeq.pop_back();
+                    }
 
-            // Set rtid to wtid of next element if it exists
-            auto next_wtid = trace.top()->wtid();
-            type ets = curr->rtid();
-            if (ets >= next_wtid) break;
-            if (curr->rtid(ets, next_wtid)) break;
+                    // Found a blind write
+                    if (hcurr->status_is(COMMITTED_DELTA, COMMITTED)) {
+                        // We can just drop everything left in our deq, then.
+                        trace.push(hcurr);
+                        /*
+                        printf("failed %p (r %d, w %d) digging into %p (r %d, w %d)\n",
+                                std::this_thread::get_id(),
+                                Sto::read_tid<true>(),
+                                Sto::write_tid(),
+                                h,
+                                h->rtid(),
+                                h->wtid());
+                        printf("%p found history at %p (r %d, w %d) with pred %p (r %d, w %d)\n",
+                                std::this_thread::get_id(),
+                                hcurr,
+                                hcurr->rtid(),
+                                hcurr->wtid(),
+                                hnext,
+                                hnext->rtid(),
+                                hnext->wtid());
+                                */
+                        //return false;
+                        restart = true;
+                        break;
+                    }
+
+                    // A new committed version to process
+                    hnext = hcurr;
+                    committed_trace.push(hnext);
+                    trace.push(hnext);
+                }
+            }
+            if (restart) {
+                continue;
+            }
 
             if (h->status_is(COMMITTED)) {
                 if (h->status_is(DELTA)) {
@@ -416,9 +490,8 @@ private:
                     v = h->v_;
                 }
             }
-
-            hprev = h;
         }
+        return true;
     }
 #endif
 

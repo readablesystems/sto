@@ -291,6 +291,9 @@ enum txp {
     txp_rcu_free_impl,
     txp_dealloc_performed,
     txp_rtid_atomic,
+    txp_mvcc_bad_versions,
+    txp_mvcc_sum,
+    txp_total_sum,
 #if !STO_PROFILE_COUNTERS
     txp_count = 0
 #elif STO_PROFILE_COUNTERS == 1
@@ -1064,7 +1067,7 @@ public:
 #if CU_READ_AT_PRESENT
             // Experimental: always read at the present for mvcc r/w transactions.
             if (mvcc_rw) {
-                read_tid_ = _TID;
+                read_tid_ = write_tid();
                 thr.rtid.store(read_tid_, std::memory_order_relaxed);
             } else {
                 epoch_advance_once();
