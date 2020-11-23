@@ -20,7 +20,7 @@ void prcubench_runner<DBParams>::gen_workload(uint64_t) {
         const uint64_t txn_size = is_long_txn ? 1 : 1;
         txn.ops.reserve(txn_size);
         for (uint64_t j = 0; j < txn_size; j++) {
-            uint32_t key = 0; //dd->sample() % 1024;
+            uint32_t key = dd->sample() % 1024;
             bool any_write = is_write;
             ht_op_t op {};
             op.is_write = is_write;

@@ -746,9 +746,24 @@ public:
         } while (true);
 
         // Version consistency verification
-        if (h->prev()->rtid() > tid) {
-            h->status_abort();
-            return false;
+        {
+            auto hprev = h;
+            do {
+                hprev = hprev->prev();
+                auto rtid_p = hprev->rtid();
+                if (rtid_p > tid) {
+                    /*
+                    auto rtid_e = h->rtid();
+                    while (!h->rtid(rtid_e, rtid_p)) {  // In theory should never fail
+                        if ((rtid_e = h->rtid()) > rtid_p) {
+                            break;
+                        }
+                    }
+                    */
+                    h->status_abort();
+                    return false;
+                }
+            } while (!hprev->status_is(COMMITTED));
         }
 
         return true;
