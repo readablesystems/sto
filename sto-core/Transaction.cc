@@ -21,7 +21,7 @@ std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callbac
 TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 3 * TransactionTid::increment_value;
 std::atomic<TransactionTid::type> __attribute__((aligned(128))) Transaction::_RTID(Transaction::_TID - TransactionTid::increment_value);
    // reserve TransactionTid::increment_value for prepopulated
-unsigned Transaction::us_per_epoch = 100000;  // Defaults to 100ms
+unsigned Transaction::us_per_epoch = 1000;  // Defaults to 1ms
 
 static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
