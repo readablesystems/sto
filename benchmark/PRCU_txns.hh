@@ -17,10 +17,11 @@ void prcubench_runner<DBParams>::gen_workload(uint64_t) {
     for (uint64_t i = 0; i < long_txn; i++) {
         prcubench_txn_t txn {};
         const bool is_long_txn = (i % long_txn == cycle);
-        const uint64_t txn_size = is_long_txn ? 1 : 1;
+        const uint64_t txn_size = is_long_txn ? long_txn : 1;
         txn.ops.reserve(txn_size);
+        auto first_key = dd->sample() % 1024;
         for (uint64_t j = 0; j < txn_size; j++) {
-            uint32_t key = dd->sample() % 1024;
+            uint32_t key = first_key + j;
             bool any_write = is_write;
             ht_op_t op {};
             op.is_write = is_write;
@@ -107,7 +108,7 @@ typename prcubench_runner<DBParams>::txn_type prcubench_runner<DBParams>::run_tx
             }
         } RETRY(true);
         total_sum += txn_sum;
-        TXP_ACCOUNT(txp_mvcc_sum, txn_sum);
+        TXP_ACCOUNT(txp_mvcc_sum, txn.ops.size());
         if (attempts > 1) {
             //printf("%d attempts\n", attempts);
         }
