@@ -321,11 +321,7 @@ private:
             assert(prev());
             TXP_INCREMENT(txp_mvcc_flat_runs);
 #if CU_READ_AT_PRESENT
-            ssize_t ct = 0;
-            while (!flatten_present_time(v)) {
-                ++ct;
-                //printf("%p looping %zd on %p\n", std::this_thread::get_id(), ct, obj_);
-            }
+            flatten_present_time(v);
 #else
             prev()->flatten(v);
 #endif
@@ -373,7 +369,7 @@ private:
 #if CU_READ_AT_PRESENT
     // To be called from the source of the flattening; returns true on success
     // and false on failure.
-    bool flatten_present_time(T &v) {
+    void flatten_present_time(T &v) {
         std::stack<history_type*> trace;  // Of history elements to process
         std::stack<history_type*> committed_trace;  // Of committed histories
         std::deque<history_type*> hdeq;
@@ -452,24 +448,6 @@ private:
                     if (hcurr->status_is(COMMITTED_DELTA, COMMITTED)) {
                         // We can just drop everything left in our deq, then.
                         trace.push(hcurr);
-                        /*
-                        printf("failed %p (r %d, w %d) digging into %p (r %d, w %d)\n",
-                                std::this_thread::get_id(),
-                                Sto::read_tid<true>(),
-                                Sto::write_tid(),
-                                h,
-                                h->rtid(),
-                                h->wtid());
-                        printf("%p found history at %p (r %d, w %d) with pred %p (r %d, w %d)\n",
-                                std::this_thread::get_id(),
-                                hcurr,
-                                hcurr->rtid(),
-                                hcurr->wtid(),
-                                hnext,
-                                hnext->rtid(),
-                                hnext->wtid());
-                                */
-                        //return false;
                         restart = true;
                         break;
                     }
@@ -492,7 +470,6 @@ private:
                 }
             }
         }
-        return true;
     }
 #endif
 
@@ -753,14 +730,6 @@ public:
                 hprev = hprev->prev();
                 auto rtid_p = hprev->rtid();
                 if (rtid_p > tid) {
-                    /*
-                    auto rtid_e = h->rtid();
-                    while (!h->rtid(rtid_e, rtid_p)) {  // In theory should never fail
-                        if ((rtid_e = h->rtid()) > rtid_p) {
-                            break;
-                        }
-                    }
-                    */
                     h->status_abort();
                     return false;
                 }
