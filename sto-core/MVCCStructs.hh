@@ -371,7 +371,6 @@ private:
     // and false on failure.
     void flatten_present_time(T &v) {
         std::stack<history_type*> trace;  // Of history elements to process
-        std::stack<history_type*> committed_trace;  // Of committed histories
         std::deque<history_type*> hdeq;
 
         // Current element is the one initiating the flattening here. It is not
@@ -383,54 +382,26 @@ private:
             // Wait for pending versions to resolve.
             while (curr->status_is(PENDING)) { relax_fence(); }
             if (curr->status_is(COMMITTED)) {
+                // Add to our list of versions to process
+                trace.push(curr);
+
                 // Means we have reached the "base" committed version.
                 if (curr->status_is(COMMITTED_DELTA, COMMITTED)) {
                     break;
                 }
-
-                // Use this as the backtrace source from hereon out
-                committed_trace.push(curr);
             }
 
             curr = curr->prev();
-            trace.push(curr);
             TXP_INCREMENT(txp_mvcc_flat_versions);
             curr->gc_push(object()->is_inlined(curr));
         }
 
-        while (!trace.empty()) {
-            assert(trace.top()->status_is(COMMITTED));
-
-            auto hnext = committed_trace.top();  // Next committed history
-            while (hnext->wtid() < trace.top()->wtid()) {
-                committed_trace.pop();
-                hnext = committed_trace.top();
-            }
-
-            // hdeq contains the versions to process until the next committed
-            // version
-            hdeq.clear();
-            do {
-                auto h = trace.top();
-
-                // Attempt rtid expansion
-                while (true) {
-                    type ets = h->rtid();
-                    if (ets >= hnext->wtid()) {  // Already expanded
-                        break;
-                    }
-                    if (h->rtid(ets, hnext->wtid())) {  // CAS on rtid
-                        break;
-                    }
-                }
-
-                hdeq.push_back(h);
-                trace.pop();
-            } while (!trace.empty() && !trace.top()->status_is(COMMITTED_DELTA, COMMITTED));
+        while (trace.size() > 1) {
+            auto h = trace.top();
+            trace.pop();
+            auto hnext = trace.top();  // Next committed history
 
             // Retrace our steps as needed
-            auto h = hdeq.front();
-            hdeq.pop_front();
             bool restart = false;
             for (auto hcurr = hnext->prev(); hcurr != h; hcurr = hcurr->prev()) {
                 // Wait for pending versions to resolve.
@@ -438,24 +409,28 @@ private:
 
                 // This should be our hnext... unless it was a blind write
                 if (hcurr->status_is(COMMITTED)) {
-                    // Readjust our deque to account for new hnext
-                    while (!hdeq.empty() && (hdeq.back() != hcurr->prev())) {
-                        trace.push(hdeq.back());
-                        hdeq.pop_back();
-                    }
+                    trace.push(hcurr);
 
                     // Found a blind write
                     if (hcurr->status_is(COMMITTED_DELTA, COMMITTED)) {
-                        // We can just drop everything left in our deq, then.
-                        trace.push(hcurr);
+                        // We can just drop everything; start with a new base v
                         restart = true;
                         break;
                     }
 
                     // A new committed version to process
                     hnext = hcurr;
-                    committed_trace.push(hnext);
-                    trace.push(hnext);
+                }
+
+                // Update the rtid now
+                {
+                    type curr_rtid;
+                    type target_rtid = hnext->wtid();
+                    while ((curr_rtid = hcurr->rtid()) < target_rtid) {
+                        if (hcurr->rtid(curr_rtid, target_rtid)) {
+                            break;
+                        }
+                    }
                 }
             }
             if (restart) {
