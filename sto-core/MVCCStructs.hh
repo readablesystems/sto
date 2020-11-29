@@ -705,6 +705,7 @@ public:
             auto hprev = h;
             do {
                 hprev = hprev->prev();
+                wait_if_pending(hprev);
                 auto rtid_p = hprev->rtid();
                 if (rtid_p > tid) {
                     TXP_INCREMENT(txp_mvcc_lock_vc_aborts);
