@@ -605,7 +605,9 @@ public:
         }
 
         // Version consistency check
-        if (find(tid) != h) {
+        auto hh = find(tid);
+        if (hh != h) {
+            TXP_INCREMENT(txp_mvcc_check_aborts);
             return false;
         }
 
@@ -705,6 +707,7 @@ public:
                 hprev = hprev->prev();
                 auto rtid_p = hprev->rtid();
                 if (rtid_p > tid) {
+                    TXP_INCREMENT(txp_mvcc_lock_vc_aborts);
                     h->status_abort();
                     return false;
                 }
@@ -790,7 +793,7 @@ public:
             return &ih_;
         }
 #endif
-        return new history_type(std::forward<Args>(args)...);
+        return new(std::nothrow) history_type(std::forward<Args>(args)...);
     }
 
     // Read-only
