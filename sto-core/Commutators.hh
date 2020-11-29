@@ -30,13 +30,13 @@ public:
     Commutator() = default;
     explicit Commutator(int64_t delta) : delta(delta) {}
 
+    virtual bool is_blind_write() const {
+        return false;
+    }
+
     virtual int64_t& operate(int64_t& v) const {
         v += delta;
         return v;
-    }
-
-    int64_t get() const {
-        return 0;
     }
 
 private:
