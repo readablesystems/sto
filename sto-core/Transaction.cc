@@ -486,6 +486,7 @@ void Transaction::print_stats() {
         unsigned long long txc_total_aborts = out.p(txp_total_aborts);
         unsigned long long txc_commit_aborts = out.p(txp_commit_time_aborts);
         unsigned long long txc_total_commits = txc_total_starts - txc_total_aborts;
+        fprintf(stderr, "$ %llu allocs, %llu bytes\n", out.p(txp_alloc_t), out.p(txp_alloc_b));
         fprintf(stderr, "$ %llu starts, %llu max read set, %llu commits",
                 txc_total_starts, out.p(txp_max_set), txc_total_commits);
         if (txc_total_aborts) {
@@ -508,6 +509,30 @@ void Transaction::print_stats() {
                 fprintf(stderr, "\n$ %llu (%.3f%%) of aborts due to observing write-locked versions",
                         out.p(txp_observe_lock_aborts),
                         100.0 * (double) out.p(txp_observe_lock_aborts) / out.p(txp_total_aborts));
+            }
+
+            if (out.p(txp_mvcc_lock_status_aborts)) {
+                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts due to MVCC lock failure at status check",
+                        out.p(txp_mvcc_lock_status_aborts),
+                        100.0 * (double) out.p(txp_mvcc_lock_status_aborts) / out.p(txp_total_aborts));
+            }
+
+            if (out.p(txp_mvcc_lock_vis_aborts)) {
+                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts due to MVCC lock failure at visibility check",
+                        out.p(txp_mvcc_lock_vis_aborts),
+                        100.0 * (double) out.p(txp_mvcc_lock_vis_aborts) / out.p(txp_total_aborts));
+            }
+
+            if (out.p(txp_mvcc_lock_vc_aborts)) {
+                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts due to MVCC lock failure at version consistency check",
+                        out.p(txp_mvcc_lock_vc_aborts),
+                        100.0 * (double) out.p(txp_mvcc_lock_vc_aborts) / out.p(txp_total_aborts));
+            }
+
+            if (out.p(txp_mvcc_check_aborts)) {
+                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts due to MVCC check failure",
+                        out.p(txp_mvcc_check_aborts),
+                        100.0 * (double) out.p(txp_mvcc_check_aborts) / out.p(txp_total_aborts));
             }
         }
         unsigned long long txc_commit_attempts = txc_total_starts - (txc_total_aborts - txc_commit_aborts);

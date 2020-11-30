@@ -214,6 +214,8 @@ enum txp {
     txp_observe_lock_aborts,
     txp_lock_aborts,
     txp_aborted_by_others,
+    txp_alloc_b,
+    txp_alloc_t,
     txp_max_set,
     txp_csws,
     txp_cm_shouldabort,
@@ -227,6 +229,10 @@ enum txp {
     txp_hco_lock,
     txp_hco_invalid,
     txp_hco_abort,
+    txp_mvcc_lock_status_aborts,
+    txp_mvcc_lock_vc_aborts,
+    txp_mvcc_lock_vis_aborts,
+    txp_mvcc_check_aborts,
     // STO_PROFILE_COUNTERS > 1 only
     txp_mvcc_flat_runs,
     txp_mvcc_flat_versions,
@@ -955,11 +961,15 @@ public:
 
     template <typename T>
     T *tx_alloc(const T *src) {
+        TXP_INCREMENT(txp_alloc_t);
+        TXP_ACCOUNT(txp_alloc_b, sizeof (T));
         return &scratch_.clone<T>(*src);
     }
 
     template <typename T>
     T *tx_alloc() {
+        TXP_INCREMENT(txp_alloc_t);
+        TXP_ACCOUNT(txp_alloc_b, sizeof (T));
         return &scratch_.allocate<T>();
     }
 
