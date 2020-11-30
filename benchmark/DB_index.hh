@@ -459,9 +459,13 @@ public:
         auto[found, item] = Sto::find_write_item(idx, item_key_t(e, I));
         if (found) {
             item.clear_write();
-            auto p = Sto::tx_alloc<First>();
-            *p = std::get<I>(P::split_builder)(*whole_value_in);
-            item.add_write(p);
+            if constexpr (std::is_same<First, value_type>::value) {
+                item.add_write(whole_value_in);
+            } else {
+                auto p = Sto::tx_alloc<First>();
+                *p = std::get<I>(P::split_builder)(*whole_value_in);
+                item.add_write(p);
+            }
         }
         mvcc_update_loop<P, C, I+1, Rest...>(idx, e, whole_value_in);
     }
