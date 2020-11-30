@@ -71,16 +71,12 @@ public:
     }
     explicit MvHistory(
             type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : obj_(obj), gc_enqueued_(false), prev_(nprev), status_(PENDING),
+            : obj_(obj), v_(nvp ? *nvp : v_), gc_enqueued_(false), prev_(nprev), status_(PENDING),
               rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
                 is_valid_prev(prev_),
                 "Cannot write MVCC history with wtid earlier than prev wtid.");
-        }
-
-        if (nvp) {
-            v_ = *nvp;
         }
     }
     explicit MvHistory(
@@ -602,6 +598,7 @@ public:
     bool cp_lock(const type tid, history_type* h) {
         // Can only install pending versions
         if (!h->status_is(MvStatus::PENDING)) {
+            TXP_INCREMENT(txp_mvcc_lock_status_aborts);
             return false;
         }
 
@@ -611,6 +608,7 @@ public:
         do {
             // Can only install onto the latest-visible version
             if (hvis && hvis != find(tid)) {
+                TXP_INCREMENT(txp_mvcc_lock_vis_aborts);
                 return false;
             }
 
