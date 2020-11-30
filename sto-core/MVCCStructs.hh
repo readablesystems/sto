@@ -664,6 +664,7 @@ public:
 
         // The previously-visible version for h
         history_type* hvis = h->prev();
+        assert(h->status_is(COMMITTED) || h->status_is(PENDING));
 
         do {
             // Can only install onto the latest-visible version
@@ -741,16 +742,19 @@ public:
 
         /* TODO: use something smarter than a linear scan */
         while (h) {
-            assert(h->status() & (PENDING | ABORTED | COMMITTED));
+            auto status = h->status();
+            auto wtid = h->wtid();
+            assert(status & (PENDING | ABORTED | COMMITTED));
             if (wait) {
-                if (h->wtid() < tid) {
+                if (wtid < tid) {
                     wait_if_pending(h);
+                    status = h->status();
                 }
-                if (h->wtid() <= tid && h->status_is(COMMITTED)) {
+                if (wtid <= tid && (status & COMMITTED)) {
                     break;
                 }
             } else {
-                if (h->wtid() <= tid && h->status_is(COMMITTED)) {
+                if (wtid <= tid && (status & COMMITTED)) {
                     break;
                 }
             }
