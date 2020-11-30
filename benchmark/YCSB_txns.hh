@@ -70,6 +70,7 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                 if constexpr (Commute) {
                     commutators::Commutator<ycsb_value> comm(op.col_n, op.write_value);
                     db.ycsb_table().update_row(row, comm);
+#if TABLE_FINE_GRAINED
                 } else if (DBParams::MVCC) {
                     // MVCC loop also does a tx_alloc, so we don't need to do
                     // one here
@@ -83,6 +84,7 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                         new_val->even_columns[op.col_n/2] = op.write_value;
                     }
                     db.ycsb_table().update_row(row, new_val);
+#endif
                 } else {
                     auto new_val = Sto::tx_alloc<ycsb_value>();
                     if (col_parity) {
