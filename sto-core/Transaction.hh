@@ -1067,7 +1067,7 @@ public:
 #if CU_READ_AT_PRESENT
             // Experimental: always read at the present for mvcc r/w transactions.
             if (mvcc_rw) {
-                read_tid_ = write_tid();
+                read_tid_ = _TID;
                 thr.rtid.store(read_tid_, std::memory_order_relaxed);
             } else {
                 epoch_advance_once();
