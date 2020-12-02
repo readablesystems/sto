@@ -34,7 +34,7 @@ public:
     }
 
     void install_by_cell_impl(ycsb::ycsb_value *dst, const ycsb::ycsb_value *src, int cell) {
-        if (cell != 1 || cell != 0) {
+        if (cell != 1 && cell != 0) {
             always_assert(false, "Invalid cell id.");
         }
         if (cell == 0) {
