@@ -1094,6 +1094,9 @@ public:
         if (!commit_tid_) {
             threadinfo_t& thr = tinfo[TThread::id()];
             thr.wtid = commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
+            if (mvcc_rw) {
+                read_tid_ = commit_tid_;
+            }
         }
         return commit_tid_;
     }
