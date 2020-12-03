@@ -40,14 +40,20 @@ struct ycsb_key {
 typedef fix_string<COL_WIDTH> col_type;
 
 struct ycsb_odd_half_value {
+    explicit ycsb_odd_half_value() = default;
+
     std::array<col_type, HALF_NUM_COLUMNS> odd_columns;
 };
 
 struct ycsb_even_half_value {
+    explicit ycsb_even_half_value() = default;
+
     std::array<col_type, HALF_NUM_COLUMNS> even_columns;
 };
 
 struct ycsb_value {
+    explicit ycsb_value() = default;
+
     enum class NamedColumn : int {
         odd_columns = 0,
         even_columns
