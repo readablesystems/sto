@@ -137,14 +137,10 @@ public:
         bool found = lp.find_unlocked(*ti);
         internal_elem *e = lp.value();
         if (found) {
-            return select_row(reinterpret_cast<uintptr_t>(e), accesses);
-        } else {
-            if (!register_internode_version(lp.node(), lp))
-                return sel_return_type(false, false, 0, nullptr);
-            return sel_return_type(true, false, 0, nullptr);
+            return select_split_row(reinterpret_cast<uintptr_t>(e), accesses);
         }
         return {
-            register_internode_version(lp.node(), lp.full_version_value()),
+            register_internode_version(lp.node(), lp),
             false,
             0,
             UniRecordAccessor<V>(nullptr)
