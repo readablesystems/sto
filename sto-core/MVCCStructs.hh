@@ -664,7 +664,7 @@ public:
 
         // The previously-visible version for h
         history_type* hvis = h->prev();
-        assert(h->status_is(COMMITTED) || h->status_is(PENDING));
+        assert(hvis->status_is(COMMITTED) || hvis->status_is(PENDING));
 
         do {
             // Can only install onto the latest-visible version
