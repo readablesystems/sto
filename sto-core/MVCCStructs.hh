@@ -693,11 +693,6 @@ public:
                 t = *target;
             }
 
-            // Abort if we're deleting in front of a DELTA version
-            if (h->status_is(DELETED) && t->status_is(DELTA)) {
-                return false;
-            }
-
             // Properly link h's prev_
             h->prev_.store(t, std::memory_order_relaxed);
 
@@ -710,14 +705,6 @@ public:
                             break;
                         }
                         v = v->prev();
-                    }
-                }
-                // DELETED <-> DELTA consistency check
-                if (h->status_is(DELETED)) {
-                    for (auto hptr = h_.load(); hptr != h; hptr = hptr->prev()) {
-                        if (hptr->status_is(DELTA)) {
-                            return false;
-                        }
                     }
                 }
                 break;
@@ -736,10 +723,6 @@ public:
                     return false;
                 }
             } while (!hprev->status_is(COMMITTED));
-            if (h->status_is(DELTA) && hprev->status_is(DELETED)) {
-                h->status_abort();
-                return false;
-            }
         }
 
         return true;
