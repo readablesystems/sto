@@ -317,21 +317,19 @@ private:
 
     // Initializes the flattening process
     inline void enflatten() {
-        T v{};
-        if (status_is(COMMITTED_DELTA)) {
-            assert(prev());
-            TXP_INCREMENT(txp_mvcc_flat_runs);
-#if CU_READ_AT_PRESENT
-            flatten_present_time(v);
-#else
-            prev()->flatten(v);
-#endif
-            v = c_.operate(v);
-        }
         MvStatus expected = COMMITTED_DELTA;
         if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
+            if (status_is(COMMITTED_DELTA)) {
+                assert(prev());
+                TXP_INCREMENT(txp_mvcc_flat_runs);
+#if CU_READ_AT_PRESENT
+                flatten_present_time(v_);
+#else
+                prev()->flatten(v_);
+#endif
+                v_ = c_.operate(v_);
+            }
             TXP_INCREMENT(txp_mvcc_flat_commits);
-            v_ = v;
             status(COMMITTED);
         } else {
             TXP_INCREMENT(txp_mvcc_flat_spins);
