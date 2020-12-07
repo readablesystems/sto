@@ -400,11 +400,33 @@ private:
             trace.pop();
             auto hnext = trace.top();  // Next committed history
 
+            // Update the rtid now
+            {
+                type curr_rtid;
+                type target_rtid = hnext->wtid();
+                while ((curr_rtid = h->rtid()) < target_rtid) {
+                    if (h->rtid(curr_rtid, target_rtid) == target_rtid) {
+                        break;
+                    }
+                }
+            }
+
             // Retrace our steps as needed
             bool restart = false;
             for (auto hcurr = hnext->prev(); hcurr != h; hcurr = hcurr->prev()) {
                 // Wait for pending versions to resolve.
                 while (hcurr->status_is(PENDING)) { relax_fence(); }
+
+                // Update the rtid now
+                {
+                    type curr_rtid;
+                    type target_rtid = hnext->wtid();
+                    while ((curr_rtid = hcurr->rtid()) < target_rtid) {
+                        if (hcurr->rtid(curr_rtid, target_rtid) == target_rtid) {
+                            break;
+                        }
+                    }
+                }
 
                 // This should be our hnext... unless it was a blind write
                 if (hcurr->status_is(COMMITTED)) {
@@ -419,17 +441,6 @@ private:
 
                     // A new committed version to process
                     hnext = hcurr;
-                }
-
-                // Update the rtid now
-                {
-                    type curr_rtid;
-                    type target_rtid = hnext->wtid();
-                    while ((curr_rtid = hcurr->rtid()) < target_rtid) {
-                        if (hcurr->rtid(curr_rtid, target_rtid) == target_rtid) {
-                            break;
-                        }
-                    }
                 }
             }
             if (restart) {
