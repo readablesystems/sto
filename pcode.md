@@ -1,43 +1,37 @@
-Assume a function `vconflict` with the following semantics.
+Consider a transaction `ntx` that reads and/or writes an `item`. If it writes
+the item, the new version is `nv`.
 
-```
-vconflict(MvHistory* v1, MvHistory* v2)
-   PREREQUISITE: v1->wts < v2->wts
-   RETURNS: true (+1) iff v2 likely cannot commit after v1;
-            false (0) iff v2 definitely can commit after v1;
-            indeterminate (-1) otherwise
-```
+1. The transaction may *read* a previous version `v`. If `ntx` commits, then
+   no other new versions may commit between `v.wts` and `ntx.ts`.
+2. Commit-time updates (CUs) may impose less-stringent requirements on
+   previous versions. We call this requirement *cu-enabling*: a CU `nv` may be
+   installed only on top of a committed transaction that enables that version.
+   If `ntx` commits and `v` cu-enables `nv`, then all other versions that
+   commit between `v.wts` and `ntx.ts == nv.wts` must cu-enable `nv`.
 
-Examples:
-
-```
-vconflict(ABORTED, *) = vconflict(*, ABORTED) = indeterminate
-vconflict(*, non-DELTA) = false
-vconflict(*, any) = true
-vconflict(DELETED|PENDINGDELETED, any DELTA) = true
-vconflict(anythng else, any DELTA) = false
-```
+## Algorithms
 
 Phase 1. Inserting `nv` (new version) at correct location.
 
 ```
 MvHistory** vptr = &item.head;
 while (true) {
-	MvHistory* v = *vptr;
-	-- fence --
-	if (!v.is(ABORTED) && v->rts > txn_commit_ts) {
-		return false; // early abort
-	} else if (v->wts > txn_commit_ts) {
-		if (vconflict(nv, v) is true) {
-			return false; // early abort
-		}
-		vptr = &v->prev;
-	} else {
-		nv->prev = v;
-		if (v->prev.compare_exchange_strong(v, nv)) {
-			return true;
-		}
-	}
+    MvHistory* v = *vptr;
+    -- fence --
+    if (!v.is(ABORTED) && v->rts > txn_commit_ts) {
+        return false; // early abort
+    } else if (v->wts > txn_commit_ts) {
+        if (v.is(DELTA) && !v.is(ABORTED) && !cu_enables(nv, v)) {
+            return false; // early abort (possibly unnecessary if `v` is PENDING)
+        }
+        vptr = &v->prev;
+    } else {
+        nv->prev = v;
+        if (vptr->compare_exchange_strong(v, nv)) {
+            return true;
+        }
+        // XXX scan forward for early abort?
+    }
 }
 ```
 
@@ -45,49 +39,91 @@ Phase 2. Validation.
 
 ```
 // Cicada runs this for all items first
-validate1(item) {
+cu_check_or_whatever(item) {
     // read timestamp update
     if (item.has_read()) {
-    	item.read_version()->update_rts(txn_commit_ts);
+        item.read_version()->update_rts(txn_commit_ts);
     }
-}
 
-validate2(item) {
-	// write validation
-	// part 1 purpose: ensure no later committed txn would be invalidated by `nv`
-	// NB this step is not necessary if vconflict(nv, *) is true
-	// (e.g. nv is CU)
-	if (item.has_write()) {
-		for (MvHistory* v = item.head; v != nv; v = v->prev) {
-			if (vconflict(nv, v) is true) {
-				return false;
-			}
-		}
-	}
-	// and this step is not necessary if vconflict(*, nv) is true
-	// (e.g. nv is not DELETED)
-	if (item.has_write()) {
-		for (MvHistory* v = nv->prev; ; v = v->prev) {
-			if (vconflict(v, nv) is true) {
-				return false;
-			} else if (vconflict(v, nv) is false) {
-				break;
-			}
-		}
-	}
-	// part 2: normal read validation
-	if (item.has_read()) {
-		// NB not executed for CU
-		for (MvHistory* v = item.head; v != item.read_version(); v = v->prev) {
-			if (!v.is(ABORTED) && v.wts < txn_commit_ts) {
-				return false; // abort
-			}
-		}
-	}
+    // write validation
+    if (item.has_write()) {
+        // Step WV1: Validate that all later CU versions are enabled by this version.
+        // This loop can be skipped if *all* CU versions are enabled by this version.
+        for (MvHistory* v = item.head; v != nv; v = v->prev) {
+            if (v.is(DELTA) && !v.is(ABORTED) && !cu_enables(nv, v)) {
+                return false;
+            }
+        }
+
+        // Step WV2: Validate that concurrent reads are not clobbered by this version.
+        // Also validate that concurrent writes did not cu-disable this version.
+        for (MvHistory* v = nv->prev; v; v = v->prev) {
+            if ((nv.is(DELTA) && !v.is(ABORTED) && !cu_enables(v, nv))
+                || (v.is(COMMITTED) && v.rts > txn_commit_ts)) {
+                return false;
+            }
+            if (v.is(COMMITTED)) {
+                break;
+            }
+        }
+    }
+
+    // read validation
+    if (item.has_read()) {
+        // Step RV1: Validate that concurrent writes don’t invalidate this read.
+        for (MvHistory* v = item.head; v != item.read_version(); v = v->prev) {
+            if (!v.is(ABORTED) && v->wts < txn_commit_ts) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 ```
 
+## Proof sketch
 
+Want to show that a committed transaction reads the versions visible at its
+timestamp, and that its CU versions are cu-enabled by the versions visible at
+its timestamp.
+
+Assume that a transaction `ntx` observed a version `v`. Either `ntx` read `v`,
+or `v` cu-enabled `nv`. Now assume that there exists an evil transaction `etx`
+that installed a version `ev`, such that `v.wts < ev.wts < ntx.ts`; and either
+`ntx` read `v`, or (`ntx` did not read `v` and `ev` cu-disables `nv`). We show
+that at least one of `etx` and `ntx` must abort.
+
+### Case 1: Reads
+
+Assume `ntx` read `v`. `ev` might be a CU or a full version.
+
+(A) Assume `ev` was installed (in phase 1) after the read timestamp update in
+`cp_check`. Then either `ev`’s write version check will detect the rts update,
+or `ev`’s write version check will stall out at an earlier committed version,
+`ev'`, and we would repeat the argument with `ev'`.
+
+(B) Assume `ev` was installed before the read timestamp update in `cp_check`.
+Then `ntx`’s read-version check will detect `ev`. Its read validation will
+abort (whether or not `ev` is PENDING when the read validation happens).
+
+### Case 2: CU
+
+Assume `v` cu-enabled `nv`.
+
+(A) Assume `ev` was installed (in phase 1) after `ntx`’s WV2 passed the point
+of `ev`’s insertion. Then we know that `nv` is visible when `etx` enters Phase
+2, and in particular, `etx`’s Step WV1 will encounter `nv`, and since `!cu_enabled(ev,
+nv)`, `etx` will abort.
+
+(B) Assume `ev` was installed before `ntx`’s WV2 passed the point of `ev`’s
+insertion. Then we know that `ntx`’s WV2 will encounter `ev` and, since
+`!cu_enabled(ev, nv)`, `ntx` will abort.
+
+### Pending versions
+
+The code above does not spin on pending versions. Instead, validation
+effectively assumes that pending versions will commit. I think that’s OK.
 
 ## Previous
 
