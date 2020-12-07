@@ -427,7 +427,7 @@ private:
                     type curr_rtid;
                     type target_rtid = hnext->wtid();
                     while ((curr_rtid = hcurr->rtid()) < target_rtid) {
-                        if (hcurr->rtid(curr_rtid, target_rtid)) {
+                        if (hcurr->rtid(curr_rtid, target_rtid) == target_rtid) {
                             break;
                         }
                     }
