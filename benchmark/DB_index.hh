@@ -752,10 +752,7 @@ template <typename K, typename V, typename DBParams>
 template <typename TSplit>
 bool mvcc_chain_operations<K, V, DBParams>::check_impl_per_chain(TransItem &item, Transaction &txn,
                                                                  MvObject<TSplit> *chain) {
-    using history_type = typename MvObject<TSplit>::history_type;
-
-    auto h = item.template read_value<history_type*>();
-    auto result = chain->cp_check(Sto::read_tid<DBParams::Commute>(), h);
+    auto result = chain->cp_check(Sto::read_tid<DBParams::Commute>(), item);
     TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
     return result;
 }

@@ -705,8 +705,7 @@ public:
 
         auto e = item.key<internal_elem*>();
         if constexpr (Params::MVCC) {
-            auto h = item.template read_value<history_type*>();
-            return e->obj.cp_check(txn_read_tid(), h);
+            return e->obj.cp_check(txn_read_tid(), item);
         } else {
             return e->version().cp_check_version(txn, item);
         }

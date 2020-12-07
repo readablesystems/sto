@@ -607,18 +607,41 @@ public:
 
     // "Check" step: read timestamp updates and version consistency check;
     //               returns true if successful, false is aborted
-    bool cp_check(const type tid, history_type* h /* read item */) {
-        // rtid update
-        type prev_rtid;
-        while ((prev_rtid = h->rtid()) < tid) {
-            h->rtid(prev_rtid, tid);  // CAS-based rtid update
+    bool cp_check(const type tid, TransItem& item) {
+        if (item.has_read()) {
+            auto hr = item.template read_value<history_type*>();
+
+            // rtid update
+            type prev_rtid;
+            while ((prev_rtid = hr->rtid()) < tid) {
+                hr->rtid(prev_rtid, tid);  // CAS-based rtid update
+            }
+
+            // Read version consistency check
+            auto hh = find(tid);
+            if (hh != hr) {
+                TXP_INCREMENT(txp_mvcc_check_aborts);
+                return false;
+            }
         }
 
-        // Version consistency check
-        auto hh = find(tid);
-        if (hh != h) {
-            TXP_INCREMENT(txp_mvcc_check_aborts);
-            return false;
+        if (item.has_mvhistory()) {
+            auto hw = item.template write_value<history_type*>();
+
+            // Write version consistency check
+            auto hprev = hw;
+            do {
+                hprev = hprev->prev();
+                auto rtid_p = hprev->rtid();
+                if (rtid_p > tid) {
+                    TXP_INCREMENT(txp_mvcc_lock_vc_aborts);
+                    hw->status_abort();
+                    return false;
+                }
+            } while (!hprev->status_is(COMMITTED));
+            if (!version_consistent(hprev, hw)) {
+                return false;
+            }
         }
 
         return true;
@@ -711,6 +734,7 @@ public:
             }
         } while (true);
 
+        /*
         // Version consistency verification
         {
             auto hprev = h;
@@ -724,6 +748,7 @@ public:
                 }
             } while (!hprev->status_is(COMMITTED));
         }
+        */
 
         return true;
     }
@@ -849,6 +874,15 @@ public:
     }
 
 protected:
+    // Whether the two versions are consistent with each other
+    bool version_consistent(
+            const history_type* hprev, const history_type* hnext) {
+        if (hprev->status_is(DELETED) && hnext->status_is(DELTA)) {
+            return false;
+        }
+        return true;
+    }
+
     // Spin-wait on interested item
     void wait_if_pending(const history_type* h) const {
         while (h->status_is(MvStatus::PENDING)) {
