@@ -175,13 +175,14 @@ public:
         return rtid();
     }
 
+private:
     // Proxy for a CAS assigment on the rtid
-    inline type rtid(type prev_rtid, const type new_rtid) {
+    inline bool rtid(type prev_rtid, const type new_rtid) {
         assert(prev_rtid <= new_rtid);
-        rtid_.compare_exchange_strong(prev_rtid, new_rtid);
-        return rtid();
+        return rtid_.compare_exchange_strong(prev_rtid, new_rtid);
     }
 
+public:
     // Set whether current history element is enqueued for GC
     inline void set_gc_enqueued(const bool value) {
         gc_enqueued_ = value;
