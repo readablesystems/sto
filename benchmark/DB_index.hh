@@ -714,6 +714,8 @@ bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
             TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
             return false;
         }
+    } else {  // A blind write still needs to do write validation
+        TransProxy(txn, item).add_read(nullptr);
     }
     history_type *h = nullptr;
     if (item.has_commute()) {

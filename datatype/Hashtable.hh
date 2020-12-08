@@ -655,6 +655,8 @@ public:
                     TransProxy(txn, item).add_write(nullptr);
                     return false;
                 }
+            } else {  // A blind write still needs to do write validation
+                TransProxy(txn, item).add_read(nullptr);
             }
 
             history_type* h;
