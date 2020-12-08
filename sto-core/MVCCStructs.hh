@@ -404,7 +404,7 @@ private:
             auto hnext = trace.top();  // Next committed history
 
             // Update the rtid now
-            hnext->update_rtid(target_rtid);
+            hnext->update_rtid(hnext->wtid());
 
             // Retrace our steps as needed
             bool restart = false;
@@ -413,7 +413,7 @@ private:
                 while (hcurr->status_is(PENDING)) { relax_fence(); }
 
                 // Update the rtid now
-                hcurr->update_rtid(target_rtid);
+                hcurr->update_rtid(hnext->wtid());
 
                 // This should be our hnext... unless it was a blind write
                 if (hcurr->status_is(COMMITTED)) {
