@@ -18,13 +18,13 @@ MvHistory** vptr = &item.head;
 while (true) {
     MvHistory* v = *vptr;
     -- fence --
-    if (!v.is(ABORTED) && v->rts > txn_commit_ts) {
-        return false; // early abort
-    } else if (v->wts > txn_commit_ts) {
+    if (v->wts > txn_commit_ts) {
         if (v.is(DELTA) && !v.is(ABORTED) && !cu_enables(nv, v)) {
             return false; // early abort (possibly unnecessary if `v` is PENDING)
         }
         vptr = &v->prev;
+    } else if (!v.is(ABORTED) && v->rts > txn_commit_ts) {
+        return false; // early abort
     } else {
         nv->prev = v;
         if (vptr->compare_exchange_strong(v, nv)) {
