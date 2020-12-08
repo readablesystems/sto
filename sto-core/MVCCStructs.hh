@@ -176,10 +176,13 @@ public:
     }
 
 private:
-    // Proxy for a CAS assigment on the rtid
-    inline bool rtid(type prev_rtid, const type new_rtid) {
-        assert(prev_rtid <= new_rtid);
-        return rtid_.compare_exchange_strong(prev_rtid, new_rtid);
+    inline void update_rtid(type minimum_new_rtid) {
+        type prev = rtid_.load(std::memory_order_relaxed);
+        while (prev < minimum_new_rtid
+               && !rtid_.compare_exchange_weak(prev, minimum_new_rtid,
+                                               std::memory_order_release,
+                                               std::memory_order_relaxed)) {
+        }
     }
 
 public:
@@ -401,15 +404,7 @@ private:
             auto hnext = trace.top();  // Next committed history
 
             // Update the rtid now
-            {
-                type curr_rtid;
-                type target_rtid = hnext->wtid();
-                while ((curr_rtid = h->rtid()) < target_rtid) {
-                    if (h->rtid(curr_rtid, target_rtid) == target_rtid) {
-                        break;
-                    }
-                }
-            }
+            hnext->update_rtid(target_rtid);
 
             // Retrace our steps as needed
             bool restart = false;
@@ -418,15 +413,7 @@ private:
                 while (hcurr->status_is(PENDING)) { relax_fence(); }
 
                 // Update the rtid now
-                {
-                    type curr_rtid;
-                    type target_rtid = hnext->wtid();
-                    while ((curr_rtid = hcurr->rtid()) < target_rtid) {
-                        if (hcurr->rtid(curr_rtid, target_rtid) == target_rtid) {
-                            break;
-                        }
-                    }
-                }
+                hcurr->update_rtid(target_rtid);
 
                 // This should be our hnext... unless it was a blind write
                 if (hcurr->status_is(COMMITTED)) {
@@ -612,10 +599,7 @@ public:
             auto hr = item.template read_value<history_type*>();
 
             // rtid update
-            type prev_rtid;
-            while ((prev_rtid = hr->rtid()) < tid) {
-                hr->rtid(prev_rtid, tid);  // CAS-based rtid update
-            }
+            hr->update_rtid(tid);
 
             // Read version consistency check
             auto hh = find(tid);
