@@ -188,6 +188,12 @@ try_flatten(MvHistory* vin) {
         v = nextv;
         stk.pop();
     }
+
+    if (v_in.status.compare_exchange_strong(COMMITTEDDELTA, LOCKEDCOMMITTEDDELTA)) {
+        v_in.value = val;
+        v_in.status = COMMITTED;
+        enqueue v_in for GC, using procedure below;
+    }
 }
 ```
 
