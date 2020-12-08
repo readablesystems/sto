@@ -4,10 +4,10 @@ All transactions here are implied to be read-write transactions.
 
 ## Notation
 
-- `hr`: read MvHistory (version that was read)
-- `hw`: write MvHistory (version to be written)
-- `hhead`: reference to head version of MvObject
-- `hext`: the extant version (typically iteration variable)
+- `vr`: read MvHistory (version that was read)
+- `vw`: write MvHistory (version to be written)
+- `vhead`: reference to head version of MvObject
+- `vext`: the extant version (typically iteration variable)
 - `Tk`: transaction with id `k`
 - `ts`: the commit ts of the current transaction
 - `Tk.ts`: the commit ts of transaction id `k`
@@ -25,67 +25,84 @@ Valid version statuses:
     `PENDING`, `PENDING DELETED`,
     `COMMITTED`, `COMMITTED DELETED`
 
+### Invariants
+
+1.  wts order: given two versions `vprev` and `vnext`, if `vnext.prev == vprev`,
+    then `vnext.wts > vprev.wts` must be true.
+2.  Monotonically increasing rts: given a version `v`, `v.rts` must never
+    decrease. Any changes to `v.rts` must be increasing its value.
+
 ### Gadgets
 
 ```c++
-wait_while_pending(hext)
-    while hext is in a PENDING status
+wait_while_pending(vext)
+    while vext is in a PENDING status
         wait a while
-    // hext must be either ABORTED or in a COMMITTED status now
+    // vext must be either ABORTED or in a COMMITTED status now
 ```
 
 State-changing gadgets, always succeed:
 
 ```c++
-PVI(hw, ts)  // Pending version installation
-    hnext = nullptr
-    hprev = hhead
+PVI(vw, ts)  // Pending version installation
+    vnext = container of reference to vhead
+    vprev = vhead
     loop indefinitely
-        while hprev.wtid > tid
-            hnext = hprev
-            hprev = hprev.prev
-        
-        if hnext.prev.CAS(hprev, hw) succeeds  // PVIs: atomic CAS
+        while vprev.wtid > tid
+            vnext = vprev
+            vprev = vprev.prev
+
+        if vnext.prev.CAS(vprev, vw) succeeds  // PVIs: atomic CAS
             return
         else
-            hprev = hnext.prev
+            vprev = vnext.prev
             // Loop continues
 ```
-*Correctness argument*
+*Correctness argument*: If PVIs succeeds, we know that `vnext.prev` was
+previously `vprev` and is now `vw`, and `vw.prev` is `vprev`.
+Since `vprev.wts < ts` and `vnext.wts > ts`, this is the correct location,
+according to Invariant 1.
+Since the CAS succeeded, no new versions have been added between `vprev` and
+`vnext`.
+The change is therefore valid and `vw` is now reachable.
 
 ```c++
-RTU(hr, ts)  // Read timestamp update
-    ets = hr.rts  // Expected timestamp
+RTU(vr, ts)  // Read timestamp update
+    ets = vr.rts  // Expected timestamp
     while ets < ts
-        if hr.rts.CAS(ets, ts) succeeds  // RTUs: atomic CAS
-            break
-        else
-            ets = hr.rts
+        vr.rts.CAS(ets, ts)
+        ets = vr.rts
+    // RTUs: atomic read
 ```
+*Correctness argument*: RTUs can only be reached if `vr.rts >= ts`.
+Since `vr.rts` must be monotonically increasing according to Invariant 2,
+`fts` (any future `rts` value of `vr`) must satisfy the inequality
+`fts >= vr.rts`.
+By the transitivity of inequalities, `fts >= vr.rts >= ts`.
 
 State-checking gadgets, may fail:
 
 ```c++
-WCC(hext, ts)  // Write consistency check
+WCC(vext, ts)  // Write consistency check
     loop indefinitely
-        if hext's COMMITTED bit is set
+        if vext's COMMITTED bit is set
             break
         else
-            hext = hext.prev
-    return hext.rts <= ts  // WCCs: atomic read
+            vext = vext.prev
+    return vext.rts <= ts  // WCCs: atomic read
 ```
 
 ```c++
-RCC(hr, ts)  // Read consistency check
-    hext = hhead
+RCC(vr, ts)  // Read consistency check
+    vext = vhead
     loop indefinitely
-        if hext.ts <= ts
-            wait_while_pending hext
-            if hext's COMMITTED bit is set
+        if vext.ts <= ts
+            wait_while_pending vext
+            if vext's COMMITTED bit is set
                 break
-        hext = hext.prev  // RCCs: atomic read
+        vext = vext.prev  // RCCs: atomic read
 
-    return hext == hr
+    return vext == vr
 ```
 
 ### Relationship between gadgets
@@ -96,17 +113,17 @@ for each gadget.
 ### Commit protocol
 
 ```c++
-cp_lock(ts, hw)
-    PVI(hw, hprev, hnext)
+cp_lock(ts, vw)
+    PVI(vw, vprev, vnext)
 ```
 
 ```c++
-cp_check(ts, hr, hw)
-    if hr
-        RTU(hr, ts)
-        RCC(hr, ts)
+cp_check(ts, vr, vw)
+    if vr
+        RTU(vr, ts)
+        RCC(vr, ts)
 
-    if hw
-        WCC(hw, ts)
+    if vw
+        WCC(vw, ts)
 ```
 
