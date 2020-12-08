@@ -125,6 +125,73 @@ insertion. Then we know that `ntx`’s WV2 will encounter `ev` and, since
 The code above does not spin on pending versions. Instead, validation
 effectively assumes that pending versions will commit. I think that’s OK.
 
+## Flatten
+
+```
+flatten(MvHistory* v) {
+    assert(!v.is(ABORTED));
+    if (v.is(DELTA)) {
+        if (!v.is(LOCKED)) {
+            try_flatten(v);
+        }
+        while (v.is(DELTA)) {
+            spin;
+        }
+    }
+}
+
+try_flatten(MvHistory* vin) {
+    assert(vin.is(COMMITTED) && vin.is(DELTA));
+
+    MvHistory* v = vin;
+    std::stack<MvHistory*> stk;
+    // Safe to pass by pending versions here
+    while (!v.is(COMMITTED) || v.is(DELTA)) {
+        stk.push(v);
+        v = v->prev;
+    }
+
+    // update committed version's rts
+    // NB this may harmlessly break some invariants in rare cases.
+    // for instance the committed version's rts may become
+    // greater than a later committed version's wts, if that
+    // later committed version was concurrently inserted.
+    timestamp rts;
+    while ((rts = v->rts) < v_in->wts) {
+        v->rts.compare_exchange_weak(rts, v_in->wts);
+    }
+
+    value_type val{v->value};
+    while (!stk.empty()) {
+        MvHistory* nextv = stk.top();
+
+        while (nextv->prev != v) {
+            stk.push(nextv->prev);
+            nextv = next->prev;
+        }
+
+        while (nextv->is(PENDING)) {
+            spin;
+        }
+
+        if (nextv->is(COMMITTED)) {
+            while ((rts = nextv->rts) < v_in->wts) {
+                nextv->rts.compare_exchange_weak(rts, v_in->wts);
+            }
+            if (nextv->is(DELTA)) {
+                nextv->commuter.apply(val);
+            } else {
+                val = nextv->value;
+            }
+        }
+
+        v = nextv;
+        stk.pop();
+    }
+}
+```
+
+
 ## Previous
 
 1. Let VPTR be a pointer to a pointer to a version. VPTR = &ITEM.HEAD.
