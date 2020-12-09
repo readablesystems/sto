@@ -3,82 +3,146 @@ the item, the new version is `nv`.
 
 1. The transaction may *read* a previous version `v`. If `ntx` commits, then
    no other new versions may commit between `v.wts` and `ntx.ts`.
-2. Commit-time updates (CUs) may impose less-stringent requirements on
-   previous versions. We call this requirement *cu-enabling*: a CU `nv` may be
-   installed only on top of a committed transaction that enables that version.
-   If `ntx` commits and `v` cu-enables `nv`, then all other versions that
-   commit between `v.wts` and `ntx.ts == nv.wts` must cu-enable `nv`.
+
+2. Commit-time updates (CUs) also impose requirements on previous versions;
+   for example, a CU might only apply to *existing* values (so that a deleted
+   or not-present value would not work). These requirements are looser than
+   reads (which fix the order of the version chain). They can be understood as
+   predicates, but because CUs are *writes* rather than reads, checking them
+   does not require the version upgrading we saw in STO predicates.
+
+   We call these requirements *CU-enabling*. A CU `nv` may be installed on top
+   of any version that CU-enables it.
+
+   CU-enabling must be checked dynamically, so for efficiency, it must be fast
+   to compute. In our implementation, *any non-deleted version* CU-enables all
+   possible CUs on the same object. This means, in turn, that *any CU*
+   CU-enables all possible CUs on the same object.
+
+   To ensure transactional correctness, we check cu-enabling in the execution
+   phase and in the locking phase. We also ensure that, once `nv` is in the
+   version chain, no other version is inserted that cu-disables `nv`.
 
 ## Algorithms
+
+The function `v->cu_enables(vcu)` takes two versions. It requires that
+`v.wts() < vcu.wts()`, and that `vcu` is a CU. It returns true if `v`
+CU-enables `vcu`, which means that in *all possible* object histories that
+ended in `v`, it would be valid to apply `vcu` next.
+
+The function `v->cu_enables_everything()` returns true iff
+`v->cu_enables(vcu)` is true for all `vcu`.
 
 Phase 1. Inserting `nv` (new version) at correct location.
 
 ```
-MvHistory** vptr = &item.head;
-while (true) {
-    MvHistory* v = *vptr;
-    -- fence --
-    if (v->wts > txn_commit_ts) {
-        if (v.is(DELTA) && !v.is(ABORTED) && !cu_enables(nv, v)) {
-            return false; // early abort (possibly unnecessary if `v` is PENDING)
+lock(txn, item, nv) {
+    // `nv` is the new version being installed.
+    // `nv.wts == txn.ts` is the transaction commit timestamp.
+    // `nv.is_pending()` is true.
+
+    MvHistory** vptr = &item.head;
+    while (true) {
+        MvHistory* v = *vptr;
+        -- fence --
+        if (v.wts > nv.wts) {
+            if (v.is_nonaborted_CU() && !nv.cu_enables(v)) {
+                // Installing `nv` might CU-disable `v`, a pending or committed CU.
+                // `nv` must abort.
+                return false;
+            }
+            vptr = &v->prev;
+        } else if (v.is_nonaborted() && v.rts > nv.wts) {
+            // A pending or committed version earlier than `nv` was observed by a
+            // transaction later than `nv`. `nv` must abort.
+            return false;
+        } else {
+            // add `nv` to the version chan
+            nv.prev = v;
+            if (vptr->compare_exchange_strong(v, nv)) {
+                // that inserted the pending version `nv` immediately before `v`
+                goto write_validation;
+            }
+            // Otherwise, there was a race condition; try again.
         }
-        vptr = &v->prev;
-    } else if (!v.is(ABORTED) && v->rts > txn_commit_ts) {
-        return false; // early abort
-    } else {
-        nv->prev = v;
-        if (vptr->compare_exchange_strong(v, nv)) {
-            return true;
+    }
+
+write_validation:
+    // Now `nv` is in the version chain.
+    // All future transactions will observe it (in whatever state it ends up —
+    // currently PENDING, later COMMITTED or ABORTED).
+
+    // Step WV1: Check again whether `nv` CU-disabled a later version that was
+    // inserted by a concurrent transaction before we added `nv` to the chain.
+    if (!nv.cu_enables_everything()) {
+        for (v = item.head; v != nv; v = v.prev) {
+            if (v.is_CU() && !nv.cu_enables(v)) {
+                nv.make_aborted();
+                return false;
+            }
         }
-        // XXX scan forward for early abort?
+    }
+
+    // Step WV2: Check whether any PRIOR versions would CU-disable `nv`,
+    // or read a prior committed version while `nv` was being installed.
+    v = nv.prev;
+    while (v != null) {
+        if ((nv.is_CU() && !v.is_aborted() && !v.cu_enables(nv))
+            || (v.is_committed() && v.rts > nv.wts)) {
+            nv.make_aborted();
+            return false;
+        }
+        if (v.is_committed()) {
+            break;
+        }
+        v = v.prev;
     }
 }
 ```
 
-Phase 2. Validation.
+Phase 2. Read validation.
 
 ```
-// Cicada runs this for all items first
-cu_check_or_whatever(item) {
-    // read timestamp update
-    if (item.has_read()) {
-        item.read_version()->update_rts(txn_commit_ts);
-    }
+check(txn, item, rv) {
+    // `rv` was the version read during the execution phase
+    rv.rts := max(rv.rts, txn.ts);
 
-    // write validation
-    if (item.has_write()) {
-        // Step WV1: Validate that all later CU versions are enabled by this version.
-        // This loop can be skipped if *all* CU versions are enabled by this version.
-        for (MvHistory* v = item.head; v != nv; v = v->prev) {
-            if (v.is(DELTA) && !v.is(ABORTED) && !cu_enables(nv, v)) {
-                return false;
-            }
-        }
-
-        // Step WV2: Validate that concurrent reads are not clobbered by this version.
-        // Also validate that concurrent writes did not cu-disable this version.
-        for (MvHistory* v = nv->prev; v; v = v->prev) {
-            if ((nv.is(DELTA) && !v.is(ABORTED) && !cu_enables(v, nv))
-                || (v.is(COMMITTED) && v.rts > txn_commit_ts)) {
-                return false;
-            }
-            if (v.is(COMMITTED)) {
-                break;
-            }
-        }
-    }
-
-    // read validation
-    if (item.has_read()) {
-        // Step RV1: Validate that concurrent writes don’t invalidate this read.
-        for (MvHistory* v = item.head; v != item.read_version(); v = v->prev) {
-            if (!v.is(ABORTED) && v->wts < txn_commit_ts) {
-                return false;
-            }
+    // Step RV1: Validate that concurrent writes don’t invalidate this read.
+    for (v = item.head; v != rv; v = v.prev) {
+        if (!v.is_aborted() && v.wts < txn.ts) {
+            return false;
         }
     }
 
     return true;
+}
+```
+
+Phase 3. Installation.
+
+```
+install(txn, item, nv) {
+    assert(nv.is_pending() && !nv.is_aborted());
+    nv.make_committed();
+    // Now nv.is_opending() is false and nv.is_committed() is true.
+    if (!nv.is_CU()) {
+        // This is a full version; all prior versions can be garbage collected.
+        // When `txn.gc_epoch` passes, we run `GC_committed(nv)`.
+        GC_enqueue(txn.gc_epoch, GC_committed(nv));
+        // Also mark all prior flatten operations as redundant.
+        item.flatten_version = null;
+        item.outstanding_cus = 0;
+    } else {
+        // We don't want ∞ CUs to accumulate, so periodically schedule a background
+        // flattening procedure.
+        item.outstanding_cus += 1;
+        if ([many CUs are outstanding on `item`]
+            && item.flatten_version == null) {
+            item.flatten_version = nv;
+            item.outstanding_cus = 0;
+            GC_enqueue(txn.gc_epoch, GC_flatten(item));
+        }
+    }
 }
 ```
 
@@ -89,10 +153,10 @@ timestamp, and that its CU versions are cu-enabled by the versions visible at
 its timestamp.
 
 Assume that a transaction `ntx` observed a version `v`. Either `ntx` read `v`,
-or `v` cu-enabled `nv`. Now assume that there exists an evil transaction `etx`
-that installed a version `ev`, such that `v.wts < ev.wts < ntx.ts`; and either
-`ntx` read `v`, or (`ntx` did not read `v` and `ev` cu-disables `nv`). We show
-that at least one of `etx` and `ntx` must abort.
+or `nv` is a CU and `v` CU-enabled `nv`. Now assume that another transaction
+`etx` that installed a version `ev`, such that `v.wts < ev.wts < ntx.ts`; and
+either `ntx` read `v`, or (`ntx` did not read `v` and `ev` CU-disables `nv`).
+We show that at least one of `etx` and `ntx` must abort.
 
 ### Case 1: Reads
 
@@ -125,8 +189,69 @@ insertion. Then we know that `ntx`’s WV2 will encounter `ev` and, since
 The code above does not spin on pending versions. Instead, validation
 effectively assumes that pending versions will commit. I think that’s OK.
 
-## Flatten
+## Flattening and garbage collection
 
+```
+flatten(v) {
+    // This procedure takes a committed CU, `v`, and computes and installs the
+    // corresponding full version.
+    assert(v.is_CU() && v.is_committed());
+
+    // Traverse backward from `v` until encountering a full version.
+    vstack := new version stack;
+    cv := v;
+    while (cv.is_CU() || !cv.is_committed()) {
+        vstack.push(cv);
+        cv = cv.prev;
+    }
+
+    // Now traverse forward in time from `cv` to `v`, computing a value as we go.
+    value := cv.value;
+    while (!vstack.empty()) {
+        nv = vstack.top();
+
+        // Account for concurrent insertions
+        while (true) {
+            pv = nv.prev;
+            if (pv == cv) {
+                break;
+            }
+            vstack.push(pv);
+            nv = pv;
+        }
+
+        // Wait for the transaction to resolve
+        while (nv.is_pending()) {
+            spin;
+        }
+
+        if (nv.is_committed()) {
+            nv.rts := max(nv.rts, v.wts);
+            if (nv.is_CU()) {
+                nv.commit_updater.operate(value);
+            } else {
+                value = nv.value;
+            }
+        }
+
+        vstack.pop();
+        cv = nv;
+    }
+
+    auto expected = COMMITTED_DELTA;
+    if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
+        v_ = value;
+        TXP_INCREMENT(txp_mvcc_flat_commits);
+        status(COMMITTED);
+        enqueue_for_committed();
+        if (fg) {
+            object()->flattenh_.store(nullptr, std::memory_order_relaxed);
+        }
+    } else {
+        TXP_INCREMENT(txp_mvcc_flat_spins);
+    }
+
+}
 ```
 flatten(MvHistory* v) {
     assert(!v.is(ABORTED));
