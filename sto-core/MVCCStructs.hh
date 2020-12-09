@@ -391,6 +391,9 @@ private:
                     value = hnext->v_;
                 }
             }
+
+            trace.pop();
+            curr = hnext;
         }
 
         auto expected = COMMITTED_DELTA;
