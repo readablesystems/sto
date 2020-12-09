@@ -56,24 +56,24 @@ public:
     typedef commutators::Commutator<T> comm_type;
 
     MvHistory() = delete;
-    explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}
+    explicit MvHistory(object_type *obj) : MvHistory(obj, 0, nullptr) {}
     explicit MvHistory(
-            type ntid, object_type *obj, const T& nv)
+            object_type *obj, type ntid, const T& nv)
             : obj_(obj), v_(nv), gc_enqueued_(false), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
     explicit MvHistory(
-            type ntid, object_type *obj, T&& nv)
+            object_type *obj, type ntid, T&& nv)
             : obj_(obj), v_(std::move(nv)), gc_enqueued_(false), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
     explicit MvHistory(
-            type ntid, object_type *obj, T *nvp)
+            object_type *obj, type ntid, T *nvp)
             : obj_(obj), v_(nvp ? *nvp : v_), gc_enqueued_(false), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
     explicit MvHistory(
-            type ntid, object_type *obj, comm_type &&c)
+            object_type *obj, type ntid, comm_type &&c)
             : obj_(obj), c_(std::move(c)), v_(), gc_enqueued_(false), prev_(nullptr),
               status_(PENDING_DELTA), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
@@ -445,16 +445,16 @@ public:
         ih_.status(COMMITTED_DELETED);
     }
     explicit MvObject(const T& value)
-            : h_(&ih_), ih_(0, this, value) {
+            : h_(&ih_), ih_(this, 0, value) {
         ih_.status(COMMITTED);
     }
     explicit MvObject(T&& value)
-            : h_(&ih_), ih_(0, this, std::move(value)) {
+            : h_(&ih_), ih_(this, 0, std::move(value)) {
         ih_.status(COMMITTED);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)) {
+            : h_(&ih_), ih_(this, 0, T(std::forward<Args>(args)...)) {
         ih_.status(COMMITTED);
     }
 #else
@@ -465,16 +465,16 @@ public:
         h_.load()->status(COMMITTED_DELETED);
     }
     explicit MvObject(const T& value)
-            : h_(new history_type(0, this, value)) {
+            : h_(new history_type(this, 0, value)) {
         h_.load()->status(COMMITTED);
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(0, this, std::move(value))) {
+            : h_(new history_type(this, 0, std::move(value))) {
         h_.load()->status(COMMITTED);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(new history_type(0, this, T(std::forward<Args>(args)...))) {
+            : h_(new history_type(this, 0, T(std::forward<Args>(args)...))) {
         h_.load()->status(COMMITTED);
     }
 #endif
@@ -676,11 +676,11 @@ public:
         if (status == UNUSED &&
                 ih_.status_.compare_exchange_strong(status, PENDING)) {
             // Use inlined history element
-            new (&ih_) history_type(std::forward<Args>(args)...);
+            new (&ih_) history_type(this, std::forward<Args>(args)...);
             return &ih_;
         }
 #endif
-        return new(std::nothrow) history_type(std::forward<Args>(args)...);
+        return new(std::nothrow) history_type(this, std::forward<Args>(args)...);
     }
 
     // Read-only

@@ -718,12 +718,12 @@ bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
     if (item.has_commute()) {
         auto wval = item.template write_value<comm_type>();
         h = chain->new_history(
-                Sto::commit_tid(), chain, std::move(wval));
+                Sto::commit_tid(), std::move(wval));
     } else {
         auto wval = item.template raw_write_value<TSplit*>();
         if (has_delete(item)) {
             h = chain->new_history(
-                    Sto::commit_tid(), chain, nullptr);
+                    Sto::commit_tid(), nullptr);
             h->status_delete();
             // TODO: Figure out what to do with this.
             if (std::is_same<TSplit, typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>::value) {
@@ -731,7 +731,7 @@ bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
             }
         } else {
             h = chain->new_history(
-                    Sto::commit_tid(), chain, wval);
+                    Sto::commit_tid(), wval);
         }
     }
     assert(h);

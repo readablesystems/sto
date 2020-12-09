@@ -660,20 +660,20 @@ public:
                 // Create a delta version
                 auto wval = item.template write_value<comm_type*>();
                 h = e->obj.new_history(
-                    Sto::commit_tid(), &e->obj, std::move(*wval));
+                    Sto::commit_tid(), std::move(*wval));
             } else {
                 // Create a full version
                 auto wval = item.template write_value<value_type*>();
                 if (has_delete(item)) {
                     // Handling delete versions
                     h = e->obj.new_history(
-                        Sto::commit_tid(), &e->obj, nullptr);
+                        Sto::commit_tid(), nullptr);
                     h->status_delete();
                     h->set_delete_cb(this, delete_cb, e);
                 } else {
                     // Just a regular write
                     h = e->obj.new_history(
-                        Sto::commit_tid(), &e->obj, wval);
+                        Sto::commit_tid(), wval);
                 }
             }
 
