@@ -371,9 +371,13 @@ private:
         while (!trace.empty()) {
             auto hnext = trace.top();
 
-            while (hnext->prev() != curr) {
-                trace.push(hnext->prev());
-                hnext = hnext->prev();
+            while (true) {
+                auto prev = hnext->prev();
+                if (prev == curr) {
+                    break;
+                }
+                trace.push(prev);
+                hnext = prev;
             }
 
             obj_->wait_if_pending(hnext);
