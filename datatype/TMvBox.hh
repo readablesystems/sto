@@ -84,9 +84,8 @@ public:
 
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) override {
-        history_type *hprev = nullptr;
         if (item.has_read()) {
-            hprev = item.read_value<history_type*>();
+            auto hprev = item.read_value<history_type*>();
             if (Sto::commit_tid() < hprev->rtid()) {
                 TransProxy(txn, item).add_write(nullptr);
                 return false;
@@ -95,9 +94,9 @@ public:
         history_type *h;
         if (item.has_commute()) {
             auto wval = item.template write_value<comm_type>();
-            h = v_.new_history(Sto::commit_tid(), &v_, std::move(wval), hprev);
+            h = v_.new_history(Sto::commit_tid(), &v_, std::move(wval));
         } else {
-            h = v_.new_history(Sto::commit_tid(), &v_, item.write_value<T>(), hprev);
+            h = v_.new_history(Sto::commit_tid(), &v_, item.write_value<T>());
         }
         bool result = v_.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {

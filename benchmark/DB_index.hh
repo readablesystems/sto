@@ -706,9 +706,8 @@ bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
     using history_type = typename MvObject<TSplit>::history_type;
     using comm_type = typename commutators::Commutator<TSplit>;
 
-    history_type *hprev = nullptr;
     if (item.has_read()) {
-        hprev = item.read_value<history_type*>();
+        auto hprev = item.read_value<history_type*>();
         if (Sto::commit_tid() < hprev->rtid()) {
             TransProxy(txn, item).add_write(nullptr);
             TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
@@ -719,12 +718,12 @@ bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
     if (item.has_commute()) {
         auto wval = item.template write_value<comm_type>();
         h = chain->new_history(
-                Sto::commit_tid(), chain, std::move(wval), hprev);
+                Sto::commit_tid(), chain, std::move(wval));
     } else {
         auto wval = item.template raw_write_value<TSplit*>();
         if (has_delete(item)) {
             h = chain->new_history(
-                    Sto::commit_tid(), chain, nullptr, hprev);
+                    Sto::commit_tid(), chain, nullptr);
             h->status_delete();
             // TODO: Figure out what to do with this.
             if (std::is_same<TSplit, typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>::value) {
@@ -732,7 +731,7 @@ bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
             }
         } else {
             h = chain->new_history(
-                    Sto::commit_tid(), chain, wval, hprev);
+                    Sto::commit_tid(), chain, wval);
         }
     }
     assert(h);

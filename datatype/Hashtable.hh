@@ -645,10 +645,8 @@ public:
         auto e = item.key<internal_elem*>();
 
         if constexpr (Params::MVCC) {
-            history_type* hprev = nullptr;
-
             if (item.has_read()) {
-                hprev = item.read_value<history_type*>();
+                auto hprev = item.read_value<history_type*>();
                 // Lock fails if prev history element has already been read
                 // in the future
                 if (Sto::commit_tid() < hprev->rtid()) {
@@ -662,20 +660,20 @@ public:
                 // Create a delta version
                 auto wval = item.template write_value<comm_type*>();
                 h = e->obj.new_history(
-                    Sto::commit_tid(), &e->obj, std::move(*wval), hprev);
+                    Sto::commit_tid(), &e->obj, std::move(*wval));
             } else {
                 // Create a full version
                 auto wval = item.template write_value<value_type*>();
                 if (has_delete(item)) {
                     // Handling delete versions
                     h = e->obj.new_history(
-                        Sto::commit_tid(), &e->obj, nullptr, hprev);
+                        Sto::commit_tid(), &e->obj, nullptr);
                     h->status_delete();
                     h->set_delete_cb(this, delete_cb, e);
                 } else {
                     // Just a regular write
                     h = e->obj.new_history(
-                        Sto::commit_tid(), &e->obj, wval, hprev);
+                        Sto::commit_tid(), &e->obj, wval);
                 }
             }
 

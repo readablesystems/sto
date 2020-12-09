@@ -109,10 +109,10 @@ public:
         history_type *h;
         if (item.has_commute()) {
             auto wval = item.template write_value<comm_type>();
-            h = v.new_history(Sto::commit_tid(), &v, std::move(wval), hprev);
+            h = v.new_history(Sto::commit_tid(), &v, std::move(wval));
         } else {
             h = v.new_history(
-                Sto::commit_tid(), &v, item.write_value<T>(), hprev);
+                Sto::commit_tid(), &v, item.write_value<T>());
         }
         bool result = v.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {

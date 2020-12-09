@@ -58,46 +58,24 @@ public:
     MvHistory() = delete;
     explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}
     explicit MvHistory(
-            type ntid, object_type *obj, const T& nv, history_type *nprev = nullptr)
-            : obj_(obj), v_(nv), gc_enqueued_(false), prev_(nprev),
+            type ntid, object_type *obj, const T& nv)
+            : obj_(obj), v_(nv), gc_enqueued_(false), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
-        if (prev_) {
-            always_assert(
-                is_valid_prev(prev_),
-                "Cannot write MVCC history with wtid earlier than prev wtid.");
-        }
     }
     explicit MvHistory(
-            type ntid, object_type *obj, T&& nv, history_type *nprev = nullptr)
-            : obj_(obj), v_(std::move(nv)), gc_enqueued_(false), prev_(nprev),
+            type ntid, object_type *obj, T&& nv)
+            : obj_(obj), v_(std::move(nv)), gc_enqueued_(false), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
-        if (prev_) {
-            always_assert(
-                is_valid_prev(prev_),
-                "Cannot write MVCC history with wtid earlier than prev wtid.");
-        }
     }
     explicit MvHistory(
-            type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : obj_(obj), v_(nvp ? *nvp : v_), gc_enqueued_(false), prev_(nprev), status_(PENDING),
-              rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
-        if (prev_) {
-            always_assert(
-                is_valid_prev(prev_),
-                "Cannot write MVCC history with wtid earlier than prev wtid.");
-        }
+            type ntid, object_type *obj, T *nvp)
+            : obj_(obj), v_(nvp ? *nvp : v_), gc_enqueued_(false), prev_(nullptr),
+              status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
     explicit MvHistory(
-            type ntid, object_type *obj, comm_type &&c, history_type *nprev = nullptr)
-            : obj_(obj), c_(std::move(c)), v_(), gc_enqueued_(false), prev_(nprev),
-              rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
-        if (prev_) {
-            always_assert(
-                is_valid_prev(prev_),
-                "Cannot write MVCC history with wtid earlier than prev wtid.");
-        }
-
-        status(PENDING_DELTA);
+            type ntid, object_type *obj, comm_type &&c)
+            : obj_(obj), c_(std::move(c)), v_(), gc_enqueued_(false), prev_(nullptr),
+              status_(PENDING_DELTA), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
 
     // Whether this version can be late-inserted in front of hnext
