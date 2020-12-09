@@ -13,7 +13,6 @@
 enum MvStatus {
     UNUSED                  = 0b0000000,
     ABORTED                 = 0b0100000,
-    GARBAGE                 = 0b1000000,
     DELTA                   = 0b0001000,  // Commutative update delta
     DELETED                 = 0b0000001,  // Not a valid state on its own, but defined as a flag
     PENDING                 = 0b0000010,
@@ -23,21 +22,7 @@ enum MvStatus {
     PENDING_DELETED         = 0b0000011,
     COMMITTED_DELETED       = 0b0000101,
     LOCKED                  = 0b0010000,
-    LOCKED_COMMITTED        = 0b0010100,
     LOCKED_COMMITTED_DELTA  = 0b0011100,  // Converting from delta to flattened
-};
-
-// References for when version pointers are unreliable
-template <typename T>
-struct MvDelLocation {
-    MvObject<T>* obj;
-    MvHistory<T>* h_del;
-};
-
-template <typename T>
-struct MvGcLocation {
-    MvObject<T>* obj;
-    MvHistory<T>* h;
 };
 
 template <typename T>
@@ -53,22 +38,22 @@ public:
     explicit MvHistory(object_type *obj) : MvHistory(obj, 0, nullptr) {}
     explicit MvHistory(
             object_type *obj, type ntid, const T& nv)
-            : obj_(obj), v_(nv), gc_enqueued_(false), prev_(nullptr),
+            : obj_(obj), v_(nv), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
     explicit MvHistory(
             object_type *obj, type ntid, T&& nv)
-            : obj_(obj), v_(std::move(nv)), gc_enqueued_(false), prev_(nullptr),
+            : obj_(obj), v_(std::move(nv)), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
     explicit MvHistory(
             object_type *obj, type ntid, T *nvp)
-            : obj_(obj), v_(nvp ? *nvp : v_), gc_enqueued_(false), prev_(nullptr),
+            : obj_(obj), v_(nvp ? *nvp : v_), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
     explicit MvHistory(
             object_type *obj, type ntid, comm_type &&c)
-            : obj_(obj), c_(std::move(c)), v_(), gc_enqueued_(false), prev_(nullptr),
+            : obj_(obj), c_(std::move(c)), v_(), prev_(nullptr),
               status_(PENDING_DELTA), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
 
@@ -81,44 +66,9 @@ public:
     }
 
     // Enqueues the deleted version for future cleanup
-    inline void enqueue_for_delete() {
-        if (!status_is(COMMITTED_DELETED)) {
-            return;
-        }
-        auto location = new MvDelLocation<T>();
-        location->h_del = this;
-        location->obj = object();
-        Transaction::rcu_call(delete_prep_cb, location);
-    }
-
-    // Pushes the current element onto the GC list if it isn't already, along
-    // with a boolean for whether it is the inlined version.
-    // Returns whether the push succeeded (fails if already on queue)
-    inline bool gc_push(const bool inlined) {
-        bool expected = false;
-        if (gc_enqueued_.compare_exchange_strong(expected, true)) {
-            hard_gc_push(inlined);
-            return true;
-        }
-        return false;
-    }
-
-    inline void hard_gc_push(const bool inlined) {
-        assert(gc_enqueued_.load());
-        if (inlined) {
-#if MVCC_INLINING
-            Transaction::rcu_call(gc_inlined_cb, this);
-#else
-            assert(false);
-#endif
-        } else {
-            Transaction::rcu_delete(this);
-        }
-    }
-
-    // Return true if this history element is currently enqueued for GC
-    inline bool is_gc_enqueued() const {
-        return gc_enqueued_.load();
+    inline void enqueue_for_committed() {
+        assert((status() & COMMITTED_DELTA) == COMMITTED);
+        Transaction::rcu_call(gc_committed_cb, this);
     }
 
     // Retrieve the object for which this history element is intended
@@ -126,24 +76,8 @@ public:
         return obj_;
     }
 
-    inline void prepare_gc() {
-        auto location = new MvGcLocation<T>();
-        location->obj = object();
-        location->h = this;
-        Transaction::rcu_call(gc_delete_cb, location);
-    }
-
     inline history_type* prev() const {
         return reinterpret_cast<history_type*>(prev_.load());
-    }
-
-    // Attempt to set the pointer to prev; returns true on success
-    inline bool prev(history_type* prev) {
-        if (is_valid_prev(prev)) {
-            prev_ = prev;
-            return true;
-        }
-        return false;
     }
 
     // Returns the current rtid
@@ -168,11 +102,6 @@ private:
     }
 
 public:
-    // Set whether current history element is enqueued for GC
-    inline void set_gc_enqueued(const bool value) {
-        gc_enqueued_ = value;
-    }
-
     // Sets the delete callback function
     inline void set_delete_cb(void *index_p,
             void (*f) (void*, void*, void*), void *param) {
@@ -198,6 +127,8 @@ public:
     // Removes all flags, signaling an aborted status
     // NOT THREADSAFE
     inline void status_abort() {
+        int s = status();
+        assert((s & (PENDING|COMMITTED)) == PENDING);
         status(ABORTED);
     }
 
@@ -261,34 +192,59 @@ public:
     }
 
 private:
-    static void delete_prep_cb(void *ptr) {
-        auto location = reinterpret_cast<MvDelLocation<T>*>(ptr);
-        history_type* hd = location->h_del;  // DELETED version
-        history_type* h = location->obj->h_;
-        while (h) {
-            if (h == hd) {
-                if (hd->delete_cb) {
-                    hd->delete_cb(hd->index_ptr, hd->delete_param, hd);
-                }
+    static void gc_committed_cb(void *ptr) {
+        history_type* h = static_cast<history_type*>(ptr);
+        assert(h->status_is(COMMITTED_DELTA, COMMITTED));
+        // Here is how we ensure that `gc_committed_cb` never conflicts
+        // with a flatten operation.
+        // (1) When `gc_committed_cb` runs, `h->prev()`
+        // is definitively in the past. No active flattens
+        // will overlap with it.
+        // (2) When `gc_committed_cb` for a version is scheduled, we
+        // clear the object's `flattenh_`. Only *future* versions
+        // will be flattened in the background. Although a concurrent
+        // bg-flatten might be in progress, it must complete before
+        // this version’s predecessors are deleted.
+        // So we will never have `gc_committed_cb` running on versions
+        // that are concurrently being accessed by `gc_flatten_cb`.
+        // We also will never have `gc_committed_cb` running on
+        // versions that are concurrently being accessed by a
+        // fg-flatten, because fg-flattens run in the present.
+        // EXCEPTION: Some nontransactional accesses (`v()`, `nontrans_*`)
+        // ignore this protocol.
+        history_type* next = h->prev_.load(std::memory_order_relaxed);
+        while (next) {
+            h = next;
+            next = h->prev_.load(std::memory_order_relaxed);
+            Transaction::rcu_call(gc_deleted_cb, h);
+            int status = h->status();
+            if ((status & LOCKED_COMMITTED_DELTA) == COMMITTED
+                || (status & LOCKED_COMMITTED_DELTA) == LOCKED_COMMITTED_DELTA) {
                 break;
             }
-
-            // A committed version means we can skip physical deletion
-            if (h->status_is(COMMITTED)) {
-                break;
-            }
-
-            h = h->prev();
         }
-        delete location;
+    }
+
+    static void gc_deleted_cb(void* ptr) {
+        history_type* h = static_cast<history_type*>(ptr);
+        MvStatus status = h->status_.load(std::memory_order_relaxed);
+        if ((status & DELETED) && h->delete_cb) {
+            h->delete_cb(h->index_ptr, h->delete_param, h);
+        }
+        if (h->object()->is_inlined(h)) {
+            h->status_unused();
+        } else {
+            delete h;
+        }
     }
 
     // Initializes the flattening process
     inline void enflatten() {
-        assert(!status_is(ABORTED));
-        if (status_is(COMMITTED_DELTA)) {
-            if (!status_is(LOCKED)) {
-                flatten();
+        int s = status_.load(std::memory_order_relaxed);
+        assert(!(s & ABORTED));
+        if ((s & COMMITTED_DELTA) == COMMITTED_DELTA) {
+            if (!(s & LOCKED)) {
+                flatten(s, true);
             } else {
                 TXP_INCREMENT(txp_mvcc_flat_spins);
             }
@@ -297,13 +253,15 @@ private:
     }
 
     // To be called from the source of the flattening.
-    void flatten() {
+    void flatten(int old_status, bool fg) {
+        assert(old_status == COMMITTED_DELTA);
+
         // Current element is the one initiating the flattening here. It is not
         // included in the trace, but it is included in the committed trace.
         history_type* curr = this;
         std::stack<history_type*> trace;  // Of history elements to process
 
-        while (!curr->status_is(COMMITTED) || curr->status_is(DELTA)) {
+        while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
             trace.push(curr);
             curr = curr->prev();
         }
@@ -343,35 +301,13 @@ private:
             v_ = value;
             TXP_INCREMENT(txp_mvcc_flat_commits);
             status(COMMITTED);
-            prepare_gc();
+            enqueue_for_committed();
+            if (fg) {
+                object()->flattenh_.store(nullptr, std::memory_order_relaxed);
+            }
         } else {
             TXP_INCREMENT(txp_mvcc_flat_spins);
         }
-    }
-
-    static void gc_delete_cb(void *ptr) {
-        auto location = static_cast<MvGcLocation<T>*>(ptr);
-        auto obj = location->obj;
-        auto h = location->h;
-
-        // Put predecessors in the RCU list, but only if they aren't already
-        history_type* prev = h->prev();
-        bool stop = prev->is_gc_enqueued();
-        do {
-            stop = prev->status_is(COMMITTED_DELTA, COMMITTED) ||
-                   prev->is_gc_enqueued();
-            history_type* ele = prev;
-            prev = prev->prev();
-            ele->gc_push(obj->is_inlined(ele));
-        } while (prev != nullptr && !stop);
-
-        delete location;
-    }
-
-    static void gc_inlined_cb(void *ptr) {
-        history_type* h = static_cast<history_type*>(ptr);
-        assert(h->gc_enqueued_.load());
-        h->object()->ih_.status_unused();
     }
 
     // Returns true if the given prev pointer would be a valid prev element
@@ -383,7 +319,6 @@ private:
     comm_type c_;
     T v_;
 
-    std::atomic<bool> gc_enqueued_;  // Whether this element is on the GC queue
     std::atomic<history_type*> prev_;
     std::atomic<MvStatus> status_;  // Status of this element
     std::atomic<type> rtid_;  // Read TID
@@ -499,24 +434,20 @@ public:
     // "Install" step: set status to committed
     void cp_install(history_type* h) {
         int s = h->status();
-        assert((s & (MvStatus::PENDING | MvStatus::ABORTED)) == MvStatus::PENDING);
-        h->status((s & ~MvStatus::PENDING) | MvStatus::COMMITTED);
+        assert((s & (PENDING | ABORTED)) == PENDING);
+        h->status((s & ~PENDING) | COMMITTED);
         if (!(s & DELTA)) {
-            h->prepare_gc();
             delta_counter.store(0, std::memory_order_relaxed);
-            // And for DELETED versions, enqueue the callback
-            if (s & DELETED) {
-                h->enqueue_for_delete();
-            }
+            flattenh_.store(nullptr, std::memory_order_relaxed);
+            h->enqueue_for_committed();
         } else {
-            // Check whether to start a GC-time flatten
             int dc = delta_counter.load(std::memory_order_relaxed) + 1;
-            if (dc < gc_flattening_length) {
+            if (dc <= gc_flattening_length) {
                 delta_counter.store(dc, std::memory_order_relaxed);
             } else if (flattenh_.load(std::memory_order_relaxed) == nullptr) {
                 delta_counter.store(0, std::memory_order_relaxed);
                 flattenh_.store(h, std::memory_order_relaxed);
-                Transaction::rcu_call(gc_time_flattening_cb, this);
+                Transaction::rcu_call(gc_flatten_cb, this);
             }
         }
     }
@@ -631,7 +562,7 @@ public:
     }
 
     // Returns whether the given history element is the inlined version
-    inline bool is_inlined(history_type*  const h) const {
+    inline bool is_inlined(history_type* const h) const {
 #if MVCC_INLINING
         return h == &ih_;
 #else
@@ -704,25 +635,28 @@ protected:
         }
     }
 
-    static void gc_time_flattening_cb(void *ptr) {
+    static void gc_flatten_cb(void *ptr) {
         auto object = static_cast<MvObject<T>*>(ptr);
         auto flattenh = object->flattenh_.load(std::memory_order_relaxed);
+        object->flattenh_.store(nullptr, std::memory_order_relaxed);
         if (flattenh) {
             history_type* h = object->head();
-            while (h && !h->status_is(COMMITTED_DELTA, COMMITTED) &&
-                   h != flattenh) {
+            int status = h->status();
+            while (h
+                   && h != flattenh
+                   && (status & LOCKED_COMMITTED_DELTA) != COMMITTED
+                   && (status & LOCKED_COMMITTED_DELTA) != LOCKED_COMMITTED_DELTA) {
                 h = h->prev();
+                status = h->status();
             }
-
-            if (h == flattenh && h->status_is(COMMITTED_DELTA)
-                && !h->is_gc_enqueued()) {
-                h->enflatten();
+            if (h == flattenh && status == COMMITTED_DELTA) {
+                h->flatten(status, false);
             }
         }
     }
 
     std::atomic<history_type*> h_;
-    std::atomic<int> delta_counter;  // For gc-time flattening
+    std::atomic<int> delta_counter = 0;  // For gc-time flattening
     std::atomic<history_type*> flattenh_;
 
 #if MVCC_INLINING
