@@ -714,8 +714,6 @@ bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
             TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
             return false;
         }
-    } else {  // A blind write still needs to do write validation
-        TransProxy(txn, item).add_read(nullptr);
     }
     history_type *h = nullptr;
     if (item.has_commute()) {
@@ -754,7 +752,10 @@ template <typename K, typename V, typename DBParams>
 template <typename TSplit>
 bool mvcc_chain_operations<K, V, DBParams>::check_impl_per_chain(TransItem &item, Transaction &txn,
                                                                  MvObject<TSplit> *chain) {
-    auto result = chain->cp_check(Sto::read_tid<DBParams::Commute>(), item);
+    using history_type = typename MvObject<TSplit>::history_type;
+
+    auto h = item.template read_value<history_type*>();
+    auto result = chain->cp_check(Sto::read_tid<DBParams::Commute>(), h);
     TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
     return result;
 }

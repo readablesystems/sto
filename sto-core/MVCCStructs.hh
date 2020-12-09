@@ -354,8 +354,8 @@ private:
         }
 
         TXP_INCREMENT(txp_mvcc_flat_versions);
-        value_type value {curr->v_};
-        while (1trace.empty()) {
+        T value {curr->v_};
+        while (!trace.empty()) {
             auto hnext = trace.top();
 
             while (hnext->prev() != curr) {
@@ -363,13 +363,13 @@ private:
                 hnext = hnext->prev();
             }
 
-            wait_if_pending(hnext);
+            obj_->wait_if_pending(hnext);
 
             if (hnext->status_is(COMMITTED)) {
                 hnext->update_rtid(this->wtid());
                 assert(!hnext->status_is(COMMITTED_DELETED));
                 if (hnext->status_is(DELTA)) {
-                    value = hnext->c_.apply(value);
+                    value = hnext->c_.operate(value);
                 } else {
                     value = hnext->v_;
                 }
@@ -521,42 +521,14 @@ public:
 
     // "Check" step: read timestamp updates and version consistency check;
     //               returns true if successful, false is aborted
-    bool cp_check(const type tid, TransItem& item) {
-        if (item.has_read()) {
-            auto hr = item.template read_value<history_type*>();
+    bool cp_check(const type tid, history_type* hr) {
+        // rtid update
+        hr->update_rtid(tid);
 
-            if (hr) {  // CU has_read but hr is set to be nullptr
-                // rtid update
-                hr->update_rtid(tid);
-
-                // Read version consistency check
-                for (history_type* h = *h_; h != hr; h = h->prev()) {
-                    if (!h->status_is(ABORTED) && h->wtid() < tid) {
-                        return false;
-                    }
-                }
-            }
-        }
-
-        if (item.has_mvhistory()) {
-            auto hw = item.template write_value<history_type*>();
-
-            // Write version consistency check for CU enabling
-            for (history_type* h = *h_; h != hw; h = h->prev()) {
-                if (h->status_is(DELTA) && !hw->can_precede(h)) {
-                    return false;
-                }
-            }
-
-            // Write version consistency check for concurrent reads + CU enabling
-            for (history_type* h = hw->prev(); h; h = h->prev()) {
-                if ((hw->status_is(DELTA) && !h->status_is(ABORTED) && h->can_precede(hw))
-                    || (h->status_is(COMMITTED) && h->rtid() > tid)) {
-                    return false;
-                }
-                if (h->status_is(COMMITTED)) {
-                    break;
-                }
+        // Read version consistency check
+        for (history_type* h = h_.load(); h != hr; h = h->prev()) {
+            if (!h->status_is(ABORTED) && h->wtid() < tid) {
+                return false;
             }
         }
 
@@ -604,9 +576,9 @@ public:
 
     // "Lock" step: pending version installation & version consistency check;
     //              returns true if successful, false if aborted
-    bool cp_lock(const type tid, history_type* h) {
+    bool cp_lock(const type tid, history_type* hw) {
         // Can only install pending versions
-        if (!h->status_is(MvStatus::PENDING)) {
+        if (!hw->status_is(MvStatus::PENDING)) {
             TXP_INCREMENT(txp_mvcc_lock_status_aborts);
             return false;
         }
@@ -616,7 +588,7 @@ public:
             // Discover target atomic on which to do CAS
             history_type* t = *target;
             if (t->wtid() > tid) {
-                if (t->status_is(DELTA) && !h.can_precede(t)) {
+                if (t->status_is(DELTA) && !hw->can_precede(t)) {
                     return false;
                 }
                 target = &t->prev_;
@@ -624,21 +596,32 @@ public:
                 return false;
             } else {
                 // Properly link h's prev_
-                h->prev_.store(t, std::memory_order_relaxed);
+                hw->prev_.store(t, std::memory_order_relaxed);
 
                 // Attempt to CAS onto the target
-                if (target->compare_exchange_strong(t, h)) {
-                    if (next && next->is_gc_enqueued()) {
-                        history_type* v = h;
-                        while (v && !v->is_gc_enqueued()) {
-                            if (!v->gc_push(is_inlined(v))) {
-                                break;
-                            }
-                            v = v->prev();
-                        }
-                    }
+                if (target->compare_exchange_strong(t, hw)) {
                     break;
                 }
+            }
+        }
+
+        // Write version consistency check for CU enabling
+        for (history_type* h = h_.load(); h != hw; h = h->prev()) {
+            if (h->status_is(DELTA) && !hw->can_precede(h)) {
+                hw->status_abort();
+                return false;
+            }
+        }
+
+        // Write version consistency check for concurrent reads + CU enabling
+        for (history_type* h = hw->prev(); h; h = h->prev()) {
+            if ((hw->status_is(DELTA) && !h->status_is(ABORTED) && h->can_precede(hw))
+                || (h->status_is(COMMITTED) && h->rtid() > tid)) {
+                hw->status_abort();
+                return false;
+            }
+            if (h->status_is(COMMITTED)) {
+                break;
             }
         }
 

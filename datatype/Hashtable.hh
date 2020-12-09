@@ -655,8 +655,6 @@ public:
                     TransProxy(txn, item).add_write(nullptr);
                     return false;
                 }
-            } else {  // A blind write still needs to do write validation
-                TransProxy(txn, item).add_read(nullptr);
             }
 
             history_type* h;
@@ -707,7 +705,8 @@ public:
 
         auto e = item.key<internal_elem*>();
         if constexpr (Params::MVCC) {
-            return e->obj.cp_check(txn_read_tid(), item);
+            auto h = item.template read_value<history_type*>();
+            return e->obj.cp_check(txn_read_tid(), h);
         } else {
             return e->version().cp_check_version(txn, item);
         }

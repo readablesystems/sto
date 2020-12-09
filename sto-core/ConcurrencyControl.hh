@@ -54,9 +54,6 @@ inline TransProxy& TransProxy::add_commute(const T* comm) {
     }
     add_write(comm);
     item().__or_flags(TransItem::commute_bit);
-    if (!has_read()) {  // Make an existence observation
-        add_read(nullptr);
-    }
     return *this;
 }
 
