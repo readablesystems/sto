@@ -13,9 +13,8 @@ public:
     Commutator() = default;
     explicit Commutator(const ht_value::col_type& v) : v(v) {}
 
-    ht_value& operate(ht_value& val) const {
+    void operate(ht_value& val) const {
         val.value = v;
-        return val;
     }
 
 private:

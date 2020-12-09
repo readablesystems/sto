@@ -923,7 +923,7 @@ private:
     }
 
     static void copy_row(internal_elem *e, comm_type &comm) {
-        e->row_container.row = comm.operate(e->row_container.row);
+        comm.operate(e->row_container.row);
     }
     static void copy_row(internal_elem *e, const value_type *new_row) {
         if (new_row == nullptr)

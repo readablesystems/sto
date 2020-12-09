@@ -4,7 +4,7 @@
 
 #include "MVCCTypes.hh"
 
-namespace commutators { 
+namespace commutators {
 
 template <typename T>
 class Commutator {
@@ -12,9 +12,8 @@ public:
     // Each type must define its own Commutator variant
     Commutator() = default;
 
-    virtual T& operate(T& v) const {
+    virtual void operate(T&) const {
         always_assert(false, "Should never operate on the default commutator.");
-        return v;
     }
 };
 
@@ -34,9 +33,8 @@ public:
         return false;
     }
 
-    virtual int64_t& operate(int64_t& v) const {
+    virtual void operate(int64_t& v) const {
         v += delta;
-        return v;
     }
 
 private:

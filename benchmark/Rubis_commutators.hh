@@ -16,7 +16,7 @@ public:
     explicit Commutator(uint32_t bid) : max_bid(bid), date() {}
     explicit Commutator(uint32_t qty, uint32_t time) : max_bid(qty), date(time) {}
 
-    item_row& operate(item_row& val) const {
+    void operate(item_row& val) const {
         if (date != 0) {
             val.quantity -= max_bid;
             if (val.quantity == 0) {
@@ -28,7 +28,6 @@ public:
             }
             val.nb_of_bids += 1;
         }
-        return val;
     }
 
     friend Commutator<item_row_infreq>;
@@ -47,8 +46,7 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<item_row>(std::forward<Args>(args)...) {}
 
-    item_row_infreq& operate(item_row_infreq& val) const {
-        return val;
+    void operate(item_row_infreq&) const {
     }
 };
 
@@ -60,7 +58,7 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<item_row>(std::forward<Args>(args)...) {}
 
-    item_row_frequpd& operate(item_row_frequpd& val) const {
+    void operate(item_row_frequpd& val) const {
         if (date != 0) {
             val.quantity -= max_bid;
             if (val.quantity == 0) {
@@ -72,7 +70,6 @@ public:
             }
             val.nb_of_bids += 1;
         }
-        return val;
     }
 };
 

@@ -210,11 +210,10 @@ public:
         : delta_value_1(0), delta_value_2a(delta_value_2a),
           delta_value_2b(delta_value_2b) {}
 
-    index_value& operate(index_value &value) const {
+    void operate(index_value &value) const {
         value.value_1 += delta_value_1;
         value.value_2a += delta_value_2a;
         value.value_2b += delta_value_2b;
-        return value;
     }
 
 protected:
@@ -231,9 +230,8 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<index_value>(std::forward<Args>(args)...) {}
 
-    index_value_part1& operate(index_value_part1 &value) const {
+    void operate(index_value_part1 &value) const {
         value.value_1 += delta_value_1;
-        return value;
     }
 };
 
@@ -243,10 +241,9 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<index_value>(std::forward<Args>(args)...) {}
 
-    index_value_part2& operate(index_value_part2 &value) const {
+    void operate(index_value_part2 &value) const {
         value.value_2a += delta_value_2a;
         value.value_2b += delta_value_2b;
-        return value;
     }
 };
 }  // namespace commutators

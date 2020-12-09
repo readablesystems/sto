@@ -40,9 +40,8 @@ public:
 
     explicit Commutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
 
-    warehouse_value& operate(warehouse_value &w) const {
+    void operate(warehouse_value &w) const {
         w.w_ytd += (uint64_t)delta_ytd;
-        return w;
     }
 
 private:
@@ -58,8 +57,7 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<warehouse_value>(std::forward<Args>(args)...) {}
 
-    warehouse_value_infreq& operate(warehouse_value_infreq &w) const {
-        return w;
+    void operate(warehouse_value_infreq&) const {
     }
 };
 
@@ -71,9 +69,8 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<warehouse_value>(std::forward<Args>(args)...) {}
 
-    warehouse_value_frequpd& operate(warehouse_value_frequpd &w) const {
+    void operate(warehouse_value_frequpd &w) const {
         w.w_ytd += (uint64_t)delta_ytd;
-        return w;
     }
 };
 
@@ -84,9 +81,8 @@ public:
 
     explicit Commutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
 
-    district_value& operate(district_value &d) const {
+    void operate(district_value &d) const {
         d.d_ytd += delta_ytd;
-        return d;
     }
 
 private:
@@ -102,8 +98,7 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<district_value>(std::forward<Args>(args)...) {}
 
-    district_value_infreq& operate(district_value_infreq &d) const {
-        return d;
+    void operate(district_value_infreq&) const {
     }
 };
 
@@ -115,9 +110,8 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<district_value>(std::forward<Args>(args)...) {}
 
-    district_value_frequpd& operate(district_value_frequpd &d) const {
+    void operate(district_value_frequpd &d) const {
         d.d_ytd += (uint64_t)delta_ytd;
-        return d;
     }
 };
 
@@ -145,7 +139,7 @@ public:
         : delta_balance(delta_balance), delta_ytd_payment(),
           op(OpType::Delivery), bad_credit(), delta_data() {}
 
-    customer_value& operate(customer_value &c) const {
+    void operate(customer_value &c) const {
         if (op == OpType::Payment) {
             c.c_balance += delta_balance;
             c.c_payment_cnt += 1;
@@ -157,7 +151,6 @@ public:
             c.c_balance += delta_balance;
             c.c_delivery_cnt += 1;
         }
-        return c;
     }
 
 private:
@@ -179,8 +172,7 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<customer_value>(std::forward<Args>(args)...) {}
 
-    customer_value_infreq& operate(customer_value_infreq &c) const {
-        return c;
+    void operate(customer_value_infreq&) const {
     }
 };
 
@@ -192,7 +184,7 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<customer_value>(std::forward<Args>(args)...) {}
 
-    customer_value_frequpd& operate(customer_value_frequpd &c) const {
+    void operate(customer_value_frequpd &c) const {
         if (op == OpType::Payment) {
             c.c_balance += delta_balance;
             c.c_payment_cnt += 1;
@@ -204,7 +196,6 @@ public:
             c.c_balance += delta_balance;
             c.c_delivery_cnt += 1;
         }
-        return c;
     }
 };
 
@@ -214,9 +205,8 @@ public:
     Commutator() = default;
 
     explicit Commutator(uint64_t write_carrier_id) : write_carrier_id(write_carrier_id) {}
-    order_value& operate(order_value& ov) const {
+    void operate(order_value& ov) const {
         ov.o_carrier_id = write_carrier_id;
-        return ov;
     }
 private:
     uint64_t write_carrier_id;
@@ -232,8 +222,7 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<order_value>(std::forward<Args>(args)...) {}
 
-    order_value_infreq& operate(order_value_infreq &ov) const {
-        return ov;
+    void operate(order_value_infreq&) const {
     }
 };
 
@@ -245,9 +234,8 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<order_value>(std::forward<Args>(args)...) {}
 
-    order_value_frequpd& operate(order_value_frequpd &ov) const {
+    void operate(order_value_frequpd &ov) const {
         ov.o_carrier_id = write_carrier_id;
-        return ov;
     }
 };
 
@@ -257,9 +245,8 @@ public:
     Commutator() = default;
 
     explicit Commutator(uint32_t write_delivery_d) : write_delivery_d(write_delivery_d) {}
-    orderline_value& operate(orderline_value& ol) const {
+    void operate(orderline_value& ol) const {
         ol.ol_delivery_d = write_delivery_d;
-        return ol;
     }
 private:
     uint32_t write_delivery_d;
@@ -275,8 +262,7 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<orderline_value>(std::forward<Args>(args)...) {}
 
-    orderline_value_infreq& operate(orderline_value_infreq &ol) const {
-        return ol;
+    void operate(orderline_value_infreq&) const {
     }
 };
 
@@ -288,9 +274,8 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<orderline_value>(std::forward<Args>(args)...) {}
 
-    orderline_value_frequpd& operate(orderline_value_frequpd &ol) const {
+    void operate(orderline_value_frequpd &ol) const {
         ol.ol_delivery_d = write_delivery_d;
-        return ol;
     }
 };
 
@@ -300,7 +285,7 @@ public:
     Commutator() = default;
 
     explicit Commutator(int32_t qty, bool remote) : update_qty(qty), is_remote(remote) {}
-    stock_value& operate(stock_value& sv) const {
+    void operate(stock_value& sv) const {
         if ((sv.s_quantity - 10) >= update_qty)
             sv.s_quantity -= update_qty;
         else
@@ -309,7 +294,6 @@ public:
         sv.s_order_cnt += 1;
         if (is_remote)
             sv.s_remote_cnt += 1;
-        return sv;
     }
 
 private:
@@ -327,8 +311,7 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<stock_value>(std::forward<Args>(args)...) {}
 
-    stock_value_infreq& operate(stock_value_infreq &sv) const {
-        return sv;
+    void operate(stock_value_infreq&) const {
     }
 };
 
@@ -340,7 +323,7 @@ public:
     template <typename... Args>
     Commutator(Args&&... args) : Commutator<stock_value>(std::forward<Args>(args)...) {}
 
-    stock_value_frequpd& operate(stock_value_frequpd &sv) const {
+    void operate(stock_value_frequpd &sv) const {
         if ((sv.s_quantity - 10) >= update_qty)
             sv.s_quantity -= update_qty;
         else
@@ -349,7 +332,6 @@ public:
         sv.s_order_cnt += 1;
         if (is_remote)
             sv.s_remote_cnt += 1;
-        return sv;
     }
 };
 

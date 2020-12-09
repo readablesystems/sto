@@ -367,7 +367,7 @@ private:
                 hnext->update_rtid(this->wtid());
                 assert(!hnext->status_is(COMMITTED_DELETED));
                 if (hnext->status_is(DELTA)) {
-                    value = hnext->c_.operate(value);
+                    hnext->c_.operate(value);
                 } else {
                     value = hnext->v_;
                 }

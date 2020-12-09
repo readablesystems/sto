@@ -89,7 +89,7 @@ public:
     RowType row;
 
     void install_cell(const comm_type &comm) {
-        row = comm.operate(row);
+        comm.operate(row);
     }
 
     void install_cell(int cell, const RowType *new_row) {
