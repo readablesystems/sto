@@ -572,34 +572,23 @@ public:
         return true;
     }
 
-    // "Install" step: set status to committed if head element is pending; fails
-    //                 otherwise
-    bool cp_install(history_type* h) {
-        if (!h->status_is(MvStatus::PENDING)) {
-            return false;
-        }
-
-        h->status_commit();
-
-        if (h->status_is(COMMITTED_DELTA, COMMITTED)) {
+    // "Install" step: set status to committed
+    void cp_install(history_type* h) {
+        int s = h->status();
+        assert((s & (MvStatus::PENDING | MvStatus::ABORTED)) == MvStatus::PENDING);
+        h->status((s & ~MvStatus::PENDING) | MvStatus::COMMITTED);
+        if (!(s & DELTA)) {
             h->prepare_gc();
 
             // And for DELETED versions, enqueue the callback
-            if (h->status_is(COMMITTED_DELETED)) {
+            if (s & DELETED) {
                 h->enqueue_for_delete();
             }
-        } else if (h->status_is(COMMITTED_DELTA)) {
-            // Counter update from nearest COMMITTED version
-            history_type* prev = h->prev();
-            while (!prev->status_is(COMMITTED)) {
-                prev = prev->prev();
-            }
+        } else {
             if (!(delta_counter++ % gc_flattening_length)) {
                 h->enqueue_for_flattening();
             }
         }
-
-        return true;
     }
 
     // "Lock" step: pending version installation & version consistency check;
