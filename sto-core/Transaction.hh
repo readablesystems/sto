@@ -1047,9 +1047,7 @@ public:
         if (!read_tid_) {
             TXP_INCREMENT(txp_rtid_atomic);
             fence();
-            //epoch_advance_once();
             threadinfo_t& thr = tinfo[TThread::id()];
-#if SAFE_FLATTEN
             if (mvcc_rw) {
                 read_tid_ = _TID;
                 thr.rtid.store(read_tid_, std::memory_order_relaxed);
@@ -1058,17 +1056,6 @@ public:
                 read_tid_ = _RTID;
                 thr.rtid.store(read_tid_, std::memory_order_relaxed);
             }
-            // Can't we just get the most recent tid (_TID?)
-#else
-            if (mvcc_rw) {
-                read_tid_ = _TID;
-                thr.rtid.store(read_tid_, std::memory_order_relaxed);
-            } else {
-                epoch_advance_once();
-                read_tid_ = _RTID;
-                thr.rtid.store(read_tid_, std::memory_order_relaxed);
-            }
-#endif
         }
         return read_tid_;
     }
