@@ -35,9 +35,7 @@ public:
         initialize_from(str);
     }
 
-    var_string(const var_string &vstr) {
-        initialize_from(vstr);
-    }
+    var_string(const var_string &vstr) = default;
 
     bool operator==(const char *c_str) const {
         return !strncmp(s_, c_str, ML);
@@ -55,15 +53,7 @@ public:
         return s_[idx];
     }
 
-    var_string &operator=(const var_string &rhs) {
-        initialize_from(rhs);
-        return *this;
-    }
-
-    var_string &operator=(const var_string &rhs) volatile {
-        initialize_from(rhs);
-        return *const_cast<var_string *>(this);
-    }
+    var_string &operator=(const var_string &rhs) = default;
 
     explicit operator std::string() {
         return std::string(s_);
@@ -93,32 +83,19 @@ public:
         return s_;
     }
 
-    const char *c_str() const volatile {
-        return s_;
-    }
-
-    char *c_str() volatile {
-        return const_cast<char *>(s_);
-    }
-
     friend ::std::hash<var_string>;
 
 private:
     void initialize_from(const char *c_str) {
-        bzero(s_, ML + 1);
-        strncpy(s_, c_str, ML);
+        size_t l = std::min(strlen(c_str), ML);
+        memcpy(s_, c_str, l + 1);
+        memset(s_ + l + 1, 0, ML - l);
     }
 
     void initialize_from(const std::string &str) {
-        initialize_from(str.c_str());
-    }
-
-    void initialize_from(const var_string &vstr) {
-        memcpy(s_, vstr.s_, ML + 1);
-    }
-
-    void initialize_from(const var_string &vstr) volatile {
-        memcpy(const_cast<char *>(s_), vstr.s_, ML + 1);
+        size_t l = std::min(str.length(), ML);
+        memcpy(s_, str.data(), l + 1);
+        memset(s_ + l + 1, 0, ML - l);
     }
 
     char s_[ML + 1];
@@ -132,14 +109,14 @@ public:
     }
 
     fix_string(const char *c_str) {
-        memset(s_, ' ', FL);
-        strncpy(s_, c_str, FL);
+        initialize_from(c_str);
     }
 
     fix_string(const std::string &str) {
-        memset(s_, ' ', FL);
-        strncpy(s_, str.c_str(), FL);
+        initialize_from(str);
     }
+
+    fix_string(const fix_string&) = default;
 
     bool operator==(const char *c_str) const {
         return strlen(c_str) == FL && !memcmp(s_, c_str, FL);
@@ -157,15 +134,7 @@ public:
         return s_[idx];
     }
 
-    fix_string &operator=(const fix_string &rhs) {
-        initialize_from(rhs);
-        return *this;
-    }
-
-    fix_string &operator=(const fix_string &rhs) volatile {
-        initialize_from(rhs);
-        return const_cast<fix_string &>(*this);
-    }
+    fix_string &operator=(const fix_string &rhs) = default;
 
     explicit operator std::string() {
         return std::string(s_, FL);
@@ -180,22 +149,15 @@ public:
 
 private:
     void initialize_from(const char *c_str) {
-        memset(s_, ' ', FL);
-        size_t len = strlen(c_str);
-        for (size_t i = 0; i < len && i < FL; ++i)
-            s_[i] = c_str[i];
+        size_t l = std::min(strlen(c_str), FL);
+        memcpy(s_, c_str, l);
+        memset(s_ + l, ' ', FL - l);
     }
 
     void initialize_from(const std::string &str) {
-        initialize_from(str);
-    }
-
-    void initialize_from(const fix_string &fstr) {
-        memcpy(s_, fstr.s_, FL);
-    }
-
-    void initialize_from(const fix_string &fstr) volatile {
-        memcpy(const_cast<char *>(s_), fstr.s_, FL);
+        size_t l = std::min(str.length(), FL);
+        memcpy(s_, str.data(), l);
+        memset(s_ + l, ' ', FL - l);
     }
 
     char s_[FL];
