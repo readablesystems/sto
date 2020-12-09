@@ -43,7 +43,7 @@ using bench::RowAccess;
 template <typename DBParams>
 typename prcubench_runner<DBParams>::txn_type prcubench_runner<DBParams>::run_txn(
         const prcubench_txn_t& txn) {
-    volatile ht_value::col_type output;
+    ht_value::col_type output;
 
     if (nontrans) {
         ht_key key(txn.ops[0].key);
@@ -147,7 +147,7 @@ template <typename DBParams>
 typename prcubench_barerunner<DBParams>::txn_type
 prcubench_barerunner<DBParams>::run_txn(
         const prcubench_txn_t&) {
-    volatile ht_value::col_type output;
+    ht_value::col_type output;
 
     if (!nontrans) {
         TRANSACTION {
@@ -198,11 +198,11 @@ prcubench_barerunner<DBParams>::run_txn(
                 }
             }
             */
-            volatile int foo = 0;
+            int foo = 0;
             (void) foo;
             TXN_DO(true);
             /*
-            for (volatile char foo = 0; foo >= 0; foo++) {
+            for (char foo = 0; foo >= 0; foo++) {
                 (void) foo;
             }
             */
@@ -211,10 +211,10 @@ prcubench_barerunner<DBParams>::run_txn(
     } else {
         do {
             TransactionLoopGuard __txn_guard;
-            volatile int foo = 0;
+            int foo = 0;
             (void) foo;
             /*
-            for (volatile char foo = 0; foo >= 0; foo++) {
+            for (char foo = 0; foo >= 0; foo++) {
                 (void) foo;
             }
             */

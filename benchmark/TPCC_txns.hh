@@ -53,11 +53,11 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     }
 
     // holding outputs of the transaction
-    volatile var_string<16> out_cus_last;
-    volatile fix_string<2> out_cus_credit;
-    volatile var_string<24> out_item_names[15];
-    volatile double out_total_amount = 0.0;
-    volatile char out_brand_generic[15];
+    var_string<16> out_cus_last;
+    fix_string<2> out_cus_credit;
+    var_string<24> out_item_names[15];
+    double out_total_amount = 0.0;
+    char out_brand_generic[15];
     (void) out_brand_generic;
 
     size_t starts = 0;
@@ -273,22 +273,22 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     uint32_t h_date = ig.gen_date();
 
     // holding outputs of the transaction
-    volatile var_string<10> out_w_name, out_d_name;
-    volatile var_string<20> out_w_street_1, out_w_street_2, out_w_city;
-    volatile var_string<20> out_d_street_1, out_d_street_2, out_d_city;
-    volatile fix_string<2> out_w_state, out_d_state;
-    volatile fix_string<9> out_w_zip, out_d_zip;
-    volatile var_string<16> out_c_first, out_c_last;
-    volatile fix_string<2> out_c_middle;
-    volatile var_string<20> out_c_street_1, out_c_street_2, out_c_city;
-    volatile fix_string<2> out_c_state;
-    volatile fix_string<9> out_c_zip;
-    volatile fix_string<16> out_c_phone;
-    volatile fix_string<2> out_c_credit;
-    volatile uint32_t out_c_since;
-    volatile int64_t out_c_credit_lim;
-    volatile int64_t out_c_discount;
-    volatile int64_t out_c_balance;
+    var_string<10> out_w_name, out_d_name;
+    var_string<20> out_w_street_1, out_w_street_2, out_w_city;
+    var_string<20> out_d_street_1, out_d_street_2, out_d_city;
+    fix_string<2> out_w_state, out_d_state;
+    fix_string<9> out_w_zip, out_d_zip;
+    var_string<16> out_c_first, out_c_last;
+    fix_string<2> out_c_middle;
+    var_string<20> out_c_street_1, out_c_street_2, out_c_city;
+    fix_string<2> out_c_state;
+    fix_string<9> out_c_zip;
+    fix_string<16> out_c_phone;
+    fix_string<2> out_c_credit;
+    uint32_t out_c_since;
+    int64_t out_c_credit_lim;
+    int64_t out_c_discount;
+    int64_t out_c_balance;
     (void)out_c_since;
     (void)out_c_credit_lim;
     (void)out_c_discount;
@@ -491,16 +491,16 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     }
 
     // holding outputs of the transaction
-    volatile var_string<16> out_c_first, out_c_last;
-    volatile fix_string<2> out_c_middle;
-    volatile int64_t out_c_balance;
-    volatile uint64_t out_o_carrier_id;
-    volatile uint32_t out_o_entry_date;
-    volatile uint64_t out_ol_i_id;
-    volatile uint64_t out_ol_supply_w_id;
-    volatile uint32_t out_ol_quantity;
-    volatile uint32_t out_ol_delivery_d;
-    volatile int32_t out_ol_amount;
+    var_string<16> out_c_first, out_c_last;
+    fix_string<2> out_c_middle;
+    int64_t out_c_balance;
+    uint64_t out_o_carrier_id;
+    uint32_t out_o_entry_date;
+    uint64_t out_ol_i_id;
+    uint64_t out_ol_supply_w_id;
+    uint32_t out_ol_quantity;
+    uint32_t out_ol_delivery_d;
+    int32_t out_ol_amount;
     (void)out_c_balance;
     (void)out_o_carrier_id;
     (void)out_o_entry_date;
@@ -759,7 +759,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 
     std::set<uint64_t> ol_iids;
 
-    volatile int out_count = 0;
+    int out_count = 0;
     (void)out_count;
 
     auto ol_scan_callback = [ &ol_iids] (const orderline_key&, const auto& scan_value) -> bool {

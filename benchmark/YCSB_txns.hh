@@ -44,7 +44,7 @@ using bench::access_t;
 
 template <typename DBParams>
 void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
-    volatile col_type output;
+    col_type output;
     typedef ycsb_value::NamedColumn nm;
 
     (void)output;

@@ -71,7 +71,7 @@ using bench::RowAccess;
 template <typename DBParams>
 typename htbench_runner<DBParams>::txn_type htbench_runner<DBParams>::run_txn(
         const htbench_txn_t& txn) {
-    volatile ht_value::col_type output;
+    ht_value::col_type output;
 
     //uint64_t op_start_tick = 0;
     //uint64_t op_end_tick = 0;
@@ -247,7 +247,7 @@ template <typename DBParams>
 typename htbench_barerunner<DBParams>::txn_type
 htbench_barerunner<DBParams>::run_txn(
         const htbench_txn_t&) {
-    volatile ht_value::col_type output;
+    ht_value::col_type output;
 
     if (!nontrans) {
         TRANSACTION {
@@ -298,11 +298,11 @@ htbench_barerunner<DBParams>::run_txn(
                 }
             }
             */
-            volatile int foo = 0;
+            int foo = 0;
             (void) foo;
             TXN_DO(true);
             /*
-            for (volatile char foo = 0; foo >= 0; foo++) {
+            for (char foo = 0; foo >= 0; foo++) {
                 (void) foo;
             }
             */
@@ -311,10 +311,10 @@ htbench_barerunner<DBParams>::run_txn(
     } else {
         do {
             TransactionLoopGuard __txn_guard;
-            volatile int foo = 0;
+            int foo = 0;
             (void) foo;
             /*
-            for (volatile char foo = 0; foo >= 0; foo++) {
+            for (char foo = 0; foo >= 0; foo++) {
                 (void) foo;
             }
             */
