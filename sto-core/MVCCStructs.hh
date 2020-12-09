@@ -27,13 +27,7 @@ enum MvStatus {
     LOCKED_COMMITTED_DELTA  = 0b0011100,  // Converting from delta to flattened
 };
 
-// An (object, tid) reference for when version pointers are unreliable
-template <typename T>
-struct MvLocation {
-    MvObject<T>* obj;
-    TransactionTid::type tid;
-};
-
+// References for when version pointers are unreliable
 template <typename T>
 struct MvDelLocation {
     MvObject<T>* obj;
@@ -95,17 +89,6 @@ public:
         location->h_del = this;
         location->obj = object();
         Transaction::rcu_call(delete_prep_cb, location);
-    }
-
-    // Enqueues the delta version for future forced flattening
-    inline void enqueue_for_flattening() {
-        if (!status_is(DELTA)) {
-            return;
-        }
-        auto location = new MvLocation<T>();
-        location->obj = object();
-        location->tid = wtid();
-        Transaction::rcu_call(gc_time_flattening_cb, location);
     }
 
     // Pushes the current element onto the GC list if it isn't already, along
@@ -391,21 +374,6 @@ private:
         h->object()->ih_.status_unused();
     }
 
-    static void gc_time_flattening_cb(void *ptr) {
-        auto location = static_cast<MvLocation<T>*>(ptr);
-        history_type* h = location->obj->head();
-        while (h && !h->status_is(COMMITTED_DELTA, COMMITTED) &&
-                (h->wtid() > location->tid)) {
-            h = h->prev();
-        }
-
-        if (h && (h->wtid() == location->tid) &&
-                h->status_is(COMMITTED_DELTA) && !h->is_gc_enqueued()) {
-            h->enflatten();
-        }
-        delete location;
-    }
-
     // Returns true if the given prev pointer would be a valid prev element
     inline bool is_valid_prev(const history_type* prev) const {
         return prev->wtid_ <= wtid_;
@@ -435,7 +403,7 @@ public:
     typedef TransactionTid::type type;
 
     // How many consecutive DELTA versions will be allowed before flattening
-    static constexpr uint64_t gc_flattening_length = 257;
+    static constexpr int gc_flattening_length = 257;
 
 #if MVCC_INLINING
     MvObject() : h_(&ih_), ih_(this) {
@@ -535,14 +503,20 @@ public:
         h->status((s & ~MvStatus::PENDING) | MvStatus::COMMITTED);
         if (!(s & DELTA)) {
             h->prepare_gc();
-
+            delta_counter.store(0, std::memory_order_relaxed);
             // And for DELETED versions, enqueue the callback
             if (s & DELETED) {
                 h->enqueue_for_delete();
             }
         } else {
-            if (!(delta_counter++ % gc_flattening_length)) {
-                h->enqueue_for_flattening();
+            // Check whether to start a GC-time flatten
+            int dc = delta_counter.load(std::memory_order_relaxed) + 1;
+            if (dc < gc_flattening_length) {
+                delta_counter.store(dc, std::memory_order_relaxed);
+            } else if (flattenh_.load(std::memory_order_relaxed) == nullptr) {
+                delta_counter.store(0, std::memory_order_relaxed);
+                flattenh_.store(h, std::memory_order_relaxed);
+                Transaction::rcu_call(gc_time_flattening_cb, this);
             }
         }
     }
@@ -730,8 +704,26 @@ protected:
         }
     }
 
-    std::atomic<uint64_t> delta_counter;  // For gc-time flattening
+    static void gc_time_flattening_cb(void *ptr) {
+        auto object = static_cast<MvObject<T>*>(ptr);
+        auto flattenh = object->flattenh_.load(std::memory_order_relaxed);
+        if (flattenh) {
+            history_type* h = object->head();
+            while (h && !h->status_is(COMMITTED_DELTA, COMMITTED) &&
+                   h != flattenh) {
+                h = h->prev();
+            }
+
+            if (h == flattenh && h->status_is(COMMITTED_DELTA)
+                && !h->is_gc_enqueued()) {
+                h->enflatten();
+            }
+        }
+    }
+
     std::atomic<history_type*> h_;
+    std::atomic<int> delta_counter;  // For gc-time flattening
+    std::atomic<history_type*> flattenh_;
 
 #if MVCC_INLINING
     history_type ih_;  // Inlined version
