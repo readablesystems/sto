@@ -90,14 +90,14 @@ public:
     explicit MvHistory(
             type ntid, object_type *obj, comm_type &&c, history_type *nprev = nullptr)
             : obj_(obj), c_(std::move(c)), v_(), gc_enqueued_(false), prev_(nprev),
-              status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
+              rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
                 is_valid_prev(prev_),
                 "Cannot write MVCC history with wtid earlier than prev wtid.");
         }
 
-        status_delta();
+        status(PENDING_DELTA);
     }
 
     // Whether this version can be late-inserted in front of hnext
@@ -227,57 +227,40 @@ public:
 
     // Sets and returns the status
     // NOT THREADSAFE
-    inline MvStatus status(MvStatus s) {
+    inline void status(MvStatus s) {
         status_.store(s, std::memory_order_release);
-        return status_.load(std::memory_order_acquire);
     }
-    inline MvStatus status(unsigned long long s) {
-        return status((MvStatus)s);
+    inline void status(unsigned long long s) {
+        status((MvStatus)s);
     }
 
     // Removes all flags, signaling an aborted status
     // NOT THREADSAFE
-    inline MvStatus status_abort() {
+    inline void status_abort() {
         status(ABORTED);
-        return status();
     }
 
     // Sets the committed flag and unsets the pending flag; does nothing if the
     // current status is ABORTED
     // NOT THREADSAFE
-    inline MvStatus status_commit() {
-        if (status() == ABORTED) {
-            return status();
-        }
-        status(COMMITTED | (status() & ~PENDING));
-        return status();
+    inline void status_commit() {
+        int s = status();
+        assert(!(s & ABORTED));
+        status(COMMITTED | (s & ~PENDING));
     }
 
     // Sets the deleted flag; does nothing if the current status is ABORTED
     // NOT THREADSAFE
-    inline MvStatus status_delete() {
-        if (status() == ABORTED) {
-            return status();
-        }
-        status(status() | DELETED);
-        return status();
-    }
-
-    // Sets the delta flag; does nothing if the current status is ABORTED
-    // NOT THREADSAFE
-    inline MvStatus status_delta() {
-        if (status() == ABORTED) {
-            return status();
-        }
-        status(status() | DELTA);
-        return status();
+    inline void status_delete() {
+        int s = status();
+        assert(!(s & ABORTED));
+        status(DELETED | s);
     }
 
     // Sets the history into UNUSED state
     // NOT THREADSAFE
-    inline MvStatus status_unused() {
+    inline void status_unused() {
         status(UNUSED);
-        return status();
     }
 
     // Returns true if all the given flag(s) are set
@@ -482,47 +465,41 @@ public:
     MvObject() : h_(&ih_), ih_(this) {
         if (std::is_trivial<T>::value) {
             ih_.v_ = T();
-            ih_.status_delete();
-        } else {
-            ih_.status_delete();
         }
-        ih_.status_commit();
+        ih_.status(COMMITTED_DELETED);
     }
     explicit MvObject(const T& value)
             : h_(&ih_), ih_(0, this, value) {
-        ih_.status_commit();
+        ih_.status(COMMITTED);
     }
     explicit MvObject(T&& value)
             : h_(&ih_), ih_(0, this, std::move(value)) {
-        ih_.status_commit();
+        ih_.status(COMMITTED);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
             : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)) {
-        ih_.status_commit();
+        ih_.status(COMMITTED);
     }
 #else
     MvObject() : h_(new history_type(this)) {
         if (std::is_trivial<T>::value) {
             h_.load()->v_ = T();
-            h_.load()->status_delete();
-        } else {
-            h_.load()->status_delete();
         }
-        h_.load()->status_commit();
+        h_.load()->status(COMMITTED_DELETED);
     }
     explicit MvObject(const T& value)
             : h_(new history_type(0, this, value)) {
-        h_.load()->status_commit();
+        h_.load()->status(COMMITTED);
     }
     explicit MvObject(T&& value)
             : h_(new history_type(0, this, std::move(value))) {
-        h_.load()->status_commit();
+        h_.load()->status(COMMITTED);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
             : h_(new history_type(0, this, T(std::forward<Args>(args)...))) {
-        h_.load()->status_commit();
+        h_.load()->status(COMMITTED);
     }
 #endif
 
