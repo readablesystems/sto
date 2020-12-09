@@ -23,6 +23,7 @@ enum MvStatus {
     COMMITTED_DELETED       = 0b0000101,
     LOCKED                  = 0b0010000,
     LOCKED_COMMITTED_DELTA  = 0b0011100,  // Converting from delta to flattened
+    GARBAGE                 = 0b1000000
 };
 
 template <typename T>
@@ -223,6 +224,11 @@ private:
     static void gc_deleted_cb(void* ptr) {
         history_type* h = static_cast<history_type*>(ptr);
         MvStatus status = h->status_.load(std::memory_order_relaxed);
+#if 0
+        assert(!(status & GARBAGE));
+        bool ok = h->status_.compare_exchange_strong(status, MvStatus(status | GARBAGE));
+        assert(ok);
+#endif
         if ((status & DELETED) && h->delete_cb) {
             h->delete_cb(h->index_ptr, h->delete_param, h);
         }
