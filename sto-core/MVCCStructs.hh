@@ -412,20 +412,6 @@ private:
         return prev->wtid_ <= wtid_;
     }
 
-    // Returns the newest element that satisfies the expectation with the given
-    // mask. Optionally increments a counter.
-    inline history_type* with(const MvStatus mask, const MvStatus expect,
-                        size_t * const visited=nullptr) const {
-        history_type* ele = (history_type*)this;
-        while (ele && !ele->status_is(mask, expect)) {
-            ele = ele->prev_;
-            if (visited) {
-                (*visited)++;
-            }
-        }
-        return ele;
-    }
-
     object_type * const obj_;  // Parent object
     comm_type c_;
     T v_;
