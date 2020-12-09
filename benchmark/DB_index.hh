@@ -283,7 +283,7 @@ public:
                 auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
                 if (h->status_is(COMMITTED_DELETED)) {
                     return false;
-                } else if (!h->status_is(UNUSED) && !IndexType::template is_phantom<First>(h, item)) {
+                } else if (!IndexType::template is_phantom<First>(h, item)) {
                     // XXX No read-my-write stuff for now.
                     MvAccess::template read<First>(item, h);
 

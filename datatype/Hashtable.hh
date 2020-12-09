@@ -457,9 +457,6 @@ public:
         }
 
         if constexpr (Params::MVCC) {
-            if (h->status_is(UNUSED)) {
-                return select_result_type::Fail;
-            }
             if (is_phantom(h, item)) {
                 return select_result_type::Fail;
             }

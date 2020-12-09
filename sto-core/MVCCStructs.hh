@@ -85,12 +85,6 @@ public:
         return rtid_;
     }
 
-    // Non-CAS assignment on the rtid
-    inline type rtid(const type new_rtid) {
-        rtid_ = new_rtid;
-        return rtid();
-    }
-
 private:
     inline void update_rtid(type minimum_new_rtid) {
         type prev = rtid_.load(std::memory_order_relaxed);
@@ -149,12 +143,6 @@ public:
         status(DELETED | s);
     }
 
-    // Sets the history into UNUSED state
-    // NOT THREADSAFE
-    inline void status_unused() {
-        status(UNUSED);
-    }
-
     // Returns true if all the given flag(s) are set
     inline bool status_is(const MvStatus status) const {
         return status_is(status, status);
@@ -162,9 +150,7 @@ public:
 
     // Returns true if the status with the given mask equals the expected
     inline bool status_is(const MvStatus mask, const MvStatus expected) const {
-        if (mask == 0 && expected == 0) {  // Special case
-            return status_ == 0;
-        }
+        assert(mask != 0);
         return (status_ & mask) == expected;
     }
 
@@ -231,11 +217,7 @@ private:
         if ((status & DELETED) && h->delete_cb) {
             h->delete_cb(h->index_ptr, h->delete_param, h);
         }
-        if (h->object()->is_inlined(h)) {
-            h->status_unused();
-        } else {
-            delete h;
-        }
+        h->object()->delete_history(h);
     }
 
     // Initializes the flattening process
@@ -514,7 +496,7 @@ public:
     void delete_history(history_type* h) {
 #if MVCC_INLINING
         if (&ih_ == h) {
-            ih_.status_unused();
+            ih_.status_.store(UNUSED, std::memory_order_release);
             return;
         }
 #endif

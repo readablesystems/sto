@@ -754,9 +754,6 @@ public:
 
         history_type* h = e->row.find(txn_read_tid());
 
-        if (h->status_is(UNUSED))
-            return { true, false, 0, nullptr };
-
         if (is_phantom(h, row_item))
             return { true, false, 0, nullptr };
 
