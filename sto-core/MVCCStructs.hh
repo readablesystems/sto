@@ -154,6 +154,15 @@ public:
         return (status_ & mask) == expected;
     }
 
+    // Spin-wait on interested item
+    void wait_if_pending(MvStatus &s) const {
+        while (s & PENDING) {
+            // TODO: implement a backoff or something
+            relax_fence();
+            s = status();
+        }
+    }
+
     inline T& v() {
         if (status_is(DELTA)) {
             enflatten();
@@ -262,12 +271,12 @@ private:
                 hnext = prev;
             }
 
-            obj_->wait_if_pending(hnext);
-
-            if (hnext->status_is(COMMITTED)) {
+            auto status = hnext->status();
+            hnext->wait_if_pending(status);
+            if (status & COMMITTED) {
                 hnext->update_rtid(this->wtid());
-                assert(!hnext->status_is(COMMITTED_DELETED));
-                if (hnext->status_is(DELTA)) {
+                assert(!(status & DELETED));
+                if (status & DELTA) {
                     hnext->c_.operate(value);
                 } else {
                     value = hnext->v_;
@@ -516,8 +525,7 @@ public:
             assert(status & (PENDING | ABORTED | COMMITTED));
             if (wait) {
                 if (wtid < tid) {
-                    wait_if_pending(h);
-                    status = h->status();
+                    h->wait_if_pending(status);
                 }
                 if (wtid <= tid && (status & COMMITTED)) {
                     break;
@@ -609,14 +617,6 @@ public:
     }
 
 protected:
-    // Spin-wait on interested item
-    void wait_if_pending(const history_type* h) const {
-        while (h->status_is(MvStatus::PENDING)) {
-            // TODO: implement a backoff or something
-            relax_fence();
-        }
-    }
-
     static void gc_flatten_cb(void *ptr) {
         auto object = static_cast<MvObject<T>*>(ptr);
         auto flattenh = object->flattenh_.load(std::memory_order_relaxed);
