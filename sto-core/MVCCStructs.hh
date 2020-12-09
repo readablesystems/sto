@@ -337,8 +337,6 @@ private:
 
     // To be called from the source of the flattening.
     void flatten() {
-        assert(status_is(COMMITTED_DELTA));
-
         // Current element is the one initiating the flattening here. It is not
         // included in the trace, but it is included in the committed trace.
         history_type* curr = this;
