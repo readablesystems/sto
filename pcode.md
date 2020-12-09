@@ -130,15 +130,15 @@ install(txn, item, nv) {
         // When `txn.gc_epoch` passes, we run `GC_committed(nv)`.
         GC_enqueue(txn.gc_epoch, GC_committed(nv));
         // Also mark all prior flatten operations as redundant.
-        item.flatten_version = null;
+        item.want_flatten = null;
         item.outstanding_cus = 0;
     } else {
         // We don't want ∞ CUs to accumulate, so periodically schedule a background
         // flattening procedure.
         item.outstanding_cus += 1;
         if ([many CUs are outstanding on `item`]
-            && item.flatten_version == null) {
-            item.flatten_version = nv;
+            && item.want_flatten == null) {
+            item.want_flatten = nv;
             item.outstanding_cus = 0;
             GC_enqueue(txn.gc_epoch, GC_flatten(item));
         }
@@ -191,22 +191,34 @@ effectively assumes that pending versions will commit. I think that’s OK.
 
 ## Flattening and garbage collection
 
+Flattening can take place simultaneously among many threads. A per-version
+lock means exactly one thread will install the new version. The
+`in_foreground` argument is true if the caller needs the value; this is true
+for execution-time observations, but false when flattening takes place during
+garbage collection.
+
 ```
-flatten(v) {
-    // This procedure takes a committed CU, `v`, and computes and installs the
-    // corresponding full version.
-    assert(v.is_CU() && v.is_committed());
+flatten(fv, in_foreground) {
+    // This procedure takes a committed CU, `fv`, and computes and installs the
+    // corresponding full version into it, changing its state to “non-CU”.
+    // (However, note that the commit_updater associated with `fv` remains
+    // present, allowing concurrent flattens to proceed.)
+    assert(fv.is_CU() && fv.is_committed());
 
     // Traverse backward from `v` until encountering a full version.
     vstack := new version stack;
-    cv := v;
+    cv := fv;
     while (cv.is_CU() || !cv.is_committed()) {
         vstack.push(cv);
         cv = cv.prev;
     }
 
-    // Now traverse forward in time from `cv` to `v`, computing a value as we go.
+    // Now traverse forward in time from `cv` to `fv`, computing a value as we go.
+    // Concurrent insertions might be happening, so we update previous versions' RTSes.
+    // Each RTS update prevents future insertions after the relevant version.
     value := cv.value;
+    cv.rts := max(cv.rts, fv.wts);
+
     while (!vstack.empty()) {
         nv = vstack.top();
 
@@ -238,92 +250,73 @@ flatten(v) {
         cv = nv;
     }
 
-    auto expected = COMMITTED_DELTA;
-    if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
-        v_ = value;
-        TXP_INCREMENT(txp_mvcc_flat_commits);
-        status(COMMITTED);
-        enqueue_for_committed();
-        if (fg) {
-            object()->flattenh_.store(nullptr, std::memory_order_relaxed);
+    if (fv.try_CU_lock()) {
+        fv.value = value;
+        fv.mark_non_CU();
+        // Now `fv` is a non-CU committed version.
+        fv.unlock_CU_lock();
+        GC_enqueue(txn.gc_epoch, GC_committed(fv));
+        if (in_foreground) {
+            item.want_flatten = null;
         }
-    } else {
-        TXP_INCREMENT(txp_mvcc_flat_spins);
+    } else if (in_foreground) {
+        // Another thread is concurrently flattening this version.
+        while (fv.is_CU()) {
+            spin;
+        }
     }
-
 }
 ```
-flatten(MvHistory* v) {
-    assert(!v.is(ABORTED));
-    if (v.is(DELTA)) {
-        if (!v.is(LOCKED)) {
-            try_flatten(v);
+
+## Garbage collection
+
+```
+GC_committed(v) {
+    // GC_committed is enqueued exactly once for each committed full version.
+    // It is responsible for enqueueing for garbage collection all versions
+    // *before* v, up to *and including* the previous committed full version.
+
+    // When GC_committed(v) runs, all versions before `v` are definitely
+    // meaningless to transaction execution. Because of flattening, however,
+    // garbage collection for different versions may take place out of order.
+    // However, `GC_committed(v)` cannot interfere with a concurrent `GC_flatten(v2)`.
+    // `GC_committed` works backwards from some committed full version, and `GC_flatten`
+    // always stops at the most recent committed full version.
+
+    v = v.prev;
+    while (v) {
+        GC_enqueue(next epoch, GC_free(v))
+        if (v.is_committed() && (!v.is_CU() || v.is_locked())) {
+            return;
         }
-        while (v.is(DELTA)) {
-            spin;
-        }
+        v = v.prev;
     }
 }
 
-try_flatten(MvHistory* vin) {
-    assert(vin.is(COMMITTED) && vin.is(DELTA));
+GC_free(v) {
+    -- delete memory associated with v --
+}
 
-    MvHistory* v = vin;
-    std::stack<MvHistory*> stk;
-    // Safe to pass by pending versions here
-    while (!v.is(COMMITTED) || v.is(DELTA)) {
-        stk.push(v);
-        v = v->prev;
-    }
-
-    // update committed version's rts
-    // NB this may harmlessly break some invariants in rare cases.
-    // for instance the committed version's rts may become
-    // greater than a later committed version's wts, if that
-    // later committed version was concurrently inserted.
-    timestamp rts;
-    while ((rts = v->rts) < v_in->wts) {
-        v->rts.compare_exchange_weak(rts, v_in->wts);
-    }
-
-    value_type val{v->value};
-    while (!stk.empty()) {
-        MvHistory* nextv = stk.top();
-
-        while (nextv->prev != v) {
-            stk.push(nextv->prev);
-            nextv = next->prev;
+GC_flatten(item) {
+    // GC_flatten is scheduled when a transaction executor thinks there are
+    // many outstanding CUs. It only completes if the requested version
+    // for flattening is still visible from the head.
+    fv = item.want_flatten;
+    item.want_flatten = null;
+    if (fv != null) {
+        v = item.head;
+        while (v != fv && (!v.is_committed() || !v.is_CU() || !v.is_locked())) {
+            v = v.prev;
         }
-
-        while (nextv->is(PENDING)) {
-            spin;
+        if (v == fv) {
+            flatten(fv, false);
         }
-
-        if (nextv->is(COMMITTED)) {
-            while ((rts = nextv->rts) < v_in->wts) {
-                nextv->rts.compare_exchange_weak(rts, v_in->wts);
-            }
-            if (nextv->is(DELTA)) {
-                nextv->commuter.apply(val);
-            } else {
-                val = nextv->value;
-            }
-        }
-
-        v = nextv;
-        stk.pop();
-    }
-
-    if (v_in.status.compare_exchange_strong(COMMITTEDDELTA, LOCKEDCOMMITTEDDELTA)) {
-        v_in.value = val;
-        v_in.status = COMMITTED;
-        enqueue v_in for GC, using procedure below;
     }
 }
 ```
 
 
-## Previous
+## Previous writeup (not worth reading)
 
 1. Let VPTR be a pointer to a pointer to a version. VPTR = &ITEM.HEAD.
 2. Set V := *VPTR. --fence--
