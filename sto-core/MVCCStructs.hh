@@ -89,7 +89,7 @@ public:
     }
     explicit MvHistory(
             type ntid, object_type *obj, comm_type &&c, history_type *nprev = nullptr)
-            : obj_(obj), c_(c), v_(), gc_enqueued_(false), prev_(nprev),
+            : obj_(obj), c_(std::move(c)), v_(), gc_enqueued_(false), prev_(nprev),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
@@ -493,7 +493,7 @@ public:
         ih_.status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(&ih_), ih_(0, this, value) {
+            : h_(&ih_), ih_(0, this, std::move(value)) {
         ih_.status_commit();
     }
     template <typename... Args>
@@ -516,7 +516,7 @@ public:
         h_.load()->status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(0, this, value)) {
+            : h_(new history_type(0, this, std::move(value))) {
         h_.load()->status_commit();
     }
     template <typename... Args>
