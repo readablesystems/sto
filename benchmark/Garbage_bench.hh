@@ -3,9 +3,10 @@
 #include "DB_index.hh"
 #include "TBox.hh"
 #include "TCounter.hh"
-#include "DB_params.hh"
 
 namespace garbage_bench {
+
+using access_t = bench::access_t;
 
 struct garbage_row {
     enum class NamedColumn : int { value = 0 };
@@ -28,11 +29,122 @@ struct garbage_key {
     }
 };
 
+};  // namespace garbage_bench
+
+namespace bench {
+
+using garbage_bench::garbage_row;
+
+template <>
+struct SplitParams<garbage_row> {
+  using split_type_list = std::tuple<garbage_row>;
+  using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
+  static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
+
+  static constexpr auto split_builder = std::make_tuple(
+    [](const garbage_row& in) -> garbage_row {
+      garbage_row out;
+      out.value = in.value;
+      return out;
+    }
+  );
+
+  static constexpr auto split_merger = std::make_tuple(
+    [](garbage_row* out, const garbage_row& in) -> void {
+      out->value = in.value;
+    }
+  );
+
+  static constexpr auto map = [](int col_n) -> int {
+    (void)col_n;
+    return 0;
+  };
+};
+
+
+template <typename A>
+class RecordAccessor<A, garbage_row> {
+ public:
+  
+  const int& value() const {
+    return impl().value_impl();
+  }
+
+
+  void copy_into(garbage_row* dst) const {
+    return impl().copy_into_impl(dst);
+  }
+
+ private:
+  const A& impl() const {
+    return *static_cast<const A*>(this);
+  }
+};
+
+template <>
+class UniRecordAccessor<garbage_row> : public RecordAccessor<UniRecordAccessor<garbage_row>, garbage_row> {
+ public:
+  UniRecordAccessor(const garbage_row* const vptr) : vptr_(vptr) {}
+
+ private:
+  
+  const int& value_impl() const {
+    return vptr_->value;
+  }
+
+  
+  void copy_into_impl(garbage_row* dst) const {
+    
+    if (vptr_) {
+      dst->value = vptr_->value;
+    }
+  }
+
+
+  const garbage_row* vptr_;
+  friend RecordAccessor<UniRecordAccessor<garbage_row>, garbage_row>;
+};
+
+template <>
+class SplitRecordAccessor<garbage_row> : public RecordAccessor<SplitRecordAccessor<garbage_row>, garbage_row> {
+ public:
+   static constexpr size_t num_splits = SplitParams<garbage_row>::num_splits;
+
+   SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
+     : vptr_0_(reinterpret_cast<garbage_row*>(vptrs[0])) {}
+
+ private:
+  
+  const int& value_impl() const {
+    return vptr_0_->value;
+  }
+  
+
+  void copy_into_impl(garbage_row* dst) const {
+    
+    if (vptr_0_) {
+      dst->value = vptr_0_->value;
+    }
+
+  }
+
+
+  const garbage_row* vptr_0_;
+
+  friend RecordAccessor<SplitRecordAccessor<garbage_row>, garbage_row>;
+};
+
+};  // namespace bench
+
+namespace garbage_bench {
+
 template <typename DBParams>
 class garbage_db {
 public:
     template <typename K, typename V>
-    using OIndex = bench::ordered_index<K, V, DBParams>;
+    using OIndex = typename std::conditional<DBParams::MVCC,
+          bench::mvcc_ordered_index<K, V, DBParams>,
+          bench::ordered_index<K, V, DBParams>>::type;
     typedef OIndex<garbage_key, garbage_row> table_type;
 
     table_type& table() {
@@ -60,17 +172,17 @@ void initialize_db(garbage_db<DBParams>& db, size_t db_size) {
 template <typename DBParams>
 class garbage_runner {
 public:
-    using RowAccess = bench::RowAccess;
+    typedef garbage_row::NamedColumn nc;
     void run_txn(size_t key) {
         TRANSACTION_E {
-            bool success, found;
-            const void *value;
-            std::tie(success, found, std::ignore, value) = db.table().select_row(garbage_key(key), RowAccess::ObserveValue);
+            auto [success, found, row, value] = db.table().select_split_row(garbage_key(key), {{nc::value, access_t::read}});
+            (void) row;
+            (void) value;
             if (success) {
                 if (found) {
-                  std::tie(success, found) = db.table().delete_row(garbage_key(key));
+                  std::tie(std::ignore, std::ignore) = db.table().delete_row(garbage_key(key));
                 } else {
-                  std::tie(success, found) = db.table().insert_row(garbage_key(key), Sto::tx_alloc<garbage_row>());
+                  std::tie(std::ignore, std::ignore) = db.table().insert_row(garbage_key(key), Sto::tx_alloc<garbage_row>());
                 }
             }
         } RETRY_E(true);
