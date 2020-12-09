@@ -90,10 +90,6 @@
 #define CONTENTION_REGULATION 1
 #endif
 
-#ifndef CU_READ_AT_PRESENT
-#define CU_READ_AT_PRESENT 1
-#endif
-
 #if TPCC_SPLIT_TABLE
 #if TABLE_FINE_GRAINED
 #error "Split table and fine-grained table can't be enabled at the same time!"
@@ -1064,8 +1060,6 @@ public:
             }
             // Can't we just get the most recent tid (_TID?)
 #else
-#if CU_READ_AT_PRESENT
-            // Experimental: always read at the present for mvcc r/w transactions.
             if (mvcc_rw) {
                 read_tid_ = _TID;
                 thr.rtid.store(read_tid_, std::memory_order_relaxed);
@@ -1074,26 +1068,6 @@ public:
                 read_tid_ = _RTID;
                 thr.rtid.store(read_tid_, std::memory_order_relaxed);
             }
-#else
-            if constexpr (!Commute) {
-                if (mvcc_rw) {
-                    //thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
-                    read_tid_ = _TID;
-                    thr.rtid.store(read_tid_, std::memory_order_relaxed);
-                } else {
-                    epoch_advance_once();
-                    read_tid_ = _RTID;
-                    thr.rtid.store(read_tid_, std::memory_order_relaxed);
-                }
-            } else {
-                // When we use CU we can't do the timestamp hack above because
-                // flattening delta versions require the invariant that all
-                // reads never observe information based on pending versions
-                epoch_advance_once();
-                read_tid_ = _RTID;
-                thr.rtid.store(read_tid_, std::memory_order_relaxed);
-            }
-#endif
 #endif
         }
         return read_tid_;

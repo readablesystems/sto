@@ -602,7 +602,7 @@ public:
     //              returns true if successful, false if aborted
     bool cp_lock(const type tid, history_type* hw) {
         // Can only install pending versions
-        if (!hw->status_is(MvStatus::PENDING)) {
+        if (!hw->status_is(PENDING)) {
             TXP_INCREMENT(txp_mvcc_lock_status_aborts);
             return false;
         }
