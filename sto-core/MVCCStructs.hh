@@ -215,8 +215,8 @@ private:
             next = h->prev_.load(std::memory_order_relaxed);
             Transaction::rcu_call(gc_deleted_cb, h);
             int status = h->status();
-            if ((status & LOCKED_COMMITTED_DELTA) == COMMITTED
-                || (status & LOCKED_COMMITTED_DELTA) == LOCKED_COMMITTED_DELTA) {
+            assert(!(status & LOCKED));
+            if ((status & COMMITTED_DELTA) == COMMITTED) {
                 break;
             }
         }
