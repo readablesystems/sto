@@ -59,11 +59,12 @@ public:
     }
 
     // Whether this version can be late-inserted in front of hnext
-    bool can_precede(const history_type* hnext) {
-        if (this->status_is(DELETED) && hnext->status_is(DELTA)) {
-            return false;
-        }
-        return true;
+    bool can_precede(const history_type* hnext) const {
+        return !this->status_is(DELETED) || !hnext->status_is(DELTA);
+    }
+
+    bool can_precede_anything() const {
+        return !this->status_is(DELETED);
     }
 
     // Enqueues the deleted version for future cleanup
@@ -481,10 +482,12 @@ public:
         }
 
         // Write version consistency check for CU enabling
-        for (history_type* h = h_.load(); h != hw; h = h->prev()) {
-            if (h->status_is(DELTA) && !hw->can_precede(h)) {
-                hw->status_abort();
-                return false;
+        if (!hw->can_precede_anything()) {
+            for (history_type* h = h_.load(); h != hw; h = h->prev()) {
+                if (!hw->can_precede(h)) {
+                    hw->status_abort();
+                    return false;
+                }
             }
         }
 
