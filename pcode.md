@@ -315,6 +315,27 @@ GC_flatten(item) {
 }
 ```
 
+## Chain invariants
+
+### Nominal invariants (how we should describe the system)
+
+1. Versions are stored in a singly-linked list by descending `wts`. Thus, if
+   `v1` precedes `v2` in some version chain (meaning `v2` is closer to the
+   item’s `head`, and `v1` is accessible from `v2` via `prev` pointers), then
+   `v1.wts < v2.wts`.
+
+2. Each version has a read timestamp and a write timestamp. `v.wts ≤ v.rts`.
+
+3. If `v1` precedes `v2` in the cahin, then `v1.rts ≤ v2.wts` (`v1`’s read
+   timestamp is no larger than `v2`’s write timestamp).
+
+### Actual invariants
+
+1. The chain may contain pending versions and aborted versions.
+
+2. If `v1` precedes `v2` in the chain and both versions are committed, then we
+   allow `v1.rts > v2.rts`, even though the semantically correct read
+   timestamp is bounded above by `v2.rts`.
 
 ## Previous writeup (not worth reading)
 

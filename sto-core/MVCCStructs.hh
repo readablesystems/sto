@@ -310,11 +310,6 @@ private:
         }
     }
 
-    // Returns true if the given prev pointer would be a valid prev element
-    inline bool is_valid_prev(const history_type* prev) const {
-        return prev->wtid_ <= wtid_;
-    }
-
     object_type * const obj_;  // Parent object
     comm_type c_;
     T v_;
