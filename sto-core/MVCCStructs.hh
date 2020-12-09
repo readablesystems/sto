@@ -94,6 +94,14 @@ public:
         status_delta();
     }
 
+    // Whether this version can be late-inserted in front of hnext
+    bool can_precede(const history_type* hnext) {
+        if (this->status_is(DELETED) && hnext->status_is(DELTA)) {
+            return false;
+        }
+        return true;
+    }
+
     // Enqueues the deleted version for future cleanup
     inline void enqueue_for_delete() {
         if (!status_is(COMMITTED_DELETED)) {
@@ -320,130 +328,63 @@ private:
 
     // Initializes the flattening process
     inline void enflatten() {
-        MvStatus expected = COMMITTED_DELTA;
-        if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
-            if (status_is(COMMITTED_DELTA)) {
-                assert(prev());
-                TXP_INCREMENT(txp_mvcc_flat_runs);
-#if CU_READ_AT_PRESENT
-                flatten_present_time(v_);
-#else
-                prev()->flatten(v_);
-#endif
-                v_ = c_.operate(v_);
+        assert(!status_is(ABORTED));
+        if (status_is(COMMITTED_DELTA)) {
+            if (!status_is(LOCKED)) {
+                flatten();
+            } else {
+                TXP_INCREMENT(txp_mvcc_flat_spins);
             }
-            TXP_INCREMENT(txp_mvcc_flat_commits);
-            status(COMMITTED);
-        } else {
-            TXP_INCREMENT(txp_mvcc_flat_spins);
-            // TODO: exponential backoff?
-            while (status_is(LOCKED_COMMITTED_DELTA));
+            while (!status_is(COMMITTED));
         }
     }
 
-    // To be called from the prev of the source of the flattening
-    void flatten(T &v) {
-        std::stack<history_type*> trace;
-        history_type* curr = this;
-        trace.push(curr);
-        TXP_INCREMENT(txp_mvcc_flat_versions);
-        while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
-            curr = curr->prev();
-            trace.push(curr);
-            TXP_INCREMENT(txp_mvcc_flat_versions);
-            curr->gc_push(object()->is_inlined(curr));
-        }
-
-        while (!trace.empty()) {
-            auto h = trace.top();
-            trace.pop();
-
-            if (h->status_is(COMMITTED)) {
-                if (h->status_is(DELTA)) {
-                    v = h->c_.operate(v);
-                } else if (!h->status_is(COMMITTED_DELETED)) {
-                    v = h->v_;
-                }
-            }
-        }
-    }
-
-#if CU_READ_AT_PRESENT
-    // To be called from the source of the flattening; returns true on success
-    // and false on failure.
-    void flatten_present_time(T &v) {
-        std::stack<history_type*> trace;  // Of history elements to process
-        std::deque<history_type*> hdeq;
+    // To be called from the source of the flattening.
+    void flatten() {
+        assert(status_is(COMMITTED_DELTA));
 
         // Current element is the one initiating the flattening here. It is not
         // included in the trace, but it is included in the committed trace.
         history_type* curr = this;
+        std::stack<history_type*> trace;  // Of history elements to process
+
+        while (!curr->status_is(COMMITTED) || curr->status_is(DELTA)) {
+            trace.push(curr);
+            curr = curr->prev();
+        }
 
         TXP_INCREMENT(txp_mvcc_flat_versions);
-        while (true) {
-            // Wait for pending versions to resolve.
-            while (curr->status_is(PENDING)) { relax_fence(); }
-            if (curr->status_is(COMMITTED)) {
-                // Add to our list of versions to process
-                trace.push(curr);
+        value_type value {curr->v_};
+        while (1trace.empty()) {
+            auto hnext = trace.top();
 
-                // Means we have reached the "base" committed version.
-                if (curr->status_is(COMMITTED_DELTA, COMMITTED)) {
-                    break;
-                }
+            while (hnext->prev() != curr) {
+                trace.push(hnext->prev());
+                hnext = hnext->prev();
             }
 
-            curr = curr->prev();
-            TXP_INCREMENT(txp_mvcc_flat_versions);
-            curr->gc_push(object()->is_inlined(curr));
+            wait_if_pending(hnext);
+
+            if (hnext->status_is(COMMITTED)) {
+                hnext->update_rtid(this->wtid());
+                assert(!hnext->status_is(COMMITTED_DELETED));
+                if (hnext->status_is(DELTA)) {
+                    value = hnext->c_.apply(value);
+                } else {
+                    value = hnext->v_;
+                }
+            }
         }
 
-        while (trace.size() > 1) {
-            auto h = trace.top();
-            trace.pop();
-            auto hnext = trace.top();  // Next committed history
-
-            // Update the rtid now
-            hnext->update_rtid(hnext->wtid());
-
-            // Retrace our steps as needed
-            bool restart = false;
-            for (auto hcurr = hnext->prev(); hcurr != h; hcurr = hcurr->prev()) {
-                // Wait for pending versions to resolve.
-                while (hcurr->status_is(PENDING)) { relax_fence(); }
-
-                // Update the rtid now
-                hcurr->update_rtid(hnext->wtid());
-
-                // This should be our hnext... unless it was a blind write
-                if (hcurr->status_is(COMMITTED)) {
-                    trace.push(hcurr);
-
-                    // Found a blind write
-                    if (hcurr->status_is(COMMITTED_DELTA, COMMITTED)) {
-                        // We can just drop everything; start with a new base v
-                        restart = true;
-                        break;
-                    }
-
-                    // A new committed version to process
-                    hnext = hcurr;
-                }
-            }
-            if (restart) {
-                continue;
-            }
-
-            if (h->status_is(COMMITTED)) {
-                if (h->status_is(DELTA)) {
-                    v = h->c_.operate(v);
-                } else if (!h->status_is(COMMITTED_DELETED)) {
-                    v = h->v_;
-                }
-            }
+        auto expected = COMMITTED_DELTA;
+        if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
+            v_ = value;
+            TXP_INCREMENT(txp_mvcc_flat_commits);
+            status(COMMITTED);
+        } else {
+            TXP_INCREMENT(txp_mvcc_flat_spins);
         }
     }
-#endif
 
     static void gc_inlined_cb(void *ptr) {
         history_type* h = static_cast<history_type*>(ptr);
@@ -598,33 +539,38 @@ public:
         if (item.has_read()) {
             auto hr = item.template read_value<history_type*>();
 
-            // rtid update
-            hr->update_rtid(tid);
+            if (hr) {  // CU has_read but hr is set to be nullptr
+                // rtid update
+                hr->update_rtid(tid);
 
-            // Read version consistency check
-            auto hh = find(tid);
-            if (hh != hr) {
-                TXP_INCREMENT(txp_mvcc_check_aborts);
-                return false;
+                // Read version consistency check
+                for (history_type* h = *h_; h != hr; h = h->prev()) {
+                    if (!h->status_is(ABORTED) && h->wtid() < tid) {
+                        return false;
+                    }
+                }
             }
         }
 
         if (item.has_mvhistory()) {
             auto hw = item.template write_value<history_type*>();
 
-            // Write version consistency check
-            auto hprev = hw;
-            do {
-                hprev = hprev->prev();
-                auto rtid_p = hprev->rtid();
-                if (rtid_p > tid) {
-                    TXP_INCREMENT(txp_mvcc_lock_vc_aborts);
-                    hw->status_abort();
+            // Write version consistency check for CU enabling
+            for (history_type* h = *h_; h != hw; h = h->prev()) {
+                if (h->status_is(DELTA) && !hw->can_precede(h)) {
                     return false;
                 }
-            } while (!hprev->status_is(COMMITTED));
-            if (!version_consistent(hprev, hw)) {
-                return false;
+            }
+
+            // Write version consistency check for concurrent reads + CU enabling
+            for (history_type* h = hw->prev(); h; h = h->prev()) {
+                if ((hw->status_is(DELTA) && !h->status_is(ABORTED) && h->can_precede(hw))
+                    || (h->status_is(COMMITTED) && h->rtid() > tid)) {
+                    return false;
+                }
+                if (h->status_is(COMMITTED)) {
+                    break;
+                }
             }
         }
 
@@ -679,60 +625,36 @@ public:
             return false;
         }
 
-        // The previously-visible version for h
-        history_type* hvis = h->prev();
-        assert(!hvis || hvis->status_is(COMMITTED) || hvis->status_is(PENDING));
-
-        do {
-            // Can only install onto the latest-visible version
-            if (hvis && hvis != find(tid)) {
-                TXP_INCREMENT(txp_mvcc_lock_vis_aborts);
-                return false;
-            }
-
+        std::atomic<history_type*>* target = &h_;
+        while (true) {
             // Discover target atomic on which to do CAS
-            std::atomic<history_type*>* target = &h_;
             history_type* t = *target;
-            history_type* next = nullptr;
-            while (t->wtid() > tid) {
-                target = &t->prev_;
-                next = t;
-                t = *target;
-            }
-
-            // Properly link h's prev_
-            h->prev_.store(t, std::memory_order_relaxed);
-
-            // Attempt to CAS onto the target
-            if (target->compare_exchange_strong(t, h)) {
-                if (next && next->is_gc_enqueued()) {
-                    history_type* v = h;
-                    while (v && !v->is_gc_enqueued()) {
-                        if (!v->gc_push(is_inlined(v))) {
-                            break;
-                        }
-                        v = v->prev();
-                    }
-                }
-                break;
-            }
-        } while (true);
-
-        /*
-        // Version consistency verification
-        {
-            auto hprev = h;
-            do {
-                hprev = hprev->prev();
-                auto rtid_p = hprev->rtid();
-                if (rtid_p > tid) {
-                    TXP_INCREMENT(txp_mvcc_lock_vc_aborts);
-                    h->status_abort();
+            if (t->wtid() > tid) {
+                if (t->status_is(DELTA) && !h.can_precede(t)) {
                     return false;
                 }
-            } while (!hprev->status_is(COMMITTED));
+                target = &t->prev_;
+            } else if (!t->status_is(ABORTED) && t->rtid() > tid) {
+                return false;
+            } else {
+                // Properly link h's prev_
+                h->prev_.store(t, std::memory_order_relaxed);
+
+                // Attempt to CAS onto the target
+                if (target->compare_exchange_strong(t, h)) {
+                    if (next && next->is_gc_enqueued()) {
+                        history_type* v = h;
+                        while (v && !v->is_gc_enqueued()) {
+                            if (!v->gc_push(is_inlined(v))) {
+                                break;
+                            }
+                            v = v->prev();
+                        }
+                    }
+                    break;
+                }
+            }
         }
-        */
 
         return true;
     }
@@ -858,15 +780,6 @@ public:
     }
 
 protected:
-    // Whether the two versions are consistent with each other
-    bool version_consistent(
-            const history_type* hprev, const history_type* hnext) {
-        if (hprev->status_is(DELETED) && hnext->status_is(DELTA)) {
-            return false;
-        }
-        return true;
-    }
-
     // Spin-wait on interested item
     void wait_if_pending(const history_type* h) const {
         while (h->status_is(MvStatus::PENDING)) {
