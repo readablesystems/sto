@@ -137,7 +137,6 @@ public:
         std::vector<uint64_t> txn_cnts(size_t(num_runners), 0);
 
         for (int i = 0; i < num_runners; ++i) {
-            fprintf(stdout, "runner %d created\n", i);
             runner_thrs.emplace_back(ycsb_runner_thread, std::ref(db), std::ref(prof),
                                      std::ref(runners[i]), time_limit, std::ref(txn_cnts[i]));
         }
@@ -249,15 +248,29 @@ public:
         std::cout << "Generating workload..." << std::endl;
         workload_generation(runners, mode);
         std::cout << "Done." << std::endl;
+        std::cout << "Garbage collection: ";
         if (enable_gc) {
+            std::cout << "enabled, running every 1 ms";
             Transaction::set_epoch_cycle(1000);
             advancer = std::thread(&Transaction::epoch_advancer, nullptr);
-            advancer.detach();
+        } else {
+            std::cout << "disabled";
         }
+        std::cout << std::endl << std::flush;
 
         prof.start(profiler_mode);
         auto num_trans = run_benchmark(db, prof, runners, time_limit);
         prof.finish(num_trans);
+
+        if (enable_gc) {
+            Transaction::global_epochs.run = false;
+            advancer.join();
+        }
+
+        // Clean up all remnant RCU set items.
+        for (int i = 0; i < num_threads; ++i) {
+            Transaction::tinfo[i].rcu_set.release_all();
+        }
 
         return 0;
     }
