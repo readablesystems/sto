@@ -266,6 +266,8 @@ private:
 
         TXP_INCREMENT(txp_mvcc_flat_versions);
         T value {curr->v_};
+        curr->update_rtid(this->wtid());
+
         while (!trace.empty()) {
             auto hnext = trace.top();
 
