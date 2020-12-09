@@ -41,6 +41,12 @@ struct MvDelLocation {
 };
 
 template <typename T>
+struct MvGcLocation {
+    MvObject<T>* obj;
+    MvHistory<T>* h;
+};
+
+template <typename T>
 class MvHistory {
 public:
     typedef TransactionTid::type type;
@@ -157,6 +163,13 @@ public:
     // Retrieve the object for which this history element is intended
     inline object_type* object() const {
         return obj_;
+    }
+
+    inline void prepare_gc() {
+        auto location = new MvGcLocation<T>();
+        location->obj = object();
+        location->h = this;
+        Transaction::rcu_call(gc_delete_cb, location);
     }
 
     inline history_type* prev() const {
@@ -381,9 +394,29 @@ private:
             v_ = value;
             TXP_INCREMENT(txp_mvcc_flat_commits);
             status(COMMITTED);
+            prepare_gc();
         } else {
             TXP_INCREMENT(txp_mvcc_flat_spins);
         }
+    }
+
+    static void gc_delete_cb(void *ptr) {
+        auto location = static_cast<MvGcLocation<T>*>(ptr);
+        auto obj = location->obj;
+        auto h = location->h;
+
+        // Put predecessors in the RCU list, but only if they aren't already
+        history_type* prev = h->prev();
+        bool stop = prev->is_gc_enqueued();
+        do {
+            stop = prev->status_is(COMMITTED_DELTA, COMMITTED) ||
+                   prev->is_gc_enqueued();
+            history_type* ele = prev;
+            prev = prev->prev();
+            ele->gc_push(obj->is_inlined(ele));
+        } while (prev != nullptr && !stop);
+
+        delete location;
     }
 
     static void gc_inlined_cb(void *ptr) {
@@ -545,16 +578,7 @@ public:
         h->status_commit();
 
         if (h->status_is(COMMITTED_DELTA, COMMITTED)) {
-            // Put predecessors in the RCU list, but only if they aren't already
-            history_type* prev = h->prev();
-            bool stop = prev->is_gc_enqueued();
-            do {
-                stop = prev->status_is(COMMITTED_DELTA, COMMITTED) ||
-                       prev->is_gc_enqueued();
-                history_type* ele = prev;
-                prev = prev->prev();
-                ele->gc_push(is_inlined(ele));
-            } while (prev != nullptr && !stop);
+            h->prepare_gc();
 
             // And for DELETED versions, enqueue the callback
             if (h->status_is(COMMITTED_DELETED)) {
@@ -615,7 +639,7 @@ public:
 
         // Write version consistency check for concurrent reads + CU enabling
         for (history_type* h = hw->prev(); h; h = h->prev()) {
-            if ((hw->status_is(DELTA) && !h->status_is(ABORTED) && h->can_precede(hw))
+            if ((hw->status_is(DELTA) && !h->status_is(ABORTED) && !h->can_precede(hw))
                 || (h->status_is(COMMITTED) && h->rtid() > tid)) {
                 hw->status_abort();
                 return false;
