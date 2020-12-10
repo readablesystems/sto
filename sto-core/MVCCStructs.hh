@@ -13,7 +13,11 @@
 // Status types of MvHistory elements
 enum MvStatus {
     UNUSED                  = 0b0000000,
-    ABORTED                 = 0b0100000,
+    ABORTED                 = 0b0000'0010'0000,
+    ABORTED_RV              = 0b0001'0010'0000,
+    ABORTED_WV1             = 0b0010'0010'0000,
+    ABORTED_WV2             = 0b0011'0010'0000,
+    ABORTED_TXNV            = 0b0100'0010'0000,
     DELTA                   = 0b0001000,  // Commutative update delta
     DELETED                 = 0b0000001,  // Not a valid state on its own, but defined as a flag
     PENDING                 = 0b0000010,
@@ -24,7 +28,7 @@ enum MvStatus {
     COMMITTED_DELETED       = 0b0000101,
     LOCKED                  = 0b0010000,
     LOCKED_COMMITTED_DELTA  = 0b0011100,  // Converting from delta to flattened
-    GARBAGE                 = 0b1000000
+    GARBAGE                 = 0b1000000,
 };
 
 std::ostream& operator<<(std::ostream& w, MvStatus s);
@@ -38,6 +42,18 @@ public:
         : status_(status), wtid_(tid), rtid_(tid), prev_(nullptr),
           obj_(obj) {
     }
+
+#if NDEBUG
+    void assert_status(bool, const char*) {
+    }
+#else
+    void assert_status(bool ok, const char* description) {
+        if (!ok) {
+            assert_status_fail(description);
+        }
+    }
+    void assert_status_fail(const char* description);
+#endif
 
     void print_prevs(size_t max = 1000) const;
 
@@ -93,7 +109,7 @@ public:
 
     // Enqueues the deleted version for future cleanup
     inline void enqueue_for_committed() {
-        assert((status() & COMMITTED_DELTA) == COMMITTED);
+        assert_status((status() & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
         Transaction::rcu_call(gc_committed_cb, this);
     }
 
@@ -149,19 +165,25 @@ public:
     }
 
     // Removes all flags, signaling an aborted status
-    // NOT THREADSAFE
-    inline void status_abort() {
+    inline void status_abort(MvStatus reason = ABORTED) {
         int s = status();
-        assert((s & (PENDING|COMMITTED)) == PENDING);
-        status(ABORTED);
+        assert_status((s & (PENDING|COMMITTED)) == PENDING, "status_abort");
+        assert(reason & ABORTED);
+        status(reason);
+    }
+    inline void status_txn_abort() {
+        int s = status();
+        if (!(s & ABORTED)) {
+            assert_status((s & (PENDING|COMMITTED)) == PENDING, "status_txn_abort");
+            status(ABORTED_TXNV);
+        }
     }
 
     // Sets the committed flag and unsets the pending flag; does nothing if the
     // current status is ABORTED
-    // NOT THREADSAFE
     inline void status_commit() {
         int s = status();
-        assert(!(s & ABORTED));
+        assert_status(!(s & ABORTED), "status_commit");
         status(COMMITTED | (s & ~PENDING));
     }
 
@@ -219,7 +241,7 @@ public:
 private:
     static void gc_committed_cb(void *ptr) {
         history_type* h = static_cast<history_type*>(ptr);
-        assert(h->status_is(COMMITTED_DELTA, COMMITTED));
+        h->assert_status(h->status_is(COMMITTED_DELTA, COMMITTED), "gc_committed_cb");
         // Here is how we ensure that `gc_committed_cb` never conflicts
         // with a flatten operation.
         // (1) When `gc_committed_cb` runs, `h->prev()`
@@ -237,7 +259,7 @@ private:
             next = h->prev_relaxed();
             Transaction::rcu_call(gc_deleted_cb, h);
             int status = h->status();
-            assert(!(status & LOCKED));
+            h->assert_status(!(status & LOCKED), "gc_committed_cb unlocked");
             if ((status & COMMITTED_DELTA) == COMMITTED) {
                 break;
             }
@@ -248,7 +270,7 @@ private:
         history_type* h = static_cast<history_type*>(ptr);
         MvStatus status = h->status_.load(std::memory_order_relaxed);
 #if 0
-        assert(!(status & GARBAGE));
+        h->assert_status(!(status & GARBAGE), "gc_deleted_cb garbage");
         bool ok = h->status_.compare_exchange_strong(status, MvStatus(status | GARBAGE));
         assert(ok);
 #endif
@@ -261,7 +283,7 @@ private:
     // Initializes the flattening process
     inline void enflatten() {
         int s = status_.load(std::memory_order_relaxed);
-        assert(!(s & ABORTED));
+        assert_status(!(s & ABORTED), "enflatten not aborted");
         if ((s & COMMITTED_DELTA) == COMMITTED_DELTA) {
             if (!(s & LOCKED)) {
                 flatten(s, true);
@@ -407,19 +429,6 @@ public:
 
     class InvalidState {};
 
-    // Aborts currently-pending head version; returns true if the head version
-    // is pending and false otherwise.
-    bool abort(history_type* h) {
-        if (h) {
-            if (!h->status_is(MvStatus::PENDING)) {
-                return false;
-            }
-
-            h->status_abort();
-        }
-        return true;
-    }
-
     const T& access(const tid_type tid) const {
         return find(tid)->v();
     }
@@ -446,7 +455,7 @@ public:
     // "Install" step: set status to committed
     void cp_install(history_type* h) {
         int s = h->status();
-        assert((s & (PENDING | ABORTED)) == PENDING);
+        h->assert_status((s & (PENDING | ABORTED)) == PENDING, "cp_install");
         h->status((s & ~PENDING) | COMMITTED);
         if (!(s & DELTA)) {
             delta_counter.store(0, std::memory_order_relaxed);
@@ -469,10 +478,7 @@ public:
     template <bool may_commute = true>
     bool cp_lock(const tid_type tid, history_type* hw) {
         // Can only install pending versions
-        if (!hw->status_is(PENDING)) {
-            TXP_INCREMENT(txp_mvcc_lock_status_aborts);
-            return false;
-        }
+        hw->assert_status(hw->status_is(PENDING), "cp_lock pending");
 
         std::atomic<MvHistoryBase*>* target = &h_;
         while (true) {
@@ -501,7 +507,7 @@ public:
         if (may_commute && !hw->can_precede_anything()) {
             for (history_type* h = head(); h != hw; h = h->prev()) {
                 if (!hw->can_precede(h)) {
-                    hw->status_abort();
+                    hw->status_abort(ABORTED_WV1);
                     return false;
                 }
             }
@@ -511,7 +517,7 @@ public:
         for (history_type* h = hw->prev(); h; h = h->prev()) {
             if ((may_commute && !h->can_precede(hw))
                 || (h->status_is(COMMITTED) && h->rtid() > tid)) {
-                hw->status_abort();
+                hw->status_abort(ABORTED_WV2);
                 return false;
             }
             if (h->status_is(COMMITTED)) {
@@ -547,7 +553,7 @@ public:
         while (h) {
             auto status = h->status();
             auto wtid = h->wtid();
-            assert(status & (PENDING | ABORTED | COMMITTED));
+            h->assert_status(status & (PENDING | ABORTED | COMMITTED), "find");
             if (wait) {
                 if (wtid < tid) {
                     h->wait_if_pending(status);

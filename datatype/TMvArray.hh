@@ -141,8 +141,8 @@ public:
         if (!committed) {
             if (item.has_write()) {
                 auto h = item.template write_value<history_type*>();
-                if (h && !item.has_commute()) {
-                    data_[item.key<size_type>()].v.abort(h);
+                if (h) {
+                    h->status_txn_abort();
                 }
             }
         }

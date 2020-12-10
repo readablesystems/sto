@@ -759,7 +759,7 @@ public:
                 if (item.has_mvhistory()) {
                     auto h = item.template write_value<history_type*>();
                     if (h) {
-                        e->obj.abort(h);
+                        h->status_txn_abort();
                     }
                 }
             }

@@ -773,12 +773,13 @@ template <typename K, typename V, typename DBParams>
 template <typename TSplit>
 void mvcc_chain_operations<K, V, DBParams>::cleanup_impl_per_chain(TransItem &item, bool committed,
                                                                    MvObject<TSplit> *chain) {
+    (void) chain; /* XXX do not need this parameter */
     using history_type = typename MvObject<TSplit>::history_type;
     if (!committed) {
         if (item.has_mvhistory()) {
             auto h = item.template write_value<history_type*>();
             if (h) {
-                chain->abort(h);
+                h->status_txn_abort();
             }
         }
     }
