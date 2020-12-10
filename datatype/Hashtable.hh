@@ -676,7 +676,7 @@ public:
 
             assert(h);  // Ensure that we actually managed to generate something
 
-            bool result = e->obj.cp_lock(Sto::commit_tid(), h);
+            bool result = e->obj.template cp_lock<Params::Commute>(Sto::commit_tid(), h);
             if (!result && !h->status_is(MvStatus::ABORTED)) {
                 // Our version didn't make it onto the chain; simply deallocate
                 e->obj.delete_history(h);

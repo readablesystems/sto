@@ -449,6 +449,7 @@ public:
 
     // "Lock" step: pending version installation & version consistency check;
     //              returns true if successful, false if aborted
+    template <bool may_commute = true>
     bool cp_lock(const type tid, history_type* hw) {
         // Can only install pending versions
         if (!hw->status_is(PENDING)) {
@@ -461,7 +462,7 @@ public:
             // Discover target atomic on which to do CAS
             history_type* t = *target;
             if (t->wtid() > tid) {
-                if (t->status_is(DELTA) && !hw->can_precede(t)) {
+                if (may_commute && !hw->can_precede(t)) {
                     return false;
                 }
                 target = &t->prev_;
@@ -479,7 +480,7 @@ public:
         }
 
         // Write version consistency check for CU enabling
-        if (!hw->can_precede_anything()) {
+        if (may_commute && !hw->can_precede_anything()) {
             for (history_type* h = h_.load(); h != hw; h = h->prev()) {
                 if (!hw->can_precede(h)) {
                     hw->status_abort();
@@ -490,7 +491,7 @@ public:
 
         // Write version consistency check for concurrent reads + CU enabling
         for (history_type* h = hw->prev(); h; h = h->prev()) {
-            if ((hw->status_is(DELTA) && !h->status_is(ABORTED) && !h->can_precede(hw))
+            if ((may_commute && !h->can_precede(hw))
                 || (h->status_is(COMMITTED) && h->rtid() > tid)) {
                 hw->status_abort();
                 return false;

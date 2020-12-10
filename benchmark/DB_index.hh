@@ -735,7 +735,7 @@ bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
         }
     }
     assert(h);
-    bool result = chain->cp_lock(Sto::commit_tid(), h);
+    bool result = chain->template cp_lock<DBParams::Commute>(Sto::commit_tid(), h);
     if (!result && !h->status_is(MvStatus::ABORTED)) {
         chain->delete_history(h);
         TransProxy(txn, item).add_mvhistory(nullptr);
