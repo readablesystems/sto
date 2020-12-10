@@ -506,9 +506,9 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     assert(!result);
     }
 
-    // SELECT WATCHING USERS (at first nontransactional)
-    const watchlist_idx_key k0(page_name_space, page_title, 0);
-    const watchlist_idx_key k1(page_name_space, page_title, std::numeric_limits<int32_t>::max());
+    // SELECT WATCHING USERS
+    watchlist_idx_key k0(page_name_space, page_title, 0);
+    watchlist_idx_key k1(page_name_space, page_title, std::numeric_limits<int32_t>::max());
 
     std::vector<int32_t> watching_users;
     auto scan_cb = [&](const watchlist_idx_key& key, const auto&) {
@@ -521,21 +521,11 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     TXN_CHECK(abort);
     }
 
-    INTERACTIVE_TXN_COMMIT;
-
     if (!watching_users.empty()) {
-        bool first_try = true;
-
         // update watchlist for each user watching
-        RWTRANSACTION {
+        INTERACTIVE_TXN_COMMIT;
 
-        if (!first_try) {
-            // need to reload the watching_users list
-            watching_users.clear();
-            bool abort = db.idx_watchlist().template range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, RowAccess::ObserveExists, false/*! phantom protection*/);
-            TXN_DO(abort);
-        }
-        first_try = false;
+        RWTRANSACTION {
 
         for (auto& u : watching_users) {
             auto [abort, result, row, value] = db.tbl_watchlist().select_split_row(watchlist_key(u, page_name_space, page_title),
@@ -556,9 +546,58 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         }
 
         } RETRY(true);
-    }
 
-    RWTRANSACTION {
+        RWTRANSACTION {
+
+        // INSERT LOG
+        logging_key lg_k(db.tbl_logging().gen_key());
+
+        auto lg_v = Sto::tx_alloc<logging_row>();
+        lg_v->log_type = std::string("patrol");
+        lg_v->log_action = std::string("patrol");
+        lg_v->log_timestamp = timestamp_str;
+        lg_v->log_user = user_id;
+        lg_v->log_namespace = page_name_space;
+        lg_v->log_title = page_title;
+        lg_v->log_comment = rev_comment;
+        lg_v->log_params = std::string();
+        lg_v->log_deleted = 0;
+        lg_v->log_user_text = user_text;
+        lg_v->log_page = page_id;
+
+        {
+        auto [abort, result] = db.tbl_logging().insert_row(lg_k, lg_v);
+        (void)result;
+        TXN_DO(abort);
+        assert(!result);
+        }
+
+        {
+        // UPDATE USER
+        auto [abort, result, row, value] = db.tbl_useracct().select_split_row(useracct_key(user_id),
+            {{user_nc::user_editcount, Commute ? access_t::write : access_t::update},
+             {user_nc::user_touched,   Commute ? access_t::write : access_t::update}}
+        );
+        (void)result;
+        TXN_DO(abort);
+        assert(result);
+        if constexpr (Commute) {
+            (void)value;
+            commutators::Commutator<useracct_row> comm(true, timestamp_str);
+            db.tbl_useracct().update_row(row, comm);
+        } else {
+            auto new_uv = Sto::tx_alloc<useracct_row>();
+            value.copy_into(new_uv);
+            new_uv->user_editcount += 1;
+            new_uv->user_touched = timestamp_str;
+            db.tbl_useracct().update_row(row, new_uv);
+        }
+        }
+
+        } RETRY(true);
+
+        return true;
+    }
 
     // INSERT LOG
     logging_key lg_k(db.tbl_logging().gen_key());
@@ -579,7 +618,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     {
     auto [abort, result] = db.tbl_logging().insert_row(lg_k, lg_v);
     (void)result;
-    TXN_DO(abort);
+    TXN_CHECK(abort);
     assert(!result);
     }
 
@@ -590,7 +629,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
          {user_nc::user_touched,   Commute ? access_t::write : access_t::update}}
     );
     (void)result;
-    TXN_DO(abort);
+    TXN_CHECK(abort);
     assert(result);
     if constexpr (Commute) {
         (void)value;
@@ -605,7 +644,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     }
     }
 
-    } RETRY(true);
+    INTERACTIVE_TXN_COMMIT;
 
     return true;
 }
