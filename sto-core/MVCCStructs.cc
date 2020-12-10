@@ -28,8 +28,10 @@ void MvHistoryBase::print_prevs(size_t max) const {
     }
 }
 
+#if !NDEBUG
 void MvHistoryBase::assert_status_fail(const char* description) {
     std::cerr << "MvHistoryBase::assert_status_fail: " << description << "\n";
     print_prevs(5);
     assert(false);
 }
+#endif
