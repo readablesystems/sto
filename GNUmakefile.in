@@ -283,7 +283,7 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-MVCC_OBJS = 
+MVCC_OBJS = $(OBJ)/MVCCStructs.o
 STO_OBJS = $(OBJ)/Packer.o $(OBJ)/Transaction.o $(OBJ)/TRcu.o $(OBJ)/clp.o \
 	$(OBJ)/barrier.o $(OBJ)/SystemProfiler.o $(OBJ)/ContentionManager.o \
 	$(OBJ)/PlatformFeatures.o \
