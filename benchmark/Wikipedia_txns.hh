@@ -529,19 +529,13 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
         for (auto& u : watching_users) {
             auto [abort, result, row, value] = db.tbl_watchlist().select_split_row(watchlist_key(u, page_name_space, page_title),
-                {{wl_nc::wl_notificationtimestamp, Commute ? access_t::write : access_t::update}});
+                {{wl_nc::wl_notificationtimestamp, access_t::write}});
             TXN_DO(abort);
             if (result) {
-                if constexpr (Commute) {
-                    (void)value;
-                    commutators::Commutator<watchlist_row> comm(timestamp_str);
-                    db.tbl_watchlist().update_row(row, comm);
-                } else {
-                    auto new_wlv = Sto::tx_alloc<watchlist_row>();
-                    value.copy_into(new_wlv);
-                    new_wlv->wl_notificationtimestamp = timestamp_str;
-                    db.tbl_watchlist().update_row(row, new_wlv);
-                }
+                auto new_wlv = Sto::tx_alloc<watchlist_row>();
+                value.copy_into(new_wlv);
+                new_wlv->wl_notificationtimestamp = timestamp_str;
+                db.tbl_watchlist().update_row(row, new_wlv);
             }
         }
 
