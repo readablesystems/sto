@@ -9,6 +9,7 @@ add_library(sto
         TRcu.cc
         ContentionManager.cc
         MVCC.hh
+        MVCCStructs.cc
         VersionBase.hh
         OCCVersions.hh
         EagerVersions.hh
