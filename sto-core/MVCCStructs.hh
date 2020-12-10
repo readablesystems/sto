@@ -29,7 +29,7 @@ enum MvStatus {
 template <typename T>
 class MvHistory {
 public:
-    typedef TransactionTid::type type;
+    typedef TransactionTid::type tid_type;
     typedef TRcuSet::epoch_type epoch_type;
     typedef MvHistory<T> history_type;
     typedef MvObject<T> object_type;
@@ -38,22 +38,22 @@ public:
     MvHistory() = delete;
     explicit MvHistory(object_type *obj) : MvHistory(obj, 0, nullptr) {}
     explicit MvHistory(
-            object_type *obj, type ntid, const T& nv)
+            object_type *obj, tid_type ntid, const T& nv)
             : obj_(obj), v_(nv), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
     explicit MvHistory(
-            object_type *obj, type ntid, T&& nv)
+            object_type *obj, tid_type ntid, T&& nv)
             : obj_(obj), v_(std::move(nv)), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
     explicit MvHistory(
-            object_type *obj, type ntid, T *nvp)
+            object_type *obj, tid_type ntid, T *nvp)
             : obj_(obj), v_(nvp ? *nvp : v_), prev_(nullptr),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
     explicit MvHistory(
-            object_type *obj, type ntid, comm_type &&c)
+            object_type *obj, tid_type ntid, comm_type &&c)
             : obj_(obj), c_(std::move(c)), v_(), prev_(nullptr),
               status_(PENDING_DELTA), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
     }
@@ -83,13 +83,13 @@ public:
     }
 
     // Returns the current rtid
-    inline type rtid() const {
+    inline tid_type rtid() const {
         return rtid_;
     }
 
 private:
-    inline void update_rtid(type minimum_new_rtid) {
-        type prev = rtid_.load(std::memory_order_relaxed);
+    inline void update_rtid(tid_type minimum_new_rtid) {
+        tid_type prev = rtid_.load(std::memory_order_relaxed);
         while (prev < minimum_new_rtid
                && !rtid_.compare_exchange_weak(prev, minimum_new_rtid,
                                                std::memory_order_release,
@@ -184,7 +184,7 @@ public:
 #endif
 
     // Returns the current wtid
-    inline type wtid() const {
+    inline tid_type wtid() const {
         return wtid_;
     }
 
@@ -316,8 +316,8 @@ private:
 
     std::atomic<history_type*> prev_;
     std::atomic<MvStatus> status_;  // Status of this element
-    std::atomic<type> rtid_;  // Read TID
-    type wtid_;  // Write TID
+    std::atomic<tid_type> rtid_;  // Read TID
+    tid_type wtid_;  // Write TID
     void *index_ptr;
     void (*delete_cb) (void*, void*, void*);
     void *delete_param;
@@ -330,7 +330,7 @@ class MvObject {
 public:
     typedef MvHistory<T> history_type;
     typedef const T& read_type;
-    typedef TransactionTid::type type;
+    typedef TransactionTid::type tid_type;
 
     // How many consecutive DELTA versions will be allowed before flattening
     static constexpr int gc_flattening_length = 257;
@@ -403,16 +403,16 @@ public:
         return true;
     }
 
-    const T& access(const type tid) const {
+    const T& access(const tid_type tid) const {
         return find(tid)->v();
     }
-    T& access(const type tid) {
+    T& access(const tid_type tid) {
         return find(tid)->v();
     }
 
     // "Check" step: read timestamp updates and version consistency check;
     //               returns true if successful, false is aborted
-    bool cp_check(const type tid, history_type* hr) {
+    bool cp_check(const tid_type tid, history_type* hr) {
         // rtid update
         hr->update_rtid(tid);
 
@@ -450,7 +450,7 @@ public:
     // "Lock" step: pending version installation & version consistency check;
     //              returns true if successful, false if aborted
     template <bool may_commute = true>
-    bool cp_lock(const type tid, history_type* hw) {
+    bool cp_lock(const tid_type tid, history_type* hw) {
         // Can only install pending versions
         if (!hw->status_is(PENDING)) {
             TXP_INCREMENT(txp_mvcc_lock_status_aborts);
@@ -522,7 +522,7 @@ public:
     // Finds the current visible version, based on tid; by default, waits on
     // pending versions, but if toggled off, will simply return first version,
     // regardless of status
-    history_type* find(const type tid, const bool wait=true) const {
+    history_type* find(const tid_type tid, const bool wait=true) const {
         history_type* h = head();
 
         /* TODO: use something smarter than a linear scan */
