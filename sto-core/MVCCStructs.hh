@@ -197,16 +197,10 @@ private:
         // (1) When `gc_committed_cb` runs, `h->prev()`
         // is definitively in the past. No active flattens
         // will overlap with it.
-        // (2) When `gc_committed_cb` for a version is scheduled, we
-        // clear the object's `flattenh_`. Only *future* versions
-        // will be flattened in the background. Although a concurrent
-        // bg-flatten might be in progress, it must complete before
-        // this version’s predecessors are deleted.
-        // So we will never have `gc_committed_cb` running on versions
-        // that are concurrently being accessed by `gc_flatten_cb`.
-        // We also will never have `gc_committed_cb` running on
-        // versions that are concurrently being accessed by a
-        // fg-flatten, because fg-flattens run in the present.
+        // (2) `gc_flatten_cb`, the background flattener, stops at
+        // the first committed version it sees, which will always be
+        // in the present (not the past---all versions touched by
+        // `gc_committed_cb` are in the past).
         // EXCEPTION: Some nontransactional accesses (`v()`, `nontrans_*`)
         // ignore this protocol.
         history_type* next = h->prev_.load(std::memory_order_relaxed);
@@ -303,7 +297,7 @@ private:
             status(COMMITTED);
             enqueue_for_committed();
             if (fg) {
-                object()->flattenh_.store(nullptr, std::memory_order_relaxed);
+                object()->flattenv_.store(0, std::memory_order_relaxed);
             }
         } else {
             TXP_INCREMENT(txp_mvcc_flat_spins);
@@ -433,15 +427,15 @@ public:
         h->status((s & ~PENDING) | COMMITTED);
         if (!(s & DELTA)) {
             delta_counter.store(0, std::memory_order_relaxed);
-            flattenh_.store(nullptr, std::memory_order_relaxed);
+            flattenv_.store(0, std::memory_order_relaxed);
             h->enqueue_for_committed();
         } else {
             int dc = delta_counter.load(std::memory_order_relaxed) + 1;
             if (dc <= gc_flattening_length) {
                 delta_counter.store(dc, std::memory_order_relaxed);
-            } else if (flattenh_.load(std::memory_order_relaxed) == nullptr) {
+            } else if (flattenv_.load(std::memory_order_relaxed) == 0) {
                 delta_counter.store(0, std::memory_order_relaxed);
-                flattenh_.store(h, std::memory_order_relaxed);
+                flattenv_.store(h->wtid(), std::memory_order_relaxed);
                 Transaction::rcu_call(gc_flatten_cb, this);
             }
         }
@@ -626,19 +620,19 @@ public:
 protected:
     static void gc_flatten_cb(void *ptr) {
         auto object = static_cast<MvObject<T>*>(ptr);
-        auto flattenh = object->flattenh_.load(std::memory_order_relaxed);
-        object->flattenh_.store(nullptr, std::memory_order_relaxed);
-        if (flattenh) {
+        auto flattenv = object->flattenv_.load(std::memory_order_relaxed);
+        object->flattenv_.store(0, std::memory_order_relaxed);
+        if (flattenv) {
             history_type* h = object->head();
             int status = h->status();
             while (h
-                   && h != flattenh
+                   && h->wtid() > flattenv
                    && (status & LOCKED_COMMITTED_DELTA) != COMMITTED
                    && (status & LOCKED_COMMITTED_DELTA) != LOCKED_COMMITTED_DELTA) {
                 h = h->prev();
                 status = h->status();
             }
-            if (h == flattenh && status == COMMITTED_DELTA) {
+            if (h && status == COMMITTED_DELTA) {
                 h->flatten(status, false);
             }
         }
@@ -646,7 +640,7 @@ protected:
 
     std::atomic<history_type*> h_;
     std::atomic<int> delta_counter = 0;  // For gc-time flattening
-    std::atomic<history_type*> flattenh_;
+    std::atomic<tid_type> flattenv_;
 
 #if MVCC_INLINING
     history_type ih_;  // Inlined version
