@@ -1,3 +1,5 @@
+## Overview
+
 Consider a transaction `ntx` that reads and/or writes an `item`. If it writes
 the item, the new version is `nv`.
 
@@ -14,16 +16,29 @@ the item, the new version is `nv`.
    We call these requirements *CU-enabling*. A CU `nv` may be installed on top
    of any version that CU-enables it.
 
-   CU-enabling must be checked dynamically, so for efficiency, it must be fast
-   to compute. In our implementation, *any non-deleted version* CU-enables all
-   possible CUs on the same object. This means, in turn, that *any CU*
-   CU-enables all possible CUs on the same object.
+   CU-enabling must be checked dynamically, so it must be fast to compute. In
+   our implementation, *any non-deleted version* CU-enables all possible CUs
+   on the same object. This means, in turn, that *any CU* CU-enables all
+   possible CUs on the same object. CU-enablement is checked for pending
+   versions as well as committed versions.
 
-   To ensure transactional correctness, we check cu-enabling in the execution
-   phase and in the locking phase. We also ensure that, once `nv` is in the
-   version chain, no other version is inserted that cu-disables `nv`.
+   To ensure transactional correctness, we check CU-enablement in the
+   execution phase and in the locking phase. We also ensure that, once `nv` is
+   in the version chain, no other version is inserted that CU-disables `nv`.
 
 ## Algorithms
+
+A version can have one of the following states (`v.state`):
+* ABORTED — ignored, will be garbage collected eventually
+* PENDING — transaction not yet committed/aborted
+* COMMITTED — transaction definitely committed
+
+Versions also have a `v.cu` field, which is true for CU versions and false for
+full versions, and a `v.deleted` field, which indicates whether the version is
+an absent record.
+
+Pending versions can be locked, indicated by `v.locked`. It is possible to
+atomically release the lock, change the state, and change `v.cu`.
 
 The function `v->cu_enables(vcu)` takes two versions. It requires that
 `v.wts() < vcu.wts()`, and that `vcu` is a CU. It returns true if `v`
@@ -33,7 +48,29 @@ ended in `v`, it would be valid to apply `vcu` next.
 The function `v->cu_enables_everything()` returns true iff
 `v->cu_enables(vcu)` is true for all `vcu`.
 
-Phase 1. Inserting `nv` (new version) at correct location.
+### Phase 1
+
+This code inserts `nv` (a new version) at the correct location.
+
+**lock(txn, item, nv)**:
+* `nv` is the new version being installed. `nv.wts == txn.ts` is the
+  transaction commit timestamp. `nv.state` is PENDING.
+
+1. Initialize `vptr`, a pointer to a version, to `&item.head`, the location of
+   the head version (the latest committed version).
+2. Set `v := *vptr`.
+3. If `v.wts > nv.wts` (`v` is later than `nv`), then:
+    * If `v.state ≠ ABORTED` and `v.cu`, then check whether `nv` CU-enables `v`. If not, then return false and abort the transaction.
+    * Otherwise, set `vptr := &v->prev` and go to step 2.
+4. Otherwise, if `v.state ≠ ABORTED` and `v.rts > nv.wts`, then a pending or committed version earlier than `nv` was observed by a transaction later than `nv`, and `txn` must abort. Return false.
+5. Otherwise, `v.rts ≤ nv.wts` and `v.wts < nv.wts`. We’ve found the right place to insert `nv`.
+    * Set `nv.prev := v`.
+    * `(*vptr).compare_exchange(v, nv)`: swap `v` for `nv`. If this fails, go to step 2. Otherwise, continue to step 6.
+6. [to be added]
+
+---
+
+This C-style presentation is preferred by some.
 
 ```
 lock(txn, item, nv) {
@@ -46,13 +83,13 @@ lock(txn, item, nv) {
         MvHistory* v = *vptr;
         -- fence --
         if (v.wts > nv.wts) {
-            if (v.is_nonaborted_CU() && !nv.cu_enables(v)) {
+            if (v.state ≠ ABORTED && v.cu && !nv.cu_enables(v)) {
                 // Installing `nv` might CU-disable `v`, a pending or committed CU.
                 // `nv` must abort.
                 return false;
             }
             vptr = &v->prev;
-        } else if (v.is_nonaborted() && v.rts > nv.wts) {
+        } else if (v.state ≠ ABORTED && v.rts > nv.wts) {
             // A pending or committed version earlier than `nv` was observed by a
             // transaction later than `nv`. `nv` must abort.
             return false;
@@ -76,7 +113,7 @@ write_validation:
     // inserted by a concurrent transaction before we added `nv` to the chain.
     if (!nv.cu_enables_everything()) {
         for (v = item.head; v != nv; v = v.prev) {
-            if (v.is_CU() && !nv.cu_enables(v)) {
+            if (v.cu && v.state ≠ ABORTED && !nv.cu_enables(v)) {
                 nv.make_aborted();
                 return false;
             }
@@ -87,12 +124,12 @@ write_validation:
     // or read a prior committed version while `nv` was being installed.
     v = nv.prev;
     while (v != null) {
-        if ((nv.is_CU() && !v.is_aborted() && !v.cu_enables(nv))
-            || (v.is_committed() && v.rts > nv.wts)) {
+        if ((nv.cu && v.state ≠ ABORTED && !v.cu_enables(nv))
+            || (v.state == COMMITTED && v.rts > nv.wts)) {
             nv.make_aborted();
             return false;
         }
-        if (v.is_committed()) {
+        if (v.state == COMMITTED) {
             break;
         }
         v = v.prev;
@@ -109,7 +146,7 @@ check(txn, item, rv) {
 
     // Step RV1: Validate that concurrent writes don’t invalidate this read.
     for (v = item.head; v != rv; v = v.prev) {
-        if (!v.is_aborted() && v.wts < txn.ts) {
+        if (v.state ≠ ABORTED && v.wts < txn.ts) {
             return false;
         }
     }
@@ -122,10 +159,9 @@ Phase 3. Installation.
 
 ```
 install(txn, item, nv) {
-    assert(nv.is_pending() && !nv.is_aborted());
-    nv.make_committed();
-    // Now nv.is_opending() is false and nv.is_committed() is true.
-    if (!nv.is_CU()) {
+    assert(nv.state == PENDING);
+    nv.state := COMMITTED
+    if (!nv.cu) {
         // This is a full version; all prior versions can be garbage collected.
         // When `txn.gc_epoch` passes, we run `GC_committed(nv)`.
         GC_enqueue(txn.gc_epoch, GC_committed(nv));
@@ -203,12 +239,12 @@ flatten(fv, in_foreground) {
     // corresponding full version into it, changing its state to “non-CU”.
     // (However, note that the commit_updater associated with `fv` remains
     // present, allowing concurrent flattens to proceed.)
-    assert(fv.is_CU() && fv.is_committed());
+    assert(fv.cu && fv.state == COMMITTED);
 
     // Traverse backward from `v` until encountering a full version.
     vstack := new version stack;
     cv := fv;
-    while (cv.is_CU() || !cv.is_committed()) {
+    while (cv.cu || cv.state ≠ COMMITTED) {
         vstack.push(cv);
         cv = cv.prev;
     }
@@ -233,13 +269,13 @@ flatten(fv, in_foreground) {
         }
 
         // Wait for the transaction to resolve
-        while (nv.is_pending()) {
+        while (nv.state == PENDING) {
             spin;
         }
 
-        if (nv.is_committed()) {
+        if (nv.state == COMMITTED) {
             nv.rts := max(nv.rts, v.wts);
-            if (nv.is_CU()) {
+            if (nv.cu) {
                 nv.commit_updater.operate(value);
             } else {
                 value = nv.value;
@@ -250,18 +286,17 @@ flatten(fv, in_foreground) {
         cv = nv;
     }
 
-    if (fv.try_CU_lock()) {
+    if (fv.try_lock()) {
         fv.value = value;
-        fv.mark_non_CU();
+        fv.cu := false; fv.state := COMMITTED; fv.locked := false
         // Now `fv` is a non-CU committed version.
-        fv.unlock_CU_lock();
         GC_enqueue(txn.gc_epoch, GC_committed(fv));
         if (in_foreground) {
             item.want_flatten = null;
         }
     } else if (in_foreground) {
         // Another thread is concurrently flattening this version.
-        while (fv.is_CU()) {
+        while (fv.cu) {
             spin;
         }
     }
@@ -286,7 +321,7 @@ GC_committed(v) {
     v = v.prev;
     while (v) {
         GC_enqueue(next epoch, GC_free(v))
-        if (v.is_committed() && (!v.is_CU() || v.is_locked())) {
+        if (v.state == COMMITTED && !v.cu) {
             return;
         }
         v = v.prev;
@@ -305,7 +340,7 @@ GC_flatten(item) {
     item.want_flatten = null;
     if (fv != null) {
         v = item.head;
-        while (v != fv && (!v.is_committed() || !v.is_CU() || !v.is_locked())) {
+        while (v != fv && (v.state ≠ COMMITTED || (v.cu && !v.locked))) {
             v = v.prev;
         }
         if (v == fv) {
