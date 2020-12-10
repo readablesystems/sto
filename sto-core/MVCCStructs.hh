@@ -310,6 +310,7 @@ private:
 
         TXP_INCREMENT(txp_mvcc_flat_versions);
         T value {curr->v_};
+        tid_type safe_wtid = curr->wtid();
         curr->update_rtid(this->wtid());
 
         while (!trace.empty()) {
@@ -317,7 +318,7 @@ private:
 
             while (true) {
                 auto prev = hnext->prev();
-                if (prev == curr) {
+                if (prev->wtid() <= safe_wtid) {
                     break;
                 }
                 trace.push(prev);
@@ -337,7 +338,7 @@ private:
             }
 
             trace.pop();
-            curr = hnext;
+            safe_wtid = hnext->wtid();
         }
 
         auto expected = COMMITTED_DELTA;
