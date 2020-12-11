@@ -669,16 +669,23 @@ void Transaction::rcu_release_all(std::thread& epoch_advancer, int num_work_thre
         epoch_advancer.join();
     }
 
+    auto wse = Transaction::tinfo[0].write_snapshot_epoch.load(std::memory_order_relaxed) + 1;
+    for (int i = 1; i < num_work_threads; ++i) {
+        wse = std::max(wse, Transaction::tinfo[i].write_snapshot_epoch.load(std::memory_order_relaxed));
+    }
+    assert(wse > global_epochs.active_epoch.load());
+
     bool more = true;
     while (more) {
         more = false;
         auto ae = global_epochs.active_epoch.load();
         // XXX this would be safe to do in parallel too
         for (int i = 0; i < num_work_threads; ++i) {
-            Transaction::tinfo[i].write_snapshot_epoch = ae + 1;
+            Transaction::tinfo[i].write_snapshot_epoch = wse;
             Transaction::tinfo[i].rcu_set.clean_until(ae);
             more = more || !Transaction::tinfo[i].rcu_set.empty();
         }
         global_epochs.active_epoch.store(ae + 1);
+        ++wse;
     }
 }
