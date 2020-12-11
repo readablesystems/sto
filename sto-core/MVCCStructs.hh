@@ -535,13 +535,11 @@ public:
     // This function should only be used to free history nodes that have NOT been
     // hooked into the version chain
     void delete_history(history_type* h) {
-#if MVCC_INLINING
-        if (&ih_ == h) {
-            ih_.status_.store(UNUSED, std::memory_order_release);
-            return;
+        if (is_inlined(h)) {
+            h->status_.store(UNUSED, std::memory_order_release);
+        } else {
+            delete h;
         }
-#endif
-        delete h;
     }
 
     // Finds the current visible version, based on tid; by default, waits on

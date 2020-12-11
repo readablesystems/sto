@@ -17,10 +17,12 @@ std::ostream& operator<<(std::ostream& w, MvStatus s) {
     case LOCKED_COMMITTED_DELTA: return w << "LOCKED_COMMITTED_DELTA";
     case PENDING:                return w << "PENDING";
     case COMMITTED:              return w << "COMMITTED";
-    default:                     return w << "MvStatus["
-                                          << std::bitset<4>((unsigned)s >> 8) << "'"
-                                          << std::bitset<4>((unsigned)s >> 4) << "'"
-                                          << std::bitset<4>((unsigned)s) << "]";
+    default: {
+        auto f = w.flags(std::ios::hex);
+        w << "MvStatus[" << (unsigned long) s << "]";
+        w.flags(f);
+        return w;
+    }
     }
 }
 
@@ -29,7 +31,12 @@ void MvHistoryBase::print_prevs(size_t max) const {
     for (size_t i = 0;
          h && i < max;
          ++i, h = h->prev_.load(std::memory_order_relaxed)) {
-        std::cerr << i << ". " << (void*) h << " " << h->status_.load(std::memory_order_relaxed) << " W" << h->wtid_ << " R" << h->rtid_.load(std::memory_order_relaxed) << "\n";
+        std::cerr << i << ". " << (void*) h << " ";
+        uintptr_t oaddr = reinterpret_cast<uintptr_t>(h->obj_);
+        if (reinterpret_cast<uintptr_t>(h) == oaddr + 24) {
+            std::cerr << "INLINE ";
+        }
+        std::cerr << h->status_.load(std::memory_order_relaxed) << " W" << h->wtid_ << " R" << h->rtid_.load(std::memory_order_relaxed) << "\n";
     }
 }
 
