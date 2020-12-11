@@ -119,7 +119,6 @@ public:
         if (p.enable_gc) {
             Transaction::set_epoch_cycle(1000);
             advancer = std::thread(&Transaction::epoch_advancer, nullptr);
-            advancer.detach();
         }
 
         // Execute benchmark
@@ -127,8 +126,9 @@ public:
         std::vector<std::thread> runner_threads;
         std::vector<size_t> committed_txn_cnts((size_t)p.num_threads, 0);
 
-        for (int id = 0; id < p.num_threads; ++id)
+        for (int id = 0; id < p.num_threads; ++id) {
             runners.push_back(runner_type(id, db, rp));
+        }
 
         profiler_type profiler(p.spawn_perf);
         profiler.start(p.perf_counter_mode ? Profiler::perf_mode::counters : Profiler::perf_mode::record);
@@ -143,12 +143,17 @@ public:
         }
 
         size_t total_commit_txns = 0;
-        for (auto c : committed_txn_cnts)
+        for (auto c : committed_txn_cnts) {
             total_commit_txns += c;
-
+        }
         profiler.finish(total_commit_txns);
 
         // Clean up all RCU set items left.
+        if (p.enable_gc) {
+            Transaction::global_epochs.run = false;
+            advancer.join();
+        }
+
         for (int i = 0; i < p.num_threads; ++i) {
             Transaction::tinfo[i].rcu_set.release_all();
         }
