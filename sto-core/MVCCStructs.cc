@@ -1,3 +1,5 @@
+#include <bitset>
+
 #include "MVCCStructs.hh"
 
 std::ostream& operator<<(std::ostream& w, MvStatus s) {
@@ -15,7 +17,10 @@ std::ostream& operator<<(std::ostream& w, MvStatus s) {
     case LOCKED_COMMITTED_DELTA: return w << "LOCKED_COMMITTED_DELTA";
     case PENDING:                return w << "PENDING";
     case COMMITTED:              return w << "COMMITTED";
-    default:                     return w << "MvStatus[" << (int) s << "]";
+    default:                     return w << "MvStatus["
+                                          << std::bitset<4>((unsigned)s >> 8) << "'"
+                                          << std::bitset<4>((unsigned)s >> 4) << "'"
+                                          << std::bitset<4>((unsigned)s) << "]";
     }
 }
 

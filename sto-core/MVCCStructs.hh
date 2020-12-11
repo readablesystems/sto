@@ -12,23 +12,23 @@
 
 // Status types of MvHistory elements
 enum MvStatus {
-    UNUSED                  = 0b0000000,
+    UNUSED                  = 0b0000'0000'0000,
     ABORTED                 = 0b0000'0010'0000,
     ABORTED_RV              = 0b0001'0010'0000,
     ABORTED_WV1             = 0b0010'0010'0000,
     ABORTED_WV2             = 0b0011'0010'0000,
     ABORTED_TXNV            = 0b0100'0010'0000,
-    DELTA                   = 0b0001000,  // Commutative update delta
-    DELETED                 = 0b0000001,  // Not a valid state on its own, but defined as a flag
-    PENDING                 = 0b0000010,
-    COMMITTED               = 0b0000100,
-    PENDING_DELTA           = 0b0001010,
-    COMMITTED_DELTA         = 0b0001100,
-    PENDING_DELETED         = 0b0000011,
-    COMMITTED_DELETED       = 0b0000101,
-    LOCKED                  = 0b0010000,
-    LOCKED_COMMITTED_DELTA  = 0b0011100,  // Converting from delta to flattened
-    GARBAGE                 = 0b1000000,
+    DELTA                   = 0b0000'0000'1000,  // Commutative update delta
+    DELETED                 = 0b0000'0000'0001,  // Not a valid state on its own, but defined as a flag
+    PENDING                 = 0b0000'0000'0010,
+    COMMITTED               = 0b0000'0000'0100,
+    PENDING_DELTA           = 0b0000'0000'1010,
+    COMMITTED_DELTA         = 0b0000'0000'1100,
+    PENDING_DELETED         = 0b0000'0000'0011,
+    COMMITTED_DELETED       = 0b0000'0000'0101,
+    LOCKED                  = 0b0000'0001'0000,
+    LOCKED_COMMITTED_DELTA  = 0b0000'0001'1100,  // Converting from delta to flattened
+    GARBAGE                 = 0b0000'0100'0000,
 };
 
 std::ostream& operator<<(std::ostream& w, MvStatus s);
