@@ -126,7 +126,6 @@ public:
         std::cout << "Garbage collection: " << (p.enable_gc ? "enabled" : "disabled") << std::endl;
         if (p.enable_gc) {
             advancer = std::thread(&Transaction::epoch_advancer, nullptr);
-            advancer.detach();
         }
 
         // Execute benchmark
@@ -155,10 +154,7 @@ public:
 
         profiler.finish(total_commit_txns);
 
-        // Clean up all RCU set items left.
-        for (int i = 0; i < p.num_threads; ++i) {
-            Transaction::tinfo[i].rcu_set.release_all();
-        }
+        Transaction::rcu_release_all(advancer, p.num_threads);
 
         delete (&db);
         return 0;

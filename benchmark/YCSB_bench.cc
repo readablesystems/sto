@@ -262,15 +262,7 @@ public:
         auto num_trans = run_benchmark(db, prof, runners, time_limit);
         prof.finish(num_trans);
 
-        if (enable_gc) {
-            Transaction::global_epochs.run = false;
-            advancer.join();
-        }
-
-        // Clean up all remnant RCU set items.
-        for (int i = 0; i < num_threads; ++i) {
-            Transaction::tinfo[i].rcu_set.release_all();
-        }
+        Transaction::rcu_release_all(advancer, num_threads);
 
         return 0;
     }

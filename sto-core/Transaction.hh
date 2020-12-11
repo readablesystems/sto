@@ -16,6 +16,7 @@
 #include <sstream>
 #include <fstream>
 #include <atomic>
+#include <thread>
 
 //#include <coz.h>
 
@@ -576,6 +577,8 @@ public:
         auto& thr = tinfo[TThread::id()];
         thr.rcu_set.add(thr.write_snapshot_epoch, function, argument);
     }
+
+    static void rcu_release_all(std::thread& epoch_advancer, int nworkth);
 
 #if STO_PROFILE_COUNTERS
     template <unsigned P> static void txp_account(txp_counter_type n) {

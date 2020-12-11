@@ -89,7 +89,3 @@ void TRcuSet::hard_clean_until(epoch_type max_epoch) {
         current_->next_ = empty_head;
     }
 }
-
-void TRcuSet::release_all() {
-    hard_clean_until(std::numeric_limits<epoch_type>::max());
-}

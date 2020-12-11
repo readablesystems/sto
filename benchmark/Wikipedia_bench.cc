@@ -148,15 +148,7 @@ public:
         }
         profiler.finish(total_commit_txns);
 
-        // Clean up all RCU set items left.
-        if (p.enable_gc) {
-            Transaction::global_epochs.run = false;
-            advancer.join();
-        }
-
-        for (int i = 0; i < p.num_threads; ++i) {
-            Transaction::tinfo[i].rcu_set.release_all();
-        }
+        Transaction::rcu_release_all(advancer, p.num_threads);
 
         //print_abort_histogram(runners);
 
