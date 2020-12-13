@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "compiler.hh"
+#include "sampling.hh"
 
 #include "masstree.hh"
 #include "kvthread.hh"
@@ -18,11 +19,29 @@
 #include "masstree_scan.hh"
 #include "string.hh"
 
-#define NUM_THREADS 4
+#define NUM_THREADS 64
+
+using sampling::StoRandomDistribution;
+using sampling::StoZipfDistribution;
+
+struct MultiPartKey {
+    uint64_t key_part_0;
+    uint64_t key_part_1;
+    uint64_t key_part_2;
+
+    MultiPartKey(uint64_t k0, uint64_t k1, uint64_t k2)
+        : key_part_0(__bswap_64(k0)), key_part_1(__bswap_64(k1)), key_part_2(__bswap_64(k2)) {}
+};
+
+std::ostream& operator<<(std::ostream& os, const MultiPartKey& k) {
+    os << "(" << __bswap_64(k.key_part_0) << "," << __bswap_64(k.key_part_1)
+       << "," << __bswap_64(k.key_part_2) << ")";
+    return os;
+}
 
 class MasstreeWrapper {
 public:
-    static constexpr uint64_t insert_bound = 0xffffff;
+    static constexpr uint64_t insert_bound = 0xfffffff;
     struct table_params : public Masstree::nodeparams<15,15> {
         typedef uint64_t value_type;
         typedef Masstree::value_print<value_type> value_print_type;
@@ -60,32 +79,32 @@ public:
             ti = threadinfo::make(threadinfo::TI_PROCESS, thread_id);
     }
 
-    void insert_test() {
+    void insert_test(int thread_id) {
+        thread_init(thread_id);
         while (1) {
-            auto int_key = fetch_and_add(&key_gen_, 1);
-            uint64_t key_buf;
-            if (int_key > insert_bound)
+            uint64_t key_buf = fetch_and_add(&key_gen_, 1);
+            if (key_buf > insert_bound)
                 break;
-            Str key = make_key(int_key, key_buf);
+            Str key = make_key(&key_buf);
 
             cursor_type lp(table_, key);
             bool found = lp.find_insert(*ti);
             always_assert(!found, "keys should all be unique");
 
-            lp.value() = int_key;
+            lp.value() = key_buf;
 
             fence();
             lp.finish(1, *ti);
         }
     }
 
-    void remove_test() {
+    void remove_test(int thread_id) {
+        thread_init(thread_id);
         while (1) {
-            auto int_key = fetch_and_add(&key_gen_, 1);
-            uint64_t key_buf;
-            if (int_key > insert_bound)
+            uint64_t key_buf = fetch_and_add(&key_gen_, 1);
+            if (key_buf > insert_bound)
                 break;
-            Str key = make_key(int_key, key_buf);
+            Str key = make_key(&key_buf);
 
             cursor_type lp(table_, key);
             bool found = lp.find_locked(*ti);
@@ -95,20 +114,26 @@ public:
     }
 
     void insert_remove_test(int thread_id) {
+        thread_init(thread_id);
         std::mt19937 gen(thread_id);
         std::uniform_int_distribution<int> dist(1, 6);
+        StoRandomDistribution<>::rng_type rng(thread_id/*seed*/);
+        StoRandomDistribution<> *dist_0 = new StoZipfDistribution<>(rng /*generator*/, 1 /*low*/, 100000 /*high*/, 0.8 /*skew*/);
+	StoRandomDistribution<> *dist_1 = new StoZipfDistribution<>(rng /*generator*/, 1 /*low*/, 200000 /*high*/, 0.2 /*skew*/);
         while (1) {
-            auto int_key = fetch_and_add(&key_gen_, 1);
-            uint64_t key_buf;
-            if (int_key > insert_bound)
+            uint64_t k0 = dist_0->sample();
+	    uint64_t k1 = dist_1->sample();
+            uint64_t k2 = fetch_and_add(&key_gen_, 1);
+            MultiPartKey key_buf(k0, k1, k2);
+            if (k2 > insert_bound)
                 break;
-            Str key = make_key(int_key, key_buf);
+            Str key = make_key(&key_buf);
 
             cursor_type lp(table_, key);
             bool found = lp.find_insert(*ti);
             always_assert(!found, "keys should all be unique 1");
 
-            lp.value() = int_key;
+            lp.value() = k2;
             fence();
             lp.finish(1, *ti);
 
@@ -116,21 +141,23 @@ public:
                 cursor_type lp1(table_, key);
                 bool found1 = lp1.find_insert(*ti);
                 if (!found1) {
-                    std::cerr << "failed at key: " << int_key << std::endl;
+                    std::cerr << "failed at key: " << key_buf << std::endl;
                     always_assert(found1, "this is my key!");
                 }
                 lp1.finish(-1, *ti);
             }
         }
+        delete dist_0;
+        delete dist_1;
     }
 
 private:
     table_type table_;
     uint64_t key_gen_;
 
-    static inline Str make_key(uint64_t int_key, uint64_t& key_buf) {
-        key_buf = __bswap_64(int_key);
-        return Str((const char *)&key_buf, sizeof(key_buf));
+    template <typename K>
+    static inline Str make_key(const K* key_buf) {
+        return Str((const char*)key_buf, sizeof(K));
     }
 };
 
@@ -149,13 +176,27 @@ void test_thread(MasstreeWrapper* mt, int thread_id) {
 int main() {
     pthread_barrier_init(&barrier, nullptr, NUM_THREADS);
     auto mt = new MasstreeWrapper();
-    mt->keygen_reset();
-    std::cout << "insert_remove_test..." << std::endl;
-
     std::vector<std::thread> ths;
-
+    mt->keygen_reset();
+    std::cout << "insert test..." << std::endl;
     for (int i = 0; i < NUM_THREADS; ++i)
-        ths.emplace_back(test_thread, mt, i);
+        ths.emplace_back(&MasstreeWrapper::insert_test, mt, i);
+    for (auto& t : ths)
+        t.join();
+    ths.clear();
+    mt->keygen_reset();
+
+    std::cout << "remove test..." << std::endl;
+    for (int i = 0; i < NUM_THREADS; ++i)
+        ths.emplace_back(&MasstreeWrapper::remove_test, mt, i);
+    for (auto& t : ths)
+        t.join();
+    ths.clear();
+    mt->keygen_reset();
+
+    std::cout << "insert_remove test..." << std::endl;
+    for (int i = 0; i < NUM_THREADS; ++i)
+        ths.emplace_back(&MasstreeWrapper::insert_remove_test, mt, i);
     for (auto& t : ths)
         t.join();
 
