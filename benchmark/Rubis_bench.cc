@@ -101,7 +101,8 @@ public:
     using runner_type = rubis::rubis_runner<DBParams>;
     using profiler_type = bench::db_profiler;
 
-    static void runner_thread(runner_type& r, size_t& txn_cnt) {
+    static void runner_thread(int id, db_type& db, const rubis::run_params& rp, size_t& txn_cnt) {
+        runner_type r(id, db, rp);
         r.run();
         txn_cnt = r.total_commits();
     }
@@ -129,19 +130,19 @@ public:
         }
 
         // Execute benchmark
-        std::vector<runner_type> runners;
+        // std::vector<runner_type> runners;
         std::vector<std::thread> runner_threads;
         std::vector<size_t> committed_txn_cnts((size_t)p.num_threads, 0);
 
-        for (int id = 0; id < p.num_threads; ++id)
-            runners.push_back(runner_type(id, db, rp));
+        // for (int id = 0; id < p.num_threads; ++id)
+        //     runners.push_back(runner_type(id, db, rp));
 
         profiler_type profiler(p.spawn_perf);
         profiler.start(p.perf_counter_mode ? Profiler::perf_mode::counters : Profiler::perf_mode::record);
 
         for (int t = 0; t < p.num_threads; ++t) {
             runner_threads.push_back(
-                    std::thread(runner_thread, std::ref(runners[t]), std::ref(committed_txn_cnts[t]))
+                    std::thread(runner_thread, t, std::ref(db), std::ref(rp), std::ref(committed_txn_cnts[t]))
             );
         }
         for (auto& t : runner_threads) {
