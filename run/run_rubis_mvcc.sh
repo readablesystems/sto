@@ -252,8 +252,8 @@ end_time=$(date +%s)
 runtime=$(($end_time - $start_time))
 
 python3 /home/ubuntu/send_email.py --exp="$EXPERIMENT_NAME" --runtime=$runtime $RFILE $DFILE
-if [ $DRY_RUN -eq 0 ]
+if [ $DRY_RUN -eq 0 ] && [ "$METARUN" == "" ]
 then
   # delay shutdown for 1 minute just in case
-  #sudo shutdown -h +1
+  sudo shutdown -h +1
 fi

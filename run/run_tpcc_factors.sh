@@ -240,8 +240,8 @@ compile "${ALL_BINARIES[@]}"
 
 rm -rf results
 mkdir results
-RFILE=results/tpcc_mvcc_results.txt
-DFILE=results/tpcc_mvcc_delivery_results.txt
+RFILE=results/tpcc_factors_results.txt
+DFILE=results/tpcc_factors_delivery_results.txt
 TEMPDIR=$(mktemp -d /tmp/sto-XXXXXX)
 TEMPERR="$TEMPDIR/err"
 TEMPOUT="$TEMPDIR/out"
@@ -252,8 +252,8 @@ end_time=$(date +%s)
 runtime=$(($end_time - $start_time))
 
 python3 /home/ubuntu/send_email.py --exp="$EXPERIMENT_NAME" --runtime=$runtime $RFILE $DFILE
-if [ $DRY_RUN -eq 0 ]
+if [ $DRY_RUN -eq 0 ] && [ "$METARUN" == "" ]
 then
   # delay shutdown for 1 minute just in case
-  #sudo shutdown -h +1
+  sudo shutdown -h +1
 fi

@@ -1,5 +1,6 @@
 #!/bin/bash
 
+METARUN="yes"
 run/run_tpcc_occ.sh
 run/run_tpcc_tictoc.sh
 run/run_tpcc_mvcc.sh
