@@ -615,7 +615,11 @@ private:
     void initialize();
 
     Transaction()
-        : threadid_(TThread::id()), is_test_(false), cht_(*this) {
+        : threadid_(TThread::id()), is_test_(false)
+#if CICADA_HASHTABLE
+          , cht_(*this)
+#endif
+    {
         initialize();
         start();
     }
@@ -624,13 +628,21 @@ private:
     static testing_type testing;
 
     Transaction(int threadid, const testing_type&)
-        : threadid_(threadid), is_test_(true), restarted(false), cht_(*this) {
+        : threadid_(threadid), is_test_(true), restarted(false)
+#if CICADA_HASHTABLE
+          , cht_(*this)
+#endif
+    {
         initialize();
         start();
     }
 
     Transaction(bool)
-        : threadid_(TThread::id()), is_test_(false), restarted(false), cht_(*this) {
+        : threadid_(TThread::id()), is_test_(false), restarted(false)
+#if CICADA_HASHTABLE
+          , cht_(*this)
+#endif
+    {
         initialize();
         state_ = s_aborted;
     }
@@ -661,8 +673,7 @@ private:
         tset_next_ = tset0_;
 #if CICADA_HASHTABLE
         cht_.clear();
-#endif
-#if CICADA_HASHTABLE == 0 && TRANSACTION_HASHTABLE
+#elif TRANSACTION_HASHTABLE
         if (hash_base_ >= hash_size) {
             memset(hashtable_, 0, sizeof(hashtable_));
             /*if (TThread::always_allocate()) {
@@ -1239,8 +1250,9 @@ private:
     mutable tc_counter_type start_tsc_;
 #endif
     TransItem* tset_[tset_max_capacity / tset_chunk];
+#if CICADA_HASHTABLE
     CicadaHashtable cht_;
-#if CICADA_HASHTABLE == 0
+#else
 #if TRANSACTION_HASHTABLE
     uint16_t hashtable_[hash_size];
 #endif
