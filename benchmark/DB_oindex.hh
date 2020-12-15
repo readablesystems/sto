@@ -685,7 +685,10 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        if (committed ? has_delete(item) : item.locked_at_commit() && has_insert(item)) {
+        if (!item.locked_at_commit()) {
+            return;
+        }
+        if (committed ? has_delete(item) : has_insert(item)) {
             auto key = item.key<item_key_t>();
             assert(key.is_row_item());
             internal_elem *e = key.internal_elem_ptr();
