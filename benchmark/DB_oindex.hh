@@ -685,13 +685,16 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        if (committed ? has_delete(item) : has_insert(item)) {
+        if (committed ? has_delete(item) : item.locked_at_commit() && has_insert(item)) {
             auto key = item.key<item_key_t>();
             assert(key.is_row_item());
             internal_elem *e = key.internal_elem_ptr();
             bool ok = _remove(e->key);
             if (!ok) {
-                std::cout << committed << "," << has_delete(item) << "," << has_insert(item) << std::endl;
+                std::cout << "committed=" << committed << ", "
+                          << "has_delete=" << has_delete(item) << ", "
+                          << "has_insert=" << has_insert(item) << ", "
+                          << "locked_at_commit=" << item.locked_at_commit() << std::endl;
                 always_assert(false, "insert-bit exclusive ownership violated");
             }
             item.clear_needs_unlock();
