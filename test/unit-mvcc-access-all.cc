@@ -265,6 +265,7 @@ private:
     void CommuteTest();
     void ScanTest();
     void InsertTest();
+    void InsertDeleteTest();
     void InsertSameKeyTest();
     void InsertSerialTest();
     void InsertUnreadableTest();
@@ -282,6 +283,7 @@ void MVCCIndexTester<Ordered>::RunTests() {
     DeleteTest();
     CommuteTest();
     InsertTest();
+    InsertDeleteTest();
     InsertSameKeyTest();
     InsertSerialTest();
     InsertUnreadableTest();
@@ -510,6 +512,63 @@ void MVCCIndexTester<Ordered>::InsertTest() {
 }
 
 template <bool Ordered>
+void MVCCIndexTester<Ordered>::InsertDeleteTest() {
+    index_type idx(index_init_size);
+    idx.thread_init();
+
+    for (int itr = 0; itr < 16; itr++) {
+        TestTransaction t1(0);
+        key_type key1{1, 1};
+        index_value val1{10 * itr + 1, 10 * itr + 2, 10 * itr + 3};
+        {
+            auto [success, found] = idx.insert_row(key1, &val1);
+            assert(success);
+            assert(!found);
+        }
+        assert(t1.try_commit());
+
+        TestTransaction t2(1);
+        key_type key2{1, 1};
+        {
+            auto[success, result, row, accessor] = idx.select_split_row(key2, {{nc::value_1, access_t::read},
+                                                                               {nc::value_2a, access_t::read},
+                                                                               {nc::value_2b, access_t::read}});
+            (void)row;
+            assert(success);
+            assert(result);
+            assert(accessor.value_1() == 10 * itr + 1);
+            assert(accessor.value_2a() == 10 * itr + 2);
+            assert(accessor.value_2b() == 10 * itr + 3);
+        }
+        assert(t2.try_commit());
+
+        TestTransaction t3(2);
+        key_type key3{1, 1};
+        {
+            auto [success, found] = idx.delete_row(key2);
+            assert(success);
+            assert(found);
+        }
+        assert(t3.try_commit());
+
+        TestTransaction t4(3);
+        key_type key4{1, 1};
+        {
+            auto[success, result, row, accessor] = idx.select_split_row(key4, {{nc::value_1, access_t::read},
+                                                                               {nc::value_2a, access_t::read},
+                                                                               {nc::value_2b, access_t::read}});
+            (void)row;
+            (void)accessor;
+            assert(success);
+            assert(!result);
+        }
+        assert(t4.try_commit());
+    }
+
+    printf("Test pass: InsertDeleteTest\n");
+}
+
+template <bool Ordered>
 void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
     index_type idx(index_init_size);
     idx.thread_init();
@@ -532,8 +591,7 @@ void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
             assert(!success);
             assert(!found);
         }
-
-        assert(t2.try_commit());
+        // t2 should abort here because success is false
 
         t1.use();
         assert(t1.try_commit());

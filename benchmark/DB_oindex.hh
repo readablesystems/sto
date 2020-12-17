@@ -1127,6 +1127,10 @@ public:
 
             auto h = e->template chain_at<0>()->find(txn_read_tid());
             if (is_phantom(h, row_item)) {
+                // Check for poisoning (a.k.a. object has just been created)
+                if (!h->wtid()) {
+                    return {false, false};
+                }
                 MvAccess::read(row_item, h);
                 auto val_ptrs = TxSplitInto<value_type>(vptr);
                 for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
@@ -1180,6 +1184,14 @@ public:
             fence();
             lp.finish(1, *ti);
             //fence();
+
+            /*
+            // Use cell-id 0 to represent the row item.
+            auto row_item = Sto::item(this, item_key_t(e, 0));
+            auto h = e->template chain_at<0>()->find(txn_read_tid());
+            assert(is_phantom(h, row_item));
+            MvAccess::read(row_item, h);
+            */
 
             auto val_ptrs = TxSplitInto<value_type>(vptr);
             for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
