@@ -117,21 +117,6 @@ void Transaction::epoch_advance_once() {
     }
 }
 
-Transaction::tid_type Transaction::compute_rtid_inf() {
-    tid_type rtid_inf = _RTID;
-
-    // Find an infimum for the rtid
-    for (auto &ti : tinfo) {
-        if (!rtid_inf) {
-            rtid_inf = ti.rtid.load();
-        } else if (ti.rtid) {
-            rtid_inf = std::min(rtid_inf, ti.rtid.load());
-        }
-    }
-
-    return rtid_inf;
-}
-
 bool Transaction::preceding_duplicate_read(TransItem* needle) const {
     const TransItem* it = nullptr;
     for (unsigned tidx = 0; ; ++tidx) {

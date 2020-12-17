@@ -18,10 +18,9 @@ std::ostream& operator<<(std::ostream& w, MvStatus s) {
     case PENDING:                return w << "PENDING";
     case COMMITTED:              return w << "COMMITTED";
     default: {
-        auto f = w.flags(std::ios::hex);
-        w << "MvStatus[" << (unsigned long) s << "]";
-        w.flags(f);
-        return w;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "MvStatus[%lx]", (unsigned long) s);
+        return w << buf;
     }
     }
 }

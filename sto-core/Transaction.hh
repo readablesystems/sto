@@ -555,28 +555,31 @@ public:
         ::free(x);
     }
 
+    static threadinfo_t& this_thread() {
+        return tinfo[TThread::id()];
+    }
+
     static void* epoch_advancer(void*);
     static void epoch_advance_once();
-    static tid_type compute_rtid_inf();
     template <typename T>
     static void rcu_delete(T* x) {
-        auto& thr = tinfo[TThread::id()];
+        auto& thr = this_thread();
         txp_account<txp_rcu_del_req>(1);
         thr.rcu_set.add(thr.write_snapshot_epoch, rcu_delete_cb<T>, x);
     }
     template <typename T>
     static void rcu_delete_array(T* x) {
-        auto& thr = tinfo[TThread::id()];
+        auto& thr = this_thread();
         txp_account<txp_rcu_delarr_req>(1);
         thr.rcu_set.add(thr.write_snapshot_epoch, rcu_delete_array_cb<T>, x);
     }
     static void rcu_free(void* ptr) {
-        auto& thr = tinfo[TThread::id()];
+        auto& thr = this_thread();
         txp_account<txp_rcu_free_req>(1);
         thr.rcu_set.add(thr.write_snapshot_epoch, rcu_free_cb, ptr);
     }
-    static void rcu_call(void (*function)(void*), void* argument) {
-        auto& thr = tinfo[TThread::id()];
+    static void rcu_call(TRcuSet::callback_type function, void* argument) {
+        auto& thr = this_thread();
         thr.rcu_set.add(thr.write_snapshot_epoch, function, argument);
     }
 
@@ -655,7 +658,7 @@ private:
 
     // reset data so we can be reused for another transaction
     void start() {
-        threadinfo_t& thr = tinfo[TThread::id()];
+        threadinfo_t& thr = this_thread();
         //if (isAborted_
         //   && tinfo[TThread::id()].p(txp_total_aborts) % 0x10000 == 0xFFFF)
            //print_stats();
@@ -663,9 +666,10 @@ private:
         start_tsc_ = read_tsc();
 #endif
         special_txp = false;
-        thr.write_snapshot_epoch.store(global_epochs.global_epoch.load(), std::memory_order_relaxed);
-        thr.epoch.store(global_epochs.read_epoch.load(), std::memory_order_relaxed);
-        thr.rcu_set.clean_until(global_epochs.active_epoch.load());
+        // New committed versions “happen” in write_snapshot_epoch
+        thr.write_snapshot_epoch.store(global_epochs.global_epoch.load(std::memory_order_acquire), std::memory_order_release);
+        thr.epoch.store(global_epochs.read_epoch.load(std::memory_order_acquire), std::memory_order_release);
+        thr.rcu_set.clean_until(global_epochs.active_epoch.load(std::memory_order_acquire));
         thr.wtid = 0;
         thr.rtid.store(0, std::memory_order_relaxed);
         if (thr.trans_start_callback)
@@ -1063,7 +1067,7 @@ public:
         if (!read_tid_) {
             TXP_INCREMENT(txp_rtid_atomic);
             fence();
-            threadinfo_t& thr = tinfo[TThread::id()];
+            threadinfo_t& thr = this_thread();
             if (mvcc_rw) {
                 read_tid_ = _TID;
                 thr.rtid.store(read_tid_, std::memory_order_relaxed);
@@ -1079,7 +1083,7 @@ public:
     // transaction is now a read-write transaction
     tid_type write_tid() const {
         if (!commit_tid_) {
-            threadinfo_t& thr = tinfo[TThread::id()];
+            threadinfo_t& thr = this_thread();
             thr.wtid = commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
             if (mvcc_rw) {
                 read_tid_ = commit_tid_;
@@ -1484,10 +1488,6 @@ public:
 
     static TransactionTid::type commit_tid() {
         return TThread::txn->commit_tid();
-    }
-
-    static TransactionTid::type recent_tid() {
-        return Transaction::global_epochs.recent_tid;
     }
 
     static TransactionTid::type initialized_tid() {

@@ -290,7 +290,8 @@ private:
             } else {
                 TXP_INCREMENT(txp_mvcc_flat_spins);
             }
-            while (!status_is(COMMITTED_DELTA, COMMITTED));
+            while (!status_is(COMMITTED_DELTA, COMMITTED)) {
+            }
         }
     }
 

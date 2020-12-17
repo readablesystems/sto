@@ -48,6 +48,7 @@ void execute(cmd_params& p) {
     ncommits = r_nopred.run();
     prof.finish(ncommits);
 
+    std::cout << "Cleaning up\n";
     Transaction::rcu_release_all(advancer, nthreads);
 
     auto counters = Transaction::txp_counters_combined();

@@ -7,9 +7,10 @@
 struct TRcuGroup {
     typedef uint64_t epoch_type;
     typedef int64_t signed_epoch_type;
+    typedef void (*callback_type)(void*);
 
     struct TRcuElement {
-        void (*function)(void*);
+        callback_type function;
         union {
             void* argument;
             epoch_type epoch;
@@ -30,12 +31,6 @@ private:
     TRcuGroup(const TRcuGroup&) = delete;
     ~TRcuGroup() {
         assert(head_ == tail_);
-        while (head_ != tail_) {
-            if (e_[head_].function) {
-                e_[head_].function(e_[head_].u.argument);
-            }
-            ++head_;
-        }
     }
 
 public:
@@ -52,7 +47,7 @@ public:
         return head_ == tail_;
     }
 
-    void add(epoch_type epoch, void (*function)(void*), void* argument) {
+    void add(epoch_type epoch, callback_type function, void* argument) {
         assert(tail_ + 2 <= capacity_);
         if (head_ == tail_ || epoch_ != epoch) {
             e_[tail_].function = nullptr;
@@ -72,6 +67,7 @@ class TRcuSet {
 public:
     typedef TRcuGroup::epoch_type epoch_type;
     typedef TRcuGroup::signed_epoch_type signed_epoch_type;
+    typedef TRcuGroup::callback_type callback_type;
 
     TRcuSet();
     ~TRcuSet();
@@ -80,7 +76,7 @@ public:
         return first_->empty();
     }
 
-    void add(epoch_type epoch, void (*function)(void*), void* argument) {
+    void add(epoch_type epoch, callback_type function, void* argument) {
         if (unlikely(current_->tail_ + 2 > current_->capacity_)) {
             grow();
         }
