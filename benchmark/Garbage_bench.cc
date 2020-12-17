@@ -7,20 +7,22 @@
 
 double db_params::constants::processor_tsc_frequency;
 
-enum { opt_dbid = 1, opt_nthrs, opt_time };
+enum { opt_dbid = 1, opt_nthrs, opt_time, opt_dbsz };
 
 struct cmd_params {
     db_params::db_params_id dbid;
+    size_t db_size;
     int num_threads;
     double time_limit;
 
-    cmd_params() : dbid(db_params::db_params_id::Default), num_threads(1), time_limit(10.0) {}
+    cmd_params() : dbid(db_params::db_params_id::Default), db_size(256), num_threads(1), time_limit(10.0) {}
 };
 
 static const Clp_Option options[] = {
     { "dbid",       'i', opt_dbid,  Clp_ValString,  Clp_Optional },
     { "nthreads",   't', opt_nthrs, Clp_ValInt,     Clp_Optional },
     { "time",       'l', opt_time,  Clp_ValDouble,  Clp_Optional },
+    { "dbsize",     'z', opt_dbsz,  Clp_ValInt,     Clp_Optional },
 };
 
 template <typename DBParams>
@@ -29,8 +31,7 @@ void execute(cmd_params& p) {
     typedef garbage_bench::garbage_db<DBParams> db_type_nopred;
 
     db_type_nopred db_nopred;
-    const size_t db_size = 256;
-    initialize_db(db_nopred, db_size);
+    initialize_db(db_nopred, p.db_size);
 
     bench::db_profiler prof(false/*don't spawn perf*/);
     auto nthreads = p.num_threads;
@@ -41,13 +42,13 @@ void execute(cmd_params& p) {
 
     size_t ncommits;
 
-    pthread_t advancer;
-    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    pthread_detach(advancer);
+    auto advancer = std::thread(&Transaction::epoch_advancer, nullptr);
 
     prof.start(Profiler::perf_mode::record);
     ncommits = r_nopred.run();
     prof.finish(ncommits);
+
+    Transaction::rcu_release_all(advancer, nthreads);
 
     auto counters = Transaction::txp_counters_combined();
     auto ndreq = counters.p(txp_rcu_del_req);
@@ -65,6 +66,8 @@ void execute(cmd_params& p) {
     printf("dealloc reqs/commit:  %.2lf\n", 1. * total_reqs / ncommits);
     printf("RCU dealloc calls:    %llu\n", total_impls);
     printf("dealloc calls/commit: %.2lf\n", 1. * total_impls / ncommits);
+    printf("GC inserts:           %llu\n", counters.p(txp_gc_inserts));
+    printf("GC deletes:           %llu\n", counters.p(txp_gc_deletes));
 }
 
 int main(int argc, const char * const *argv) {
@@ -87,6 +90,9 @@ int main(int argc, const char * const *argv) {
                 ret_code = 1;
                 clp_stop = true;
             }
+            break;
+        case opt_dbsz:
+            p.db_size = clp->val.i;
             break;
         case opt_nthrs:
             p.num_threads = clp->val.i;

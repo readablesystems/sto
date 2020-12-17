@@ -174,18 +174,36 @@ class garbage_runner {
 public:
     typedef garbage_row::NamedColumn nc;
     void run_txn(size_t key) {
-        TRANSACTION_E {
+        bool inc_inserts = false;
+        bool inc_deletes = false;
+        RWTRANSACTION {
+            inc_inserts = false;
+            inc_deletes = false;
             auto [success, found, row, value] = db.table().select_split_row(garbage_key(key), {{nc::value, access_t::read}});
             (void) row;
             (void) value;
             if (success) {
                 if (found) {
-                  std::tie(std::ignore, std::ignore) = db.table().delete_row(garbage_key(key));
+                    std::tie(success, found) = db.table().delete_row(garbage_key(key));
+                    TXN_DO(success);
+                    if (found) {
+                        inc_deletes = true;
+                    }
                 } else {
-                  std::tie(std::ignore, std::ignore) = db.table().insert_row(garbage_key(key), Sto::tx_alloc<garbage_row>());
+                    std::tie(success, found) = db.table().insert_row(garbage_key(key), Sto::tx_alloc<garbage_row>());
+                    TXN_DO(success);
+                    if (!found) {
+                        inc_inserts = true;
+                    }
                 }
             }
-        } RETRY_E(true);
+        } RETRY(true);
+        if (inc_inserts) {
+            TXP_INCREMENT(txp_gc_inserts);
+        }
+        if (inc_deletes) {
+            TXP_INCREMENT(txp_gc_deletes);
+        }
     }
 
     // returns the total number of transactions committed

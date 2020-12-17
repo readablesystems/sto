@@ -771,5 +771,7 @@ int main() {
         tester.RunTests();
     }
     printf("ALL TESTS PASS, ignore errors after this.\n");
+    auto advancer = std::thread(&Transaction::epoch_advancer, nullptr);
+    Transaction::rcu_release_all(advancer, 48);
     return 0;
 }

@@ -291,6 +291,8 @@ enum txp {
     txp_mvcc_bad_versions,
     txp_mvcc_sum,
     txp_total_sum,
+    txp_gc_inserts,
+    txp_gc_deletes,
 #if !STO_PROFILE_COUNTERS
     txp_count = 0
 #elif STO_PROFILE_COUNTERS == 1
