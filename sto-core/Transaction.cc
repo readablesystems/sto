@@ -421,6 +421,10 @@ bool Transaction::try_commit() {
     fence();
 #endif
 
+    always_assert(
+            nwriteset == 0 || commit_tid_ > 0,
+            "RW transactions must have a commit tid after locking!");
+
     //phase2
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);

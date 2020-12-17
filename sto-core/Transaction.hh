@@ -1233,7 +1233,9 @@ private:
     mutable tid_type write_tid_inf_;
 #endif
     mutable tid_type read_tid_;
+public:
     mutable tid_type commit_tid_;
+private:
     mutable tid_type prev_commit_tid_;
     mutable tid_type tictoc_tid_; // commit tid reserved for TicToc
 public:
@@ -1538,7 +1540,7 @@ public:
     Transaction &get_tx() {
         return t_;
     }
-private:
+//private:
     Transaction t_;
     //Transaction* base_;
 };

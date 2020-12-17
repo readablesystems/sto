@@ -265,6 +265,8 @@ private:
     void CommuteTest();
     void ScanTest();
     void InsertTest();
+    void InsertSameKeyTest();
+    void InsertUnreadableTest();
     void UpdateTest();
 };
 
@@ -279,6 +281,8 @@ void MVCCIndexTester<Ordered>::RunTests() {
     DeleteTest();
     CommuteTest();
     InsertTest();
+    InsertSameKeyTest();
+    InsertUnreadableTest();
     UpdateTest();
     if constexpr (Ordered) {
         ScanTest();
@@ -501,8 +505,91 @@ void MVCCIndexTester<Ordered>::InsertTest() {
         assert(accessor.value_2b() == 6);
         assert(t.try_commit());
     }
+}
 
-    printf("Test pass: InsertTest\n");
+template <bool Ordered>
+void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
+    index_type idx(index_init_size);
+    idx.thread_init();
+
+    {
+        TestTransaction t1(0);
+        key_type key1{1, 1};
+        index_value val1{11, 12, 13};
+        {
+            auto [success, found] = idx.insert_row(key1, &val1);
+            assert(success);
+            assert(!found);
+        }
+
+        TestTransaction t2(1);
+        key_type key2{1, 1};
+        index_value val2{14, 15, 16};
+        {
+            auto [success, found] = idx.insert_row(key2, &val2);
+            (void)found;
+            assert(!success);
+        }
+
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(t1.try_commit());
+    }
+
+    {
+        TestTransaction t(2);
+        key_type key{1, 1};
+        auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::read},
+                                                                          {nc::value_2a, access_t::read},
+                                                                          {nc::value_2b, access_t::read}});
+        (void)row;
+        assert(success);
+        assert(result);
+
+        assert(accessor.value_1() == 11);
+        assert(accessor.value_2a() == 12);
+        assert(accessor.value_2b() == 13);
+        assert(t.try_commit());
+    }
+
+    printf("Test pass: InsertSameKeyTest\n");
+}
+
+template <bool Ordered>
+void MVCCIndexTester<Ordered>::InsertUnreadableTest() {
+    index_type idx(index_init_size);
+    idx.thread_init();
+
+    {
+        TestTransaction t1(0);
+        key_type key1{1, 1};
+        index_value val1{11, 12, 13};
+        {
+            auto [success, found] = idx.insert_row(key1, &val1);
+            assert(success);
+            assert(!found);
+        }
+
+        TestTransaction t2(1);
+        key_type key2{1, 1};
+        {
+            auto[success, result, row, accessor] = idx.select_split_row(key2, {{nc::value_1, access_t::read},
+                                                                               {nc::value_2a, access_t::read},
+                                                                               {nc::value_2b, access_t::read}});
+            (void)row;
+            (void)accessor;
+            assert(success);
+            assert(!result);
+        }
+
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(t1.try_commit());
+    }
+
+    printf("Test pass: InsertUnreadableTest\n");
 }
 
 template <bool Ordered>
