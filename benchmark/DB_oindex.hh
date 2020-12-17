@@ -1109,7 +1109,39 @@ public:
     insert_row(const key_type& key, value_type *vptr, bool overwrite = false) {
         cursor_type lp(table_, key);
         bool found = lp.find_insert(*ti);
-        if (found) {
+        bool should_abort = false;
+        internal_elem *e;
+        if (!found) {
+            e = new internal_elem(key);
+            lp.value() = e;
+
+            node_type *node;
+            nodeversion_value_type orig_nv;
+            nodeversion_value_type new_nv;
+
+            bool split_right = (lp.node() != lp.original_node());
+            if (split_right) {
+                node = lp.original_node();
+                orig_nv = lp.original_version_value();
+                new_nv = lp.updated_version_value();
+            } else {
+                node = lp.node();
+                orig_nv = lp.previous_full_version_value();
+                new_nv = lp.next_full_version_value(1);
+            }
+
+            fence();
+            lp.finish(1, *ti);
+            //fence();
+
+            // update the node version already in the read set and modified by split
+            should_abort = !update_internode_version(node, orig_nv, new_nv);
+        } else {
+            e = lp.value();
+            lp.finish(0, *ti);
+        }
+
+        if (!should_abort) {
             // NB: the insert method only manipulates the row_item. It is possible
             // this insert is overwriting some previous updates on selected columns
             // The expected behavior is that this row-level operation should overwrite
@@ -1119,18 +1151,13 @@ public:
             // been locked then we simply ignore installing any changes made by cell items.
             // It should be trivial for a cell item to find the corresponding row item
             // and figure out if the row-level version is locked.
-            internal_elem *e = lp.value();
-            lp.finish(0, *ti);
 
             // Use cell-id 0 to represent the row item.
             auto row_item = Sto::item(this, item_key_t(e, 0));
 
             auto h = e->template chain_at<0>()->find(txn_read_tid());
+            found = h->status_is(DELETED);
             if (is_phantom(h, row_item)) {
-                // Check for poisoning (a.k.a. object has just been created)
-                if (!h->wtid()) {
-                    return {false, false};
-                }
                 MvAccess::read(row_item, h);
                 auto val_ptrs = TxSplitInto<value_type>(vptr);
                 for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
@@ -1162,52 +1189,9 @@ public:
                 MvAccess::read(row_item, h);
             }
 
-        } else {
-            auto e = new internal_elem(key);
-            lp.value() = e;
-
-            node_type *node;
-            nodeversion_value_type orig_nv;
-            nodeversion_value_type new_nv;
-
-            bool split_right = (lp.node() != lp.original_node());
-            if (split_right) {
-                node = lp.original_node();
-                orig_nv = lp.original_version_value();
-                new_nv = lp.updated_version_value();
-            } else {
-                node = lp.node();
-                orig_nv = lp.previous_full_version_value();
-                new_nv = lp.next_full_version_value(1);
-            }
-
-            fence();
-            lp.finish(1, *ti);
-            //fence();
-
-            /*
-            // Use cell-id 0 to represent the row item.
-            auto row_item = Sto::item(this, item_key_t(e, 0));
-            auto h = e->template chain_at<0>()->find(txn_read_tid());
-            assert(is_phantom(h, row_item));
-            MvAccess::read(row_item, h);
-            */
-
-            auto val_ptrs = TxSplitInto<value_type>(vptr);
-            for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
-                TransProxy cell_item = Sto::item(this, item_key_t(e, cell_id));
-                cell_item.add_write(val_ptrs[cell_id]);
-                cell_item.add_flags(insert_bit);
-            }
-
-            // update the node version already in the read set and modified by split
-            if (!update_internode_version(node, orig_nv, new_nv))
-                goto abort;
+            return ins_return_type(true, found);
         }
 
-        return ins_return_type(true, found);
-
-    abort:
         return ins_return_type(false, false);
     }
 
@@ -1221,8 +1205,10 @@ public:
             auto row_item = Sto::item(this, item_key_t(e, 0));
             auto h = e->template chain_at<0>()->find(txn_read_tid());
 
-            if (is_phantom(h, row_item))
+            if (is_phantom(h, row_item)) {
+                MvAccess::read(row_item, h);
                 return del_return_type(true, false);
+            }
 
             if (index_read_my_write) {
                 if (has_delete(row_item))

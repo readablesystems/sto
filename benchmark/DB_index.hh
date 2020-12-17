@@ -782,6 +782,12 @@ void mvcc_chain_operations<K, V, DBParams>::cleanup_impl_per_chain(TransItem &it
                 h->status_txn_abort();
             }
         }
+        {
+            auto h = chain->find(Sto::commit_tid());
+            if (h->wtid() == 0) {
+                h->enqueue_for_committed();
+            }
+        }
     }
 }
 

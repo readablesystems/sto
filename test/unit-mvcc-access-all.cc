@@ -575,6 +575,7 @@ void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
 
     {
         TestTransaction t1(0);
+        t1.get_tx().mvcc_rw_upgrade();
         key_type key1{1, 1};
         index_value val1{11, 12, 13};
         {
@@ -584,17 +585,18 @@ void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
         }
 
         TestTransaction t2(1);
+        t1.get_tx().mvcc_rw_upgrade();
         key_type key2{1, 1};
         index_value val2{14, 15, 16};
         {
             auto [success, found] = idx.insert_row(key2, &val2);
-            assert(!success);
+            assert(success);
             assert(!found);
         }
-        // t2 should abort here because success is false
+        assert(t2.try_commit());
 
         t1.use();
-        assert(t1.try_commit());
+        assert(!t1.try_commit());
     }
 
     {
@@ -607,9 +609,9 @@ void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
         assert(success);
         assert(result);
 
-        assert(accessor.value_1() == 11);
-        assert(accessor.value_2a() == 12);
-        assert(accessor.value_2b() == 13);
+        assert(accessor.value_1() == 14);
+        assert(accessor.value_2a() == 15);
+        assert(accessor.value_2b() == 16);
         assert(t.try_commit());
     }
 

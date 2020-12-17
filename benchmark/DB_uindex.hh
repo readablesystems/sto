@@ -849,75 +849,55 @@ public:
         buck.version.lock_exclusive();
         KVNode* n = find_in_bucket(buck, k);
 
-        if (n) {
-            auto e = &n->elem;
-            buck.version.unlock_exclusive();
-            auto row_item = Sto::item(this, item_key_t(e, 0));
-            auto h = e->template chain_at<0>()->find(txn_read_tid());
-            if (is_phantom(h, row_item)) {
-                // Check for poisoning (a.k.a. object has just been created)
-                if (!h->wtid()) {
-                    return {false, false};
-                }
-                MvAccess::read(row_item, h);
-                auto val_ptrs = TxSplitInto<value_type>(vptr);
-                for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
-                    TransProxy cell_item = Sto::item(this, item_key_t(e, cell_id));
-                    cell_item.add_write(val_ptrs[cell_id]);
-                    cell_item.add_flags(insert_bit);
-                }
-                return { true, false };
-            }
-
-            if (index_read_my_write) {
-                if (has_delete(row_item)) {
-                    row_item.clear_flags(delete_bit).clear_write().template add_write<value_type*>(vptr);
-                    return { true, false };
-                }
-            }
-
-            if (overwrite) {
-                for (size_t i = 0; i < SplitParams<V>::num_splits; ++i) {
-                    auto item = Sto::item(this, item_key_t(e, i));
-                    item.add_write();
-                }
-                this->update_row(reinterpret_cast<uintptr_t>(e), vptr);
-            } else {
-                MvAccess::read(row_item, h);
-            }
-
-            return { true, true };
-        } else {
+        if (!n) {
             // insert the new row to the table and take note of bucket version changes
             auto buck_vers_0 = bucket_version_type(buck.version.unlocked_value());
             insert_in_bucket(buck, k);
             KVNode* new_head = buck.head;
             auto buck_vers_1 = bucket_version_type(buck.version.unlocked_value());
 
-            buck.version.unlock_exclusive();
-
             // update bucket version in the read set (if any) since it's changed by ourselves
             auto bucket_item = Sto::item(this, make_bucket_key(buck));
             if (bucket_item.has_read())
                 bucket_item.update_read(buck_vers_0, buck_vers_1);
 
-            /*
-            // Use cell-id 0 to represent the row item.
-            auto row_item = Sto::item(this, item_key_t(&new_head->elem, 0));
-            auto h = new_head->elem.template chain_at<0>()->find(txn_read_tid());
-            assert(is_phantom(h, row_item));
-            MvAccess::read(row_item, h);
-            */
+            n = new_head;
+            assert(n);
+        }
 
+        auto e = &n->elem;
+        buck.version.unlock_exclusive();
+        auto row_item = Sto::item(this, item_key_t(e, 0));
+        auto h = e->template chain_at<0>()->find(txn_read_tid());
+        if (is_phantom(h, row_item)) {
+            MvAccess::read(row_item, h);
             auto val_ptrs = TxSplitInto<value_type>(vptr);
             for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
-                TransProxy cell_item = Sto::item(this, item_key_t(&new_head->elem, cell_id));
+                TransProxy cell_item = Sto::item(this, item_key_t(e, cell_id));
                 cell_item.add_write(val_ptrs[cell_id]);
                 cell_item.add_flags(insert_bit);
             }
-
             return { true, false };
         }
+
+        if (index_read_my_write) {
+            if (has_delete(row_item)) {
+                row_item.clear_flags(delete_bit).clear_write().template add_write<value_type*>(vptr);
+                return { true, false };
+            }
+        }
+
+        if (overwrite) {
+            for (size_t i = 0; i < SplitParams<V>::num_splits; ++i) {
+                auto item = Sto::item(this, item_key_t(e, i));
+                item.add_write();
+            }
+            this->update_row(reinterpret_cast<uintptr_t>(e), vptr);
+        } else {
+            MvAccess::read(row_item, h);
+        }
+
+        return { true, true };
     }
 
     // returns (success : bool, found : bool)
@@ -936,8 +916,10 @@ public:
             auto row_item = Sto::item(this, item_key_t(e, 0));
             auto h = e->template chain_at<0>()->find(txn_read_tid());
 
-            if (is_phantom(h, row_item))
+            if (is_phantom(h, row_item)) {
+                MvAccess::read(row_item, h);
                 return { true, false };
+            }
 
             if (index_read_my_write) {
                 if (has_delete(row_item))
