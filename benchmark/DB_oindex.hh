@@ -1126,8 +1126,16 @@ public:
             auto row_item = Sto::item(this, item_key_t(e, 0));
 
             auto h = e->template chain_at<0>()->find(txn_read_tid());
-            if (is_phantom(h, row_item))
+            if (is_phantom(h, row_item)) {
+                MvAccess::read(row_item, h);
+                auto val_ptrs = TxSplitInto<value_type>(vptr);
+                for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
+                    TransProxy cell_item = Sto::item(this, item_key_t(e, cell_id));
+                    cell_item.add_write(val_ptrs[cell_id]);
+                    cell_item.add_flags(insert_bit);
+                }
                 return ins_return_type(true, false);
+            }
 
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
