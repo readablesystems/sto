@@ -32,9 +32,6 @@ void Transaction::initialize() {
     hash_base_ = 32768;
     tset_size_ = 0;
     lrng_state_ = 12897;
-#if SAFE_FLATTEN
-    write_tid_inf_ = 0;
-#endif
 #if CICADA_HASHTABLE == 0 && defined(TRANSACTION_HASHTABLE)
     bzero(hashtable_, sizeof(hashtable_));
 #endif

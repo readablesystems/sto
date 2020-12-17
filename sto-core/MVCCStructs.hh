@@ -229,10 +229,6 @@ public:
         return &v_;
     }
 
-#if SAFE_FLATTEN
-    inline T* vp_safe_flatten();
-#endif
-
     // Returns the current wtid
     inline tid_type wtid() const {
         return wtid_;
@@ -677,17 +673,3 @@ protected:
 
     friend class MvHistory<T>;
 };
-
-#if SAFE_FLATTEN
-#include "Transaction.hh"
-#include "MVCCStructs.hh"
-template <typename T>
-T* MvHistory<T>::vp_safe_flatten() {
-    if (status_is(DELTA)) {
-        if (wtid_ > Sto::write_tid_inf())
-            return nullptr;
-        enflatten();
-    }
-    return &v_;
-}
-#endif

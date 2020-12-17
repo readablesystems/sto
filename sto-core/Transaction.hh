@@ -695,9 +695,6 @@ private:
         mvcc_rw = false;
         if (commit_tid_ > 0)
             prev_commit_tid_ = commit_tid_;
-#if SAFE_FLATTEN
-        write_tid_inf_ = 0;
-#endif
         start_tid_ = read_tid_ = commit_tid_ = 0;
         tictoc_tid_ = 0;
         buf_.clear();
@@ -1045,22 +1042,6 @@ public:
         mvcc_rw = true;
     }
 
-#if SAFE_FLATTEN
-    tid_type write_tid_inf() const {
-        if (!write_tid_inf_) {
-            tid_type min_wtid = _TID;
-            for (auto& t : tinfo) {
-                acquire_fence();
-                tid_type wtid = t.wtid;
-                if (wtid != 0 && wtid < min_wtid)
-                    min_wtid = wtid;
-            }
-            write_tid_inf_ = min_wtid;
-        }
-        return write_tid_inf_;
-    }
-#endif
-
     // transaction start
     template <bool Commute>
     tid_type read_tid() const {
@@ -1235,9 +1216,6 @@ private:
     unsigned tset_size_;
     mutable bool mvcc_rw;  // manual MVCC read-write flag
     mutable tid_type start_tid_;
-#if SAFE_FLATTEN
-    mutable tid_type write_tid_inf_;
-#endif
     mutable tid_type read_tid_;
     mutable tid_type commit_tid_;
     mutable tid_type prev_commit_tid_;
@@ -1470,12 +1448,6 @@ public:
         always_assert(in_progress());
         TThread::txn->mvcc_rw_upgrade();
     }
-
-#if SAFE_FLATTEN
-    static TransactionTid::type write_tid_inf() {
-        return TThread::txn->write_tid_inf();
-    }
-#endif
 
     template <bool Commute>
     static TransactionTid::type read_tid() {

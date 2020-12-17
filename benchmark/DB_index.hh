@@ -344,16 +344,7 @@ public:
 
         if (cell_accesses[I] != access_t::none) {
             MvAccess::template read<First>(row_item, h);
-
-#if SAFE_FLATTEN
-            auto vptr = h->vp_safe_flatten();
-            if (vptr == nullptr) {
-                ret = false;
-                return false;
-            }
-#else
             auto vptr = h->vp();
-#endif
             //ret &= callback(IndexType::key_type(key), *vptr);
             split_values[I] = vptr;
         }
