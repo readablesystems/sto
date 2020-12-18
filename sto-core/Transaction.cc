@@ -274,7 +274,7 @@ unlock_all:
     threadinfo_t& thr = tinfo[TThread::id()];
     if (thr.trans_end_callback)
         thr.trans_end_callback();
-    thr.rtid.store(thr.wtid = 0, std::memory_order_relaxed);
+    thr.wtid = 0;
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
     restarted = true;

@@ -401,7 +401,6 @@ struct __attribute__((aligned(128))) threadinfo_t {
     using tid_type = TransactionTid::type;
     std::atomic<epoch_type> write_snapshot_epoch;
     std::atomic<epoch_type> epoch;
-    std::atomic<tid_type> rtid;
     tid_type wtid;
     TRcuSet rcu_set;
     // XXX(NH): these should be vectors so multiple data structures can register
@@ -410,8 +409,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
     std::function<void(void)> trans_end_callback;
     txp_counters p_;
     tc_counters tcs_;
-    threadinfo_t()
-        : write_snapshot_epoch(0), epoch(0), wtid(0) {
+    threadinfo_t() {
     }
 };
 
@@ -671,7 +669,6 @@ private:
         thr.epoch.store(global_epochs.read_epoch.load(std::memory_order_acquire), std::memory_order_release);
         thr.rcu_set.clean_until(global_epochs.active_epoch.load(std::memory_order_acquire));
         thr.wtid = 0;
-        thr.rtid.store(0, std::memory_order_relaxed);
         if (thr.trans_start_callback)
             thr.trans_start_callback();
         hash_base_ += tset_size_ + 1;
@@ -1048,14 +1045,11 @@ public:
         if (!read_tid_) {
             TXP_INCREMENT(txp_rtid_atomic);
             fence();
-            threadinfo_t& thr = this_thread();
             if (mvcc_rw) {
                 read_tid_ = _TID;
-                thr.rtid.store(read_tid_, std::memory_order_relaxed);
             } else {
                 epoch_advance_once();
                 read_tid_ = _RTID;
-                thr.rtid.store(read_tid_, std::memory_order_relaxed);
             }
         }
         return read_tid_;
