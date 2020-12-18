@@ -10,6 +10,7 @@ std::ostream& operator<<(std::ostream& w, MvStatus s) {
     case ABORTED_WV1:            return w << "ABORTED_WV1";
     case ABORTED_WV2:            return w << "ABORTED_WV2";
     case ABORTED_TXNV:           return w << "ABORTED_TXNV";
+    case ABORTED_POISON:         return w << "ABORTED_POISON";
     case PENDING_DELETED:        return w << "PENDING_DELETED";
     case COMMITTED_DELETED:      return w << "COMMITTED_DELETED";
     case PENDING_DELTA:          return w << "PENDING_DELTA";

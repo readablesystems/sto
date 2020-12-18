@@ -63,12 +63,16 @@ void execute(cmd_params& p) {
     auto total_impls = ndimpl + ndaimpl + nfimpl;
 
     printf("STO profile counters: %d\n", STO_PROFILE_COUNTERS);
+#if STO_PROFILE_COUNTERS
     printf("RCU dealloc requests: %llu\n", total_reqs);
     printf("dealloc reqs/commit:  %.2lf\n", 1. * total_reqs / ncommits);
     printf("RCU dealloc calls:    %llu\n", total_impls);
     printf("dealloc calls/commit: %.2lf\n", 1. * total_impls / ncommits);
     printf("GC inserts:           %llu\n", counters.p(txp_gc_inserts));
     printf("GC deletes:           %llu\n", counters.p(txp_gc_deletes));
+#else
+    (void) total_reqs, (void) total_impls;
+#endif
 }
 
 int main(int argc, const char * const *argv) {

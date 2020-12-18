@@ -19,6 +19,7 @@ enum MvStatus {
     ABORTED_WV1             = 0b0010'0010'0000,
     ABORTED_WV2             = 0b0011'0010'0000,
     ABORTED_TXNV            = 0b0100'0010'0000,
+    ABORTED_POISON          = 0b0101'0010'0000,
     DELTA                   = 0b0000'0000'1000,  // Commutative update delta
     DELETED                 = 0b0000'0000'0001,  // Not a valid state on its own, but defined as a flag
     PENDING                 = 0b0000'0000'0010,
@@ -82,22 +83,22 @@ public:
     explicit MvHistory(
             object_type *obj, tid_type ntid, const T& nv)
         : MvHistoryBase(obj, ntid, PENDING),
-          v_(nv), delete_cb(nullptr) {
+          v_(nv) {
     }
     explicit MvHistory(
             object_type *obj, tid_type ntid, T&& nv)
         : MvHistoryBase(obj, ntid, PENDING),
-          v_(std::move(nv)), delete_cb(nullptr) {
+          v_(std::move(nv)) {
     }
     explicit MvHistory(
             object_type *obj, tid_type ntid, T *nvp)
         : MvHistoryBase(obj, ntid, PENDING),
-          v_(nvp ? *nvp : v_ /*XXXXXXX*/), delete_cb(nullptr) {
+          v_(nvp ? *nvp : v_ /*XXXXXXX*/) {
     }
     explicit MvHistory(
             object_type *obj, tid_type ntid, comm_type &&c)
         : MvHistoryBase(obj, ntid, PENDING_DELTA),
-          c_(std::move(c)), v_(), delete_cb(nullptr) {
+          c_(std::move(c)), v_() {
     }
 
     // Whether this version can be late-inserted in front of hnext
@@ -144,14 +145,6 @@ private:
     }
 
 public:
-    // Sets the delete callback function
-    inline void set_delete_cb(void *index_p,
-            void (*f) (void*, void*, void*), void *param) {
-        index_ptr = index_p;
-        delete_cb = f;
-        delete_param = param;
-    }
-
     // Returns the status
     inline MvStatus status() const {
         return status_.load();
@@ -237,9 +230,9 @@ public:
     }
 
 private:
-    static void gc_committed_cb(void *ptr) {
+    static void gc_committed_cb(void* ptr) {
         history_type* h = static_cast<history_type*>(ptr);
-        h->assert_status(h->status_is(COMMITTED_DELTA, COMMITTED), "gc_committed_cb");
+        h->assert_status((h->status() & COMMITTED_DELTA) == COMMITTED, "gc_committed_cb");
         // Here is how we ensure that `gc_committed_cb` never conflicts
         // with a flatten operation.
         // (1) When `gc_committed_cb` runs, `h->prev()`
@@ -279,9 +272,6 @@ private:
         bool ok = h->status_.compare_exchange_strong(status, MvStatus(status | GARBAGE2));
         assert(ok);
 #endif
-        if ((status & DELETED) && h->delete_cb) {
-            h->delete_cb(h->index_ptr, h->delete_param, h);
-        }
         h->object()->delete_history(h);
     }
 
@@ -364,10 +354,6 @@ private:
     comm_type c_;
     T v_;
 
-    void *index_ptr;
-    void (*delete_cb) (void*, void*, void*);
-    void *delete_param;
-
     friend class MvObject<T>;
 };
 
@@ -443,41 +429,8 @@ public:
         return find(tid)->v();
     }
 
-    // "Check" step: read timestamp updates and version consistency check;
-    //               returns true if successful, false is aborted
-    bool cp_check(const tid_type tid, history_type* hr) {
-        // rtid update
-        hr->update_rtid(tid);
-
-        // Read version consistency check
-        for (history_type* h = head(); h != hr; h = h->prev()) {
-            if (!h->status_is(ABORTED) && h->wtid() < tid) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // "Install" step: set status to committed
-    void cp_install(history_type* h) {
-        int s = h->status();
-        h->assert_status((s & (PENDING | ABORTED)) == PENDING, "cp_install");
-        h->status((s & ~PENDING) | COMMITTED);
-        if (!(s & DELTA)) {
-            delta_counter.store(0, std::memory_order_relaxed);
-            flattenv_.store(0, std::memory_order_relaxed);
-            h->enqueue_for_committed();
-        } else {
-            int dc = delta_counter.load(std::memory_order_relaxed) + 1;
-            if (dc <= gc_flattening_length) {
-                delta_counter.store(dc, std::memory_order_relaxed);
-            } else if (flattenv_.load(std::memory_order_relaxed) == 0) {
-                delta_counter.store(0, std::memory_order_relaxed);
-                flattenv_.store(h->wtid(), std::memory_order_relaxed);
-                Transaction::rcu_call(gc_flatten_cb, this);
-            }
-        }
+    void set_poison(bool p) {
+        nonpoison_.store(!p, std::memory_order_release);
     }
 
     // "Lock" step: pending version installation & version consistency check;
@@ -496,8 +449,8 @@ public:
                     return false;
                 }
                 target = &t->prev_;
-            } else if (!(t->status_.load(std::memory_order_relaxed) & ABORTED)
-                       && t->rtid_.load(std::memory_order_relaxed) > tid) {
+            } else if (!(t->status_.load(std::memory_order_acquire) & ABORTED)
+                       && t->rtid_.load(std::memory_order_acquire) > tid) {
                 return false;
             } else {
                 // Properly link h's prev_
@@ -532,7 +485,49 @@ public:
             }
         }
 
-        return true;
+        if (nonpoison_.load(std::memory_order_acquire)) {
+            return true;
+        } else {
+            hw->status_abort(ABORTED_POISON);
+            return false;
+        }
+    }
+
+    // "Check" step: read timestamp updates and version consistency check;
+    //               returns true if successful, false is aborted
+    bool cp_check(const tid_type tid, history_type* hr) {
+        // rtid update
+        hr->update_rtid(tid);
+
+        // Read version consistency check
+        for (history_type* h = head(); h != hr; h = h->prev()) {
+            if (!h->status_is(ABORTED) && h->wtid() < tid) {
+                return false;
+            }
+        }
+
+        return nonpoison_.load(std::memory_order_acquire);
+    }
+
+    // "Install" step: set status to committed
+    void cp_install(history_type* h) {
+        int s = h->status();
+        h->assert_status((s & (PENDING | ABORTED)) == PENDING, "cp_install");
+        h->status((s & ~PENDING) | COMMITTED);
+        if (!(s & DELTA)) {
+            cuctr_.store(0, std::memory_order_relaxed);
+            flattenv_.store(0, std::memory_order_relaxed);
+            h->enqueue_for_committed();
+        } else {
+            int dc = cuctr_.load(std::memory_order_relaxed) + 1;
+            if (dc <= gc_flattening_length) {
+                cuctr_.store(dc, std::memory_order_relaxed);
+            } else if (flattenv_.load(std::memory_order_relaxed) == 0) {
+                cuctr_.store(0, std::memory_order_relaxed);
+                flattenv_.store(h->wtid(), std::memory_order_relaxed);
+                Transaction::rcu_call(gc_flatten_cb, this);
+            }
+        }
     }
 
     // Deletes the history element if it was new'ed, or set it as UNUSED if it
@@ -585,8 +580,20 @@ public:
     history_type* head() const {
         return reinterpret_cast<history_type*>(h_.load(std::memory_order_acquire));
     }
-    bool is_head(const history_type* h) const {
-        return head() == h;
+
+    history_type* find_latest(const bool wait = true) const {
+        history_type* h = head();
+        while (true) {
+            auto status = h->status();
+            h->assert_status(status & (PENDING | ABORTED | COMMITTED), "find_latest");
+            if (wait) {
+                h->wait_if_pending(status);
+            }
+            if (status & COMMITTED) {
+                return h;
+            }
+            h = h->prev();
+        }
     }
 
     // Returns whether the given history element is the inlined version
@@ -655,7 +662,7 @@ public:
     }
 
 protected:
-    static void gc_flatten_cb(void *ptr) {
+    static void gc_flatten_cb(void* ptr) {
         auto object = static_cast<MvObject<T>*>(ptr);
         auto flattenv = object->flattenv_.load(std::memory_order_relaxed);
         object->flattenv_.store(0, std::memory_order_relaxed);
@@ -676,7 +683,8 @@ protected:
     }
 
     std::atomic<MvHistoryBase*> h_;
-    std::atomic<int> delta_counter = 0;  // For gc-time flattening
+    std::atomic<int> cuctr_ = 0;  // For gc-time flattening
+    std::atomic<bool> nonpoison_ = true;
     std::atomic<tid_type> flattenv_;
 
 #if MVCC_INLINING

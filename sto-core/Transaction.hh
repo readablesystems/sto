@@ -803,7 +803,7 @@ private:
 #if CICADA_HASHTABLE
         return item(obj, key);
 #else
-#if TRANSACTION_HASHTABLE
+# if TRANSACTION_HASHTABLE
         bool found = false;
         TransItem* ti;
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
@@ -818,7 +818,7 @@ private:
             if (ti->owner() == obj && ti->key_ == xkey) {
                 found = true;
             } else {
-#endif
+# endif
 	        //std::cout << "Hash not found!" << std::endl;
                 for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
                     ti = (tidx % tset_chunk ? ti + 1 : tset_[tidx / tset_chunk]);
@@ -828,23 +828,21 @@ private:
                         break;
                     }
                 }
-#if TRANSACTION_HASHTABLE
+# if TRANSACTION_HASHTABLE
             }
         }
-#endif
-        
+# endif
         if (!found) {
             if (tset_size_ && tset_size_ % tset_chunk == 0)
                 refresh_tset_chunk();
             ++tset_size_;
             new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
- #if TRANSACTION_HASHTABLE
+# if TRANSACTION_HASHTABLE
             if (hashtable_[hi] <= hash_base_)
                 hashtable_[hi] = hash_base_ + tset_size_;
-#endif	
+# endif
             ti = tset_next_++;
         }
- 
         return TransProxy(*this, *ti);
 #endif
     }

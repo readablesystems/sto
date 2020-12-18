@@ -955,7 +955,7 @@ public:
         buck.version.lock_exclusive();
         KVNode* n = find_in_bucket(buck, k);
         if (n == nullptr) {
-            KVNode* new_head = new KVNode(k);
+            KVNode* new_head = new KVNode(this, k);
             new_head->next = buck.head;
             buck.head = new_head;
             n = new_head;
@@ -965,16 +965,16 @@ public:
     }
 
     template <typename TSplit>
-    bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain, internal_elem* e) {
-        return mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(item, txn, chain, e, this, _delete_cb);
+    bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
+        return mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(item, txn, chain);
     }
     template <typename TSplit>
     bool check_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
         return mvcc_chain_operations<K, V, DBParams>::check_impl_per_chain(item, txn, chain);
     }
     template <typename TSplit>
-    void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
-        mvcc_chain_operations<K, V, DBParams>::install_impl_per_chain(item, txn, chain);
+    void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain, void (*dcb)(void*)) {
+        mvcc_chain_operations<K, V, DBParams>::install_impl_per_chain(item, txn, chain, dcb);
     }
     template <typename TSplit>
     void cleanup_impl_per_chain(TransItem& item, bool committed, MvObject<TSplit>* chain) {
@@ -1001,7 +1001,7 @@ public:
     void install(TransItem& item, Transaction& txn) override {
         assert(!is_bucket(item));
         auto key = item.key<item_key_t>();
-        MvSplitAccessAll::run_install(key.cell_num(), txn, item, this);
+        MvSplitAccessAll::run_install(key.cell_num(), txn, item, this, has_delete(item) ? _delete_cb2 : nullptr);
     }
 
     void unlock(TransItem& item) override {
@@ -1057,6 +1057,10 @@ private:
         return true;
     }
 
+    static void _delete_cb2(void*) {
+        // XXX does nothing
+    }
+
     static void _delete_cb(
             void *index_ptr, void *ele_ptr, void *history_ptr) {
         auto ip = reinterpret_cast<mvcc_unordered_index<K, V, DBParams>*>(index_ptr);
@@ -1088,7 +1092,7 @@ private:
     void insert_in_bucket(bucket_entry& buck, const key_type& k) {
         assert(buck.version.is_locked());
 
-        auto new_head = new KVNode(k);
+        auto new_head = new KVNode(this, k);
         auto curr_head = buck.head;
 
         new_head->next = curr_head;

@@ -388,7 +388,7 @@ public:
     static bool mvcc_lock_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx, internal_elem* e) {
         if (cell_id == I) {
             auto e = item.key<item_key_t>().internal_elem_ptr();
-            return idx->lock_impl_per_chain(item, txn, e->template chain_at<I>(), e);
+            return idx->lock_impl_per_chain(item, txn, e->template chain_at<I>());
         }
         return mvcc_lock_loop<C, I+1, Rest...>(cell_id, txn, item, idx, e);
     }
@@ -415,16 +415,16 @@ public:
     }
     // Static looping for TObject::install
     template <int C, int I, typename First, typename... Rest>
-    static void mvcc_install_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
+    static void mvcc_install_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx, void (*dcb)(void*)) {
         if (cell_id == I) {
             auto e = item.key<item_key_t>().internal_elem_ptr();
-            idx->install_impl_per_chain(item, txn, e->template chain_at<I>());
+            idx->install_impl_per_chain(item, txn, e->template chain_at<I>(), dcb);
             return;
         }
-        mvcc_install_loop<C, I+1, Rest...>(cell_id, txn, item, idx);
+        mvcc_install_loop<C, I+1, Rest...>(cell_id, txn, item, idx, dcb);
     }
     template<int C, int I>
-    static void mvcc_install_loop(int cell_id, Transaction&, TransItem&, IndexType*) {
+    static void mvcc_install_loop(int cell_id, Transaction&, TransItem&, IndexType*, void (*)(void*)) {
         static_assert(C == I, "Index invalid");
         always_assert(!cell_id, "One past last iteration should never execute.");
     }
@@ -524,8 +524,8 @@ public:
         static bool run_check(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
             return mvcc_check_loop<P::num_splits, 0, SplitTypes...>(cell_id, txn, item, idx);
         }
-        static void run_install(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
-            mvcc_install_loop<P::num_splits, 0, SplitTypes...>(cell_id, txn, item, idx);
+        static void run_install(int cell_id, Transaction& txn, TransItem& item, IndexType* idx, void (*dcb)(void*)) {
+            mvcc_install_loop<P::num_splits, 0, SplitTypes...>(cell_id, txn, item, idx, dcb);
         }
         static void run_cleanup(int cell_id, TransItem& item, bool committed, IndexType* idx) {
             mvcc_cleanup_loop<P::num_splits, 0, SplitTypes...>(cell_id, item, committed, idx);
@@ -653,20 +653,28 @@ public:
 
     struct MvInternalElement {
         typedef typename SplitParams<value_type>::layout_type split_layout_type;
+        using object0_type = std::tuple_element_t<0, split_layout_type>;
 
-        key_type key;
         split_layout_type split_row;
+        key_type key;
+        void* table;
 
-        MvInternalElement(const key_type& k)
-            : key(k), split_row() {}
+        MvInternalElement(void* t, const key_type& k)
+            : split_row(), key(k), table(t) {
+        }
 
         template <typename... Args>
-        MvInternalElement(const key_type& k, Args... args)
-            : key(k), split_row(std::forward<Args>(args)...) {}
+        MvInternalElement(void* t, const key_type& k, Args... args)
+            : split_row(std::forward<Args>(args)...), key(k), table(t) {
+        }
 
         template <int I>
         std::tuple_element_t<I, split_layout_type>* chain_at() {
             return &std::get<I>(split_row);
+        }
+
+        static MvInternalElement* from_chain(std::tuple_element_t<0, split_layout_type>* chain) {
+            return reinterpret_cast<MvInternalElement*>(chain);
         }
     };
 };
@@ -681,11 +689,11 @@ public:
     }
 
     template <typename TSplit>
-    static bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain, internal_elem* e, TObject* index, void (*delete_cb) (void*, void*, void*));
+    static bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain);
     template <typename TSplit>
     static bool check_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain);
     template <typename TSplit>
-    static void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain);
+    static void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain, void (*dcb)(void*));
     template <typename TSplit>
     static void cleanup_impl_per_chain(TransItem& item, bool committed, MvObject<TSplit>* chain);
 };
@@ -693,7 +701,7 @@ public:
 template <typename K, typename V, typename DBParams>
 template <typename TSplit>
 bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
-        TransItem& item, Transaction& txn, MvObject<TSplit>* chain, internal_elem* e, TObject* index, void (*delete_cb) (void*, void*, void*)) {
+        TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
     using history_type = typename MvObject<TSplit>::history_type;
     using comm_type = typename commutators::Commutator<TSplit>;
 
@@ -713,16 +721,10 @@ bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
     } else {
         auto wval = item.template raw_write_value<TSplit*>();
         if (has_delete(item)) {
-            h = chain->new_history(
-                    Sto::commit_tid(), nullptr);
+            h = chain->new_history(Sto::commit_tid(), nullptr);
             h->status_delete();
-            // TODO: Figure out what to do with this.
-            if (std::is_same<TSplit, typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>::value) {
-                h->set_delete_cb(index, delete_cb, e);
-            }
         } else {
-            h = chain->new_history(
-                    Sto::commit_tid(), wval);
+            h = chain->new_history(Sto::commit_tid(), wval);
         }
     }
     assert(h);
@@ -753,11 +755,14 @@ bool mvcc_chain_operations<K, V, DBParams>::check_impl_per_chain(TransItem &item
 template <typename K, typename V, typename DBParams>
 template <typename TSplit>
 void mvcc_chain_operations<K, V, DBParams>::install_impl_per_chain(TransItem &item, Transaction &txn,
-                                                                   MvObject<TSplit> *chain) {
+                                                                   MvObject<TSplit> *chain, void (*dcb)(void*)) {
     (void)txn;
     using history_type = typename MvObject<TSplit>::history_type;
     auto h = item.template write_value<history_type*>();
     chain->cp_install(h);
+    if (dcb) {
+        Transaction::rcu_call(dcb, h);
+    }
 }
 
 template <typename K, typename V, typename DBParams>

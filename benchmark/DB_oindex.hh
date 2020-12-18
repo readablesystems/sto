@@ -685,9 +685,6 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        if (!item.locked_at_commit()) {
-            return;
-        }
         if (committed ? has_delete(item) : has_insert(item)) {
             auto key = item.key<item_key_t>();
             assert(key.is_row_item());
@@ -1112,7 +1109,7 @@ public:
         bool should_abort = false;
         internal_elem *e;
         if (!found) {
-            e = new internal_elem(key);
+            e = new internal_elem(this, key);
             lp.value() = e;
 
             node_type *node;
@@ -1319,7 +1316,7 @@ public:
             MvSplitAccessAll::run_nontrans_put(v, e);
             lp.finish(0, *ti);
         } else {
-            internal_elem *e = new internal_elem(k);
+            internal_elem *e = new internal_elem(this, k);
             MvSplitAccessAll::run_nontrans_put(v, e);
             lp.value() = e;
             lp.finish(1, *ti);
@@ -1327,16 +1324,16 @@ public:
     }
 
     template <typename TSplit>
-    bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain, internal_elem* e) {
-        return mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(item, txn, chain, e, this, _delete_cb);
+    bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
+        return mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(item, txn, chain);
     }
     template <typename TSplit>
     bool check_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
         return mvcc_chain_operations<K, V, DBParams>::check_impl_per_chain(item, txn, chain);
     }
     template <typename TSplit>
-    void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
-        mvcc_chain_operations<K, V, DBParams>::install_impl_per_chain(item, txn, chain);
+    void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain, void (*dcb)(void*)) {
+        mvcc_chain_operations<K, V, DBParams>::install_impl_per_chain(item, txn, chain, dcb);
     }
     template <typename TSplit>
     void cleanup_impl_per_chain(TransItem& item, bool committed, MvObject<TSplit>* chain) {
@@ -1367,7 +1364,7 @@ public:
     void install(TransItem& item, Transaction& txn) override {
         assert(!is_internode(item));
         auto key = item.key<item_key_t>();
-        MvSplitAccessAll::run_install(key.cell_num(), txn, item, this);
+        MvSplitAccessAll::run_install(key.cell_num(), txn, item, this, has_delete(item) ? _delete_cb2 : nullptr);
     }
 
     void unlock(TransItem& item) override {
@@ -1499,38 +1496,32 @@ public:
         return false;
     }
 
-    bool _remove(const key_type& key) {
-        cursor_type lp(table_, key);
-        bool found = lp.find_locked(*ti);
-        if (found) {
-            internal_elem *el = lp.value();
-            lp.finish(-1, *ti);
-            Transaction::rcu_delete(el);
-        } else {
-            // XXX is this correct?
-            lp.finish(0, *ti);
+    static void _delete_cb2(void* history_ptr) {
+        using history_type = typename internal_elem::object0_type::history_type;
+        auto hp = reinterpret_cast<history_type*>(history_ptr);
+        auto obj = hp->object();
+        auto el = internal_elem::from_chain(obj);
+        auto table = reinterpret_cast<mvcc_ordered_index<K, V, DBParams>*>(el->table);
+        if (obj->find_latest(false) == hp) {
+            cursor_type lp(table->table_, el->key);
+            if (lp.find_locked(*table->ti) && lp.value() == el) {
+                obj->set_poison(true);
+                if (obj->find_latest(true) == hp) {
+                    lp.finish(-1, *table->ti);
+                    Transaction::rcu_call(gc_internal_elem, el);
+                } else {
+                    obj->set_poison(false);
+                    lp.finish(0, *table->ti);
+                }
+            } else {
+                lp.finish(0, *table->ti);
+            }
         }
-        return found;
     }
 
-    static void _delete_cb(
-            void *index_ptr, void *ele_ptr, void *history_ptr) {
-        auto ip = reinterpret_cast<mvcc_ordered_index<K, V, DBParams>*>(index_ptr);
-        auto el = reinterpret_cast<internal_elem*>(ele_ptr);
-        using history_type = typename MvObject<typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>::history_type;
-        auto hp = reinterpret_cast<history_type*>(history_ptr);
-        cursor_type lp(ip->table_, el->key);
-        bool found = lp.find_locked(*ip->ti);
-        if (found) {
-            if ((lp.value() == el) && el->template chain_at<0>()->is_head(hp)) {
-                lp.finish(-1, *ip->ti);
-                Transaction::rcu_delete(el);
-            } else {
-                lp.finish(0, *ip->ti);
-            }
-        } else {
-            lp.finish(0, *ip->ti);
-        }
+    static void gc_internal_elem(void* el_ptr) {
+        auto el = reinterpret_cast<internal_elem*>(el_ptr);
+        delete el;
     }
 
     static uintptr_t get_internode_key(node_type* node) {
