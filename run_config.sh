@@ -21,6 +21,7 @@
 # setup_tpcc_stacked_factors_occ: (see below)
 # setup_tpcc_stacked_factors_mvcc: TPC-C factor analysis experiments.
 # setup_tpcc_occ_idx_cont: TPC-C OCC index contention.
+# setup_tpcc_idx_cont: TPC-C index contention.
 # setup_wiki: Wikipedia
 # setup_ycsba: YCSB-A
 # setup_ycsba_occ: YCSB-A, OCC only
@@ -796,6 +797,9 @@ setup_tpcc_noncumu_factors() {
     "OCC (W1)" "-idefault -g -w1"
     "OCC (W4)" "-idefault -g -w4"
     "OCC (W0)" "-idefault -g"
+    "TicToc (W1)"      "-itictoc -g -w1"
+    "TicToc (W4)"      "-itictoc -g -w4"
+    "TicToc (W0)"      "-itictoc -g"
   )
 
   TPCC_MVCC=(
@@ -1107,6 +1111,50 @@ setup_tpcc_occ_idx_cont() {
   MVCC_LABELS=()
   OCC_BINARIES=("${TPCC_OCC_BINARIES[@]}")
   MVCC_BINARIES=()
+
+  call_runs() {
+    default_call_runs
+  }
+
+  update_cmd() {
+    if [[ $cmd != *"-w"* ]]
+    then
+      cmd="$cmd -w$i"
+    fi
+  }
+}
+
+setup_tpcc_idx_cont() {
+  EXPERIMENT_NAME="TPC-C Contention-aware Indexing"
+
+  TPCC_OCC=(
+    "OCC (W1)" "-idefault -g -w1 -r1000"
+    "OCC (W4)" "-idefault -g -w4 -r1000"
+    "OCC (W0)" "-idefault -g -r1000"
+    "TicToc (W1)"      "-itictoc -g -w1 -r1000"
+    "TicToc (W4)"      "-itictoc -g -w4 -r1000"
+    "TicToc (W0)"      "-itictoc -g -r1000"
+  )
+
+  TPCC_MVCC=(
+    "MVCC (W1)" "-imvcc -g -w1 -r1000"
+    "MVCC (W4)" "-imvcc -g -w4 -r1000"
+    "MVCC (W0)" "-imvcc -g -r1000"
+  )
+
+  TPCC_OCC_BINARIES=(
+  )
+  TPCC_MVCC_BINARIES=(
+  )
+  TPCC_BOTH_BINARIES=(
+    "tpcc_bench" "-cont-index" "PROFILE_COUNTERS=2 NDEBUG=1 INLINED_VERSIONS=1 CONTENTION_AWARE_IDX=0" "-CONT-AWARE-IDX"
+    "tpcc_bench" "-base"       "PROFILE_COUNTERS=2 NDEBUG=1 INLINED_VERSIONS=1" "BASE"
+  )
+
+  OCC_LABELS=("${TPCC_OCC[@]}")
+  MVCC_LABELS=("${TPCC_MVCC[@]}")
+  OCC_BINARIES=("${TPCC_BOTH_BINARIES[@]}")
+  MVCC_BINARIES=("${TPCC_BOTH_BINARIES[@]}")
 
   call_runs() {
     default_call_runs

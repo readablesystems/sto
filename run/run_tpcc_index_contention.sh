@@ -9,7 +9,7 @@ DRY_RUN=0  # >0 means do a dry run
 
 . run_config.sh
 
-setup_tpcc_occ_idx_cont  # Change this accordingly!
+setup_tpcc_idx_cont  # Change this accordingly!
 
 printf "Experiment: $EXPERIMENT_NAME ($ITERS trials)\n"
 
