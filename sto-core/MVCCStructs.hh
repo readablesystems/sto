@@ -9,6 +9,7 @@
 #include "MVCCTypes.hh"
 #include "Transaction.hh"
 #include "TRcu.hh"
+#define MVCC_GARBAGE_DEBUG 1
 
 // Status types of MvHistory elements
 enum MvStatus {
@@ -29,6 +30,7 @@ enum MvStatus {
     LOCKED                  = 0b0000'0001'0000,
     LOCKED_COMMITTED_DELTA  = 0b0000'0001'1100,  // Converting from delta to flattened
     GARBAGE                 = 0b0000'0100'0000,
+    GARBAGE2                = 0b0000'1000'0000,
 };
 
 std::ostream& operator<<(std::ostream& w, MvStatus s);
@@ -253,9 +255,15 @@ private:
         while (next) {
             h = next;
             next = h->prev_relaxed();
+            MvStatus status = h->status();
+#if MVCC_GARBAGE_DEBUG
+            h->assert_status(!(status & (GARBAGE | GARBAGE2)), "gc_committed_cb garbage tracking");
+            while (!(status & GARBAGE)
+                   && h->status_.compare_exchange_weak(status, MvStatus(status | GARBAGE))) {
+            }
+#endif
             Transaction::rcu_call(gc_deleted_cb, h);
-            int status = h->status();
-            h->assert_status(!(status & LOCKED), "gc_committed_cb unlocked");
+            h->assert_status(!(status & (LOCKED | PENDING)), "gc_committed_cb unlocked not pending");
             if ((status & COMMITTED_DELTA) == COMMITTED) {
                 break;
             }
@@ -265,9 +273,10 @@ private:
     static void gc_deleted_cb(void* ptr) {
         history_type* h = static_cast<history_type*>(ptr);
         MvStatus status = h->status_.load(std::memory_order_relaxed);
-#if 0
-        h->assert_status(!(status & GARBAGE), "gc_deleted_cb garbage");
-        bool ok = h->status_.compare_exchange_strong(status, MvStatus(status | GARBAGE));
+#if MVCC_GARBAGE_DEBUG
+        h->assert_status((status & GARBAGE), "gc_deleted_cb garbage");
+        h->assert_status(!(status & GARBAGE2), "gc_deleted_cb garbage");
+        bool ok = h->status_.compare_exchange_strong(status, MvStatus(status | GARBAGE2));
         assert(ok);
 #endif
         if ((status & DELETED) && h->delete_cb) {
@@ -535,6 +544,9 @@ public:
         if (is_inlined(h)) {
             h->status_.store(UNUSED, std::memory_order_release);
         } else {
+#if MVCC_GARBAGE_DEBUG
+            memset(h, 0xFF, sizeof(MvHistoryBase));
+#endif
             delete h;
         }
     }
