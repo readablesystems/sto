@@ -401,7 +401,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
     using tid_type = TransactionTid::type;
     std::atomic<epoch_type> write_snapshot_epoch;
     std::atomic<epoch_type> epoch;
-    tid_type wtid;
+    std::atomic<tid_type> wtid;
     TRcuSet rcu_set;
     // XXX(NH): these should be vectors so multiple data structures can register
     // callbacks for these
@@ -498,7 +498,7 @@ public:
         bool run;
     } global_epochs;
 private:
-    static tid_type _TID;
+    static std::atomic<tid_type> _TID;
     static std::atomic<tid_type> _RTID;
     static unsigned us_per_epoch;  // Defaults to 100ms
 public:
@@ -668,7 +668,7 @@ private:
         thr.write_snapshot_epoch.store(global_epochs.global_epoch.load(std::memory_order_acquire), std::memory_order_release);
         thr.epoch.store(global_epochs.read_epoch.load(std::memory_order_acquire), std::memory_order_release);
         thr.rcu_set.clean_until(global_epochs.active_epoch.load(std::memory_order_acquire));
-        thr.wtid = 0;
+        thr.wtid.store(_TID.load(std::memory_order_relaxed), std::memory_order_release);
         if (thr.trans_start_callback)
             thr.trans_start_callback();
         hash_base_ += tset_size_ + 1;
@@ -1004,7 +1004,7 @@ public:
         assert(state_ <= s_committing_locked);
         TXP_INCREMENT(txp_tco);
         if (!start_tid_)
-            start_tid_ = _TID;
+            start_tid_ = _TID.load(std::memory_order_relaxed);
         if (!TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
             return hard_check_opacity(&item, v);
@@ -1023,7 +1023,7 @@ public:
     bool check_opacity(TransactionTid::type v) {
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
-            start_tid_ = _TID;
+            start_tid_ = _TID.load(std::memory_order_relaxed);
         if (!TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
             return hard_check_opacity(nullptr, v);
@@ -1031,7 +1031,7 @@ public:
     }
 
     bool check_opacity() {
-        return check_opacity(_TID);
+        return check_opacity(_TID.load(std::memory_order_relaxed));
     }
 
     // flips the manual rw flag for mvcc
@@ -1046,7 +1046,7 @@ public:
             TXP_INCREMENT(txp_rtid_atomic);
             fence();
             if (mvcc_rw) {
-                read_tid_ = _TID;
+                read_tid_ = _TID.load(std::memory_order_relaxed);
             } else {
                 epoch_advance_once();
                 read_tid_ = _RTID;
@@ -1059,10 +1059,11 @@ public:
     tid_type write_tid() const {
         if (!commit_tid_) {
             threadinfo_t& thr = this_thread();
-            thr.wtid = commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
+            commit_tid_ = _TID.fetch_add(TransactionTid::increment_value);
             if (mvcc_rw) {
                 read_tid_ = commit_tid_;
             }
+            thr.wtid.store(commit_tid_, std::memory_order_release);
         }
         return commit_tid_;
     }

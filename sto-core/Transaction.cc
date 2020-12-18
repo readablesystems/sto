@@ -18,8 +18,10 @@ Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epoch
 };
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
-TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 3 * TransactionTid::increment_value;
-std::atomic<TransactionTid::type> __attribute__((aligned(128))) Transaction::_RTID(Transaction::_TID - TransactionTid::increment_value);
+std::atomic<TransactionTid::type> __attribute__((aligned(128)))
+    Transaction::_TID(3 * TransactionTid::increment_value);
+std::atomic<TransactionTid::type> __attribute__((aligned(128)))
+    Transaction::_RTID(2 * TransactionTid::increment_value);
    // reserve TransactionTid::increment_value for prepopulated
 unsigned Transaction::us_per_epoch = 1000;  // Defaults to 1ms
 
@@ -84,7 +86,7 @@ void* Transaction::epoch_advancer(void*) {
         global_epochs.global_epoch = std::max(ge + 1, epoch_type(1));
         global_epochs.read_epoch = re;
         global_epochs.active_epoch = ae;
-        global_epochs.recent_tid = _TID;
+        global_epochs.recent_tid = _TID.load(std::memory_order_relaxed);
 
         if (epoch_advance_callback)
             epoch_advance_callback(global_epochs.global_epoch);
@@ -97,7 +99,7 @@ void* Transaction::epoch_advancer(void*) {
 }
 
 void Transaction::epoch_advance_once() {
-    tid_type min_wtid = _TID;
+    tid_type min_wtid = _TID.load(std::memory_order_relaxed);
     for (auto& t : tinfo) {
         fence();
         tid_type wtid = t.wtid;
@@ -157,7 +159,7 @@ bool Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
         TXP_INCREMENT(txp_hco_invalid);
 
     state_ = s_opacity_check;
-    start_tid_ = _TID;
+    start_tid_ = _TID.load(std::memory_order_relaxed);
     release_fence();
     TransItem* it = nullptr;
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
@@ -274,7 +276,7 @@ unlock_all:
     threadinfo_t& thr = tinfo[TThread::id()];
     if (thr.trans_end_callback)
         thr.trans_end_callback();
-    thr.wtid = 0;
+    thr.wtid.store(0, std::memory_order_release);
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
     restarted = true;
@@ -596,7 +598,7 @@ void Transaction::print_stats() {
     fprintf(stderr, "%s\n", ss.str().c_str());
 #endif
 
-    fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID);
+    fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID.load(std::memory_order_relaxed));
 }
 
 const char* Transaction::state_name(int state) {
