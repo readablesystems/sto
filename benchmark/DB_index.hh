@@ -280,7 +280,7 @@ public:
                 item.add_write();
             }
             if ((cell_accesses[I] & access_t::read) != access_t::none) {
-                auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
+                auto h = mvobj->find(Sto::read_tid());
                 if (h->status_is(COMMITTED_DELETED)) {
                     return false;
                 } else if (!IndexType::template is_phantom<First>(h, item)) {
@@ -313,7 +313,7 @@ public:
                    std::array<void*, C>& split_values) {
         auto mvobj = e->template chain_at<I>();
 
-        auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
+        auto h = mvobj->find(Sto::read_tid());
 
         if (I == 0) {
             // skip invalid (inserted but yet committed) and/or deleted values, but do not abort
@@ -745,7 +745,7 @@ bool mvcc_chain_operations<K, V, DBParams>::check_impl_per_chain(TransItem &item
     using history_type = typename MvObject<TSplit>::history_type;
 
     auto h = item.template read_value<history_type*>();
-    auto result = chain->cp_check(Sto::read_tid<DBParams::Commute>(), h);
+    auto result = chain->cp_check(Sto::read_tid(), h);
     TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
     return result;
 }

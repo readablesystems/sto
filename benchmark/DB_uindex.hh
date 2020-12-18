@@ -1122,7 +1122,7 @@ private:
     }
 
     static TransactionTid::type txn_read_tid() {
-        return Sto::read_tid<DBParams::Commute>();
+        return Sto::read_tid();
     }
 };
 

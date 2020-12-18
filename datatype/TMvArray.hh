@@ -46,7 +46,7 @@ public:
             return true;
         }
         else {
-            history_type *h = data_[i].v.find(Sto::read_tid<false/*!commute*/>());
+            history_type *h = data_[i].v.find(Sto::read_tid());
             MvAccess::template read<T>(item, h);
             ret = h->v();
             return true;
@@ -59,7 +59,7 @@ public:
             return item.template write_value<T>();
         }
         else {
-            history_type *h = data_[i].v.find(Sto::read_tid<false/*!commute*/>());
+            history_type *h = data_[i].v.find(Sto::read_tid());
             if (!h) {
                 throw Transaction::Abort();
             }
@@ -100,7 +100,7 @@ public:
         if (item.has_read()) {
             hprev = item.read_value<history_type*>();
         } else {
-            hprev = v.find(Sto::read_tid<false/*!commute*/>(), false);
+            hprev = v.find(Sto::read_tid(), false);
         }
         if (Sto::commit_tid() < hprev->rtid()) {
             TransProxy(txn, item).add_write(nullptr);

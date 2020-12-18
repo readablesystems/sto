@@ -1462,7 +1462,7 @@ public:
     //}
 
     static TransactionTid::type txn_read_tid() {
-        return Sto::read_tid<DBParams::Commute>();
+        return Sto::read_tid();
     }
 
     static bool has_insert(const TransItem& item) {

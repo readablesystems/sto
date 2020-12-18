@@ -845,7 +845,7 @@ private:
     }
 
     static TransactionTid::type txn_read_tid() {
-        return Sto::read_tid<Params::Commute>();
+        return Sto::read_tid();
     }
 
     // Find a key's corresponding internal_elem in a bucket

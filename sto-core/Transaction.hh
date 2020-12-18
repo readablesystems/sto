@@ -1040,7 +1040,6 @@ public:
     }
 
     // transaction start
-    template <bool Commute>
     tid_type read_tid() const {
         if (!read_tid_) {
             TXP_INCREMENT(txp_rtid_atomic);
@@ -1444,9 +1443,8 @@ public:
         TThread::txn->mvcc_rw_upgrade();
     }
 
-    template <bool Commute>
     static TransactionTid::type read_tid() {
-        return TThread::txn->read_tid<Commute>();
+        return TThread::txn->read_tid();
     }
 
     static TransactionTid::type write_tid() {
