@@ -1500,9 +1500,9 @@ public:
         using history_type = typename internal_elem::object0_type::history_type;
         auto hp = reinterpret_cast<history_type*>(history_ptr);
         auto obj = hp->object();
-        auto el = internal_elem::from_chain(obj);
-        auto table = reinterpret_cast<mvcc_ordered_index<K, V, DBParams>*>(el->table);
         if (obj->find_latest(false) == hp) {
+            auto el = internal_elem::from_chain(obj);
+            auto table = reinterpret_cast<mvcc_ordered_index<K, V, DBParams>*>(el->table);
             cursor_type lp(table->table_, el->key);
             if (lp.find_locked(*table->ti) && lp.value() == el) {
                 obj->set_poison(true);

@@ -623,7 +623,7 @@ public:
     typedef std::equal_to<K> Pred;
 
 #if 0
-    // our hashtable is an array of linked lists. 
+    // our hashtable is an array of linked lists.
     // an internal_elem is the node type for these linked lists
     struct internal_elem {
         typedef typename SplitParams<value_type>::layout_type split_layout_type;
@@ -651,7 +651,14 @@ public:
 
         template <typename... Args>
         KVNode(Args... args)
-            : next(nullptr), elem(std::forward<Args>(args)...) {}
+            : next(nullptr), elem(std::forward<Args>(args)...) {
+        }
+
+        static KVNode* from_chain(typename internal_elem::object0_type* chain) {
+            auto* el = internal_elem::from_chain(chain);
+            size_t d = std::max(sizeof(KVNode::next), alignof(KVNode::elem));
+            return reinterpret_cast<KVNode*>(reinterpret_cast<uintptr_t>(el) - d);
+        }
     };
 
     static void thread_init() {}
@@ -1057,35 +1064,35 @@ private:
         return true;
     }
 
-    static void _delete_cb2(void*) {
-        // XXX does nothing
+    static void _delete_cb2(void* history_ptr) {
+        using history_type = typename internal_elem::object0_type::history_type;
+        auto hp = reinterpret_cast<history_type*>(history_ptr);
+        auto obj = hp->object();
+        if (obj->find_latest(false) == hp) {
+            auto el = KVNode::from_chain(obj);
+            auto table = reinterpret_cast<mvcc_unordered_index<K, V, DBParams>*>(el->elem.table);
+            bucket_entry& buck = table->map_[table->find_bucket_idx(el->elem.key)];
+            buck.version.lock_exclusive();
+            KVNode** pprev = &buck.head;
+            while (*pprev && *pprev != el) {
+                pprev = &(*pprev)->next;
+            }
+            assert(*pprev == el);
+            obj->set_poison(true);
+            if (obj->find_latest(true) == hp) {
+                *pprev = el->next;
+                buck.version.unlock_exclusive();
+                Transaction::rcu_call(gc_internal_elem, el);
+            } else {
+                obj->set_poison(false);
+                buck.version.unlock_exclusive();
+            }
+        }
     }
 
-    static void _delete_cb(
-            void *index_ptr, void *ele_ptr, void *history_ptr) {
-        auto ip = reinterpret_cast<mvcc_unordered_index<K, V, DBParams>*>(index_ptr);
-        auto el = reinterpret_cast<internal_elem*>(ele_ptr);
-        using history_type = typename MvObject<typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>::history_type;
-        auto hp = reinterpret_cast<history_type*>(history_ptr);
-        bucket_entry& buck = ip->map_[ip->find_bucket_idx(el->key)];
-        buck.version.lock_exclusive();
-        KVNode* prev = nullptr;
-        KVNode* curr = buck.head;
-        while (curr != nullptr && (&curr->elem != el)) {
-            prev = curr;
-            curr = curr->next;
-        }
-        assert(curr);
-        if (prev != nullptr)
-            prev->next = curr->next;
-        else
-            buck.head = curr->next;
-        if (curr->elem.template chain_at<0>()->is_head(hp)) {
-            buck.version.unlock_exclusive();
-            Transaction::rcu_delete(curr);
-        } else {
-            buck.version.unlock_exclusive();
-        }
+    static void gc_internal_elem(void* el_ptr) {
+        auto el = reinterpret_cast<internal_elem*>(el_ptr);
+        delete el;
     }
 
     // insert a k-v node to a bucket
