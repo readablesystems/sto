@@ -1043,7 +1043,8 @@ public:
             TXP_INCREMENT(txp_rtid_atomic);
             fence();
             if (mvcc_rw) {
-                read_tid_ = _TID.load(std::memory_order_relaxed);
+                //read_tid_ = _TID.load(std::memory_order_relaxed);
+                read_tid_ = write_tid();
             } else {
                 epoch_advance_once();
                 read_tid_ = _RTID;
@@ -1057,9 +1058,6 @@ public:
         if (!commit_tid_) {
             threadinfo_t& thr = this_thread();
             commit_tid_ = _TID.fetch_add(TransactionTid::increment_value);
-            if (mvcc_rw) {
-                read_tid_ = commit_tid_;
-            }
             thr.wtid.store(commit_tid_, std::memory_order_release);
         }
         return commit_tid_;
