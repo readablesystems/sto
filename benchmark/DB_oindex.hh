@@ -1156,7 +1156,7 @@ public:
             auto row_item = Sto::item(this, item_key_t(e, 0));
 
             auto h = e->template chain_at<0>()->find(txn_read_tid());
-            found = h->status_is(DELETED);
+            found = !h->status_is(DELETED);
             if (is_phantom(h, row_item)) {
                 MvAccess::read(row_item, h);
                 auto val_ptrs = TxSplitInto<value_type>(vptr);
