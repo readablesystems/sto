@@ -36,8 +36,8 @@ struct index_value {
     int64_t value_2b;
 };
 
-using Adapter = sto::Adapter<index_value, 3>;
-INITIALIZE_ADAPTER(Adapter);
+CREATE_ADAPTER(index_value, 3);
+using Adapter = ADAPTER_OF(index_value);
 
 struct index_value_part1 {
     int64_t value_1;
