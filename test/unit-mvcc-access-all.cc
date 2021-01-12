@@ -330,7 +330,9 @@ void MVCCIndexTester<Ordered>::DeleteTest() {
 
     {
         TestTransaction t1(0);
+        t1.get_tx().mvcc_rw_upgrade();
         TestTransaction t2(1);
+        t2.get_tx().mvcc_rw_upgrade();
 
         {
             t1.use();
@@ -361,6 +363,7 @@ void MVCCIndexTester<Ordered>::DeleteTest() {
     // Serialized observation should observe delete
     {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         auto[success, result, row, accessor]
             = idx.select_split_row(key,
                                    {{nc::value_1,access_t::read},
@@ -391,6 +394,7 @@ void MVCCIndexTester<Ordered>::CommuteTest() {
 
     for (int64_t i = 0; i < 10; i++) {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         auto[success, result, row, accessor]
             = idx.select_split_row(key,
                                    {{nc::value_1,access_t::write},
@@ -409,6 +413,7 @@ void MVCCIndexTester<Ordered>::CommuteTest() {
 
     {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         auto[success, result, row, accessor]
             = idx.select_split_row(key,
                                    {{nc::value_1,access_t::read},
@@ -485,6 +490,7 @@ void MVCCIndexTester<Ordered>::InsertTest() {
 
     {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         index_value val{4, 5, 6};
 
@@ -496,6 +502,7 @@ void MVCCIndexTester<Ordered>::InsertTest() {
 
     {
         TestTransaction t(1);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::read},
                                                                           {nc::value_2a, access_t::read},
@@ -518,6 +525,7 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
 
     for (int itr = 0; itr < 16; itr++) {
         TestTransaction t1(0);
+        t1.get_tx().mvcc_rw_upgrade();
         key_type key1{1, 1};
         index_value val1{10 * itr + 1, 10 * itr + 2, 10 * itr + 3};
         {
@@ -528,6 +536,7 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
         assert(t1.try_commit());
 
         TestTransaction t2(1);
+        t2.get_tx().mvcc_rw_upgrade();
         key_type key2{1, 1};
         {
             auto[success, result, row, accessor] = idx.select_split_row(key2, {{nc::value_1, access_t::read},
@@ -543,6 +552,7 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
         assert(t2.try_commit());
 
         TestTransaction t3(2);
+        t3.get_tx().mvcc_rw_upgrade();
         key_type key3{1, 1};
         {
             auto [success, found] = idx.delete_row(key2);
@@ -552,6 +562,7 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
         assert(t3.try_commit());
 
         TestTransaction t4(3);
+        t4.get_tx().mvcc_rw_upgrade();
         key_type key4{1, 1};
         {
             auto[success, result, row, accessor] = idx.select_split_row(key4, {{nc::value_1, access_t::read},
@@ -585,7 +596,7 @@ void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
         }
 
         TestTransaction t2(1);
-        t1.get_tx().mvcc_rw_upgrade();
+        t2.get_tx().mvcc_rw_upgrade();
         key_type key2{1, 1};
         index_value val2{14, 15, 16};
         {
@@ -601,6 +612,7 @@ void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
 
     {
         TestTransaction t(2);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{1, 1};
         auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::read},
                                                                           {nc::value_2a, access_t::read},
@@ -625,6 +637,7 @@ void MVCCIndexTester<Ordered>::InsertSerialTest() {
 
     {
         TestTransaction t1(0);
+        t1.get_tx().mvcc_rw_upgrade();
         key_type key1{1, 1};
         index_value val1{11, 12, 13};
         {
@@ -635,6 +648,7 @@ void MVCCIndexTester<Ordered>::InsertSerialTest() {
         assert(t1.try_commit());
 
         TestTransaction t2(1);
+        t2.get_tx().mvcc_rw_upgrade();
         key_type key2{1, 1};
         {
             auto [success, found] = idx.delete_row(key2);
@@ -644,6 +658,7 @@ void MVCCIndexTester<Ordered>::InsertSerialTest() {
         assert(t2.try_commit());
 
         TestTransaction t3(3);
+        t3.get_tx().mvcc_rw_upgrade();
         key_type key3{1, 1};
         index_value val3{14, 15, 16};
         {
@@ -654,6 +669,7 @@ void MVCCIndexTester<Ordered>::InsertSerialTest() {
         assert(t3.try_commit());
 
         TestTransaction t4(1);
+        t4.get_tx().mvcc_rw_upgrade();
         key_type key4{1, 1};
         {
             auto[success, result, row, accessor] = idx.select_split_row(key4, {{nc::value_1, access_t::read},
@@ -715,6 +731,7 @@ void MVCCIndexTester<Ordered>::UpdateTest() {
 
     {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         index_value val{4, 5, 6};
 
@@ -726,6 +743,7 @@ void MVCCIndexTester<Ordered>::UpdateTest() {
 
     {
         TestTransaction t(1);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         index_value new_val{7, 0, 0};
         auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::update},
@@ -744,6 +762,7 @@ void MVCCIndexTester<Ordered>::UpdateTest() {
 
     {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         auto[success, result, row, accessor] = idx.select_split_row(key,
             {{nc::value_1, access_t::read},
