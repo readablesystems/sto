@@ -359,7 +359,9 @@ void MVCCIndexTester<Ordered>::DeleteTest() {
 
     {
         TestTransaction t1(0);
+        t1.get_tx().mvcc_rw_upgrade();
         TestTransaction t2(1);
+        t2.get_tx().mvcc_rw_upgrade();
 
         {
             t1.use();
