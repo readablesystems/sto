@@ -184,7 +184,8 @@ UNIT_PROGRAMS = \
 	unit-hashtable \
 	unit-tmvbox-concurrent \
 	unit-dbindex-concurrent \
-	unit-mvcc-access-all
+	unit-mvcc-access-all \
+	unit-adaptive-ts
 
 ACT_UNIT_PROGRAMS = \
 	unit-tarray \
@@ -205,6 +206,7 @@ ACT_UNIT_PROGRAMS = \
 	unit-hashtable \
 	unit-dboindex \
 	unit-mvcc-access-all \
+	unit-adaptive-ts \
 	unit-tmvbox-concurrent \
 	unit-dbindex-concurrent
 
@@ -367,6 +369,9 @@ unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
 
 unit-mvcc-access-all: $(OBJ)/unit-mvcc-access-all.o $(INDEX_DEPS) $(XXHASH_OBJ)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+
+unit-adaptive-ts: $(OBJ)/unit-adaptive-ts.o $(INDEX_DEPS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 unit-tmvbox-concurrent: $(OBJ)/unit-tmvbox-concurrent.o $(INDEX_DEPS) $(XXHASH_OBJ)
