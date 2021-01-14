@@ -22,15 +22,21 @@ public:
 
     template <typename CounterType>
     struct __attribute__((aligned(128))) CounterSet {
-        CounterType read_counters[NCOUNTERS];
-        CounterType write_counters[NCOUNTERS];
+        std::array<CounterType, NCOUNTERS> read_counters;
+        std::array<CounterType, NCOUNTERS> write_counters;
 
+        template <bool Loop=true>
         inline void Reset() {
-            for (auto& counter : read_counters) {
-                counter = 0;
-            }
-            for (auto& counter : write_counters) {
-                counter = 0;
+            if constexpr (Loop) {
+                for (auto& counter : read_counters) {
+                    counter = 0;
+                }
+                for (auto& counter : write_counters) {
+                    counter = 0;
+                }
+            } else {
+                read_counters.fill(0);
+                write_counters.fill(0);
             }
         }
     };
@@ -44,8 +50,10 @@ public:
     static inline void Commit(size_t threadid) {
         if (AdapterConfig::Enabled) {
             for (size_t i = 0; i < NCOUNTERS; i++) {
-                global_counters.read_counters[i] += thread_counters[threadid].read_counters[i];
-                global_counters.write_counters[i] += thread_counters[threadid].write_counters[i];
+                global_counters.read_counters[i].fetch_add(
+                        thread_counters[threadid].read_counters[i], std::memory_order::memory_order_relaxed);
+                global_counters.write_counters[i].fetch_add(
+                        thread_counters[threadid].write_counters[i], std::memory_order::memory_order_relaxed);
             }
         }
     }
@@ -78,27 +86,27 @@ public:
 
     static inline counter_type GetRead(const size_t index) {
         if (AdapterConfig::Enabled) {
-            return global_counters.read_counters[index].load();
+            return global_counters.read_counters[index].load(std::memory_order::memory_order_relaxed);
         }
         return 0;
     }
 
     static inline counter_type GetWrite(const size_t index) {
         if (AdapterConfig::Enabled) {
-            return global_counters.write_counters[index].load();
+            return global_counters.write_counters[index].load(std::memory_order::memory_order_relaxed);
         }
         return 0;
     }
 
     static inline void ResetGlobal() {
         if (AdapterConfig::Enabled) {
-            global_counters.Reset();
+            global_counters.template Reset<true>();
         }
     };
 
     static inline void ResetThread() {
         if (AdapterConfig::Enabled) {
-            thread_counters[TThread::id()].Reset();
+            thread_counters[TThread::id()].template Reset<false>();
         }
     };
 
@@ -133,7 +141,7 @@ public:
     }
 
     static CounterSet<atomic_counter_type> global_counters;
-    static CounterSet<counter_type> thread_counters[MAX_THREADS];
+    static std::array<CounterSet<counter_type>, MAX_THREADS> thread_counters;
 };
 
 #ifndef ADAPTER_OF
@@ -143,9 +151,9 @@ public:
 #ifndef INITIALIZE_ADAPTER
 #define INITIALIZE_ADAPTER(Type) \
     template <> \
-    Type::CounterSet<Type::atomic_counter_type> Type::global_counters = {{}, {}}; \
+    Type::CounterSet<Type::atomic_counter_type> Type::global_counters = {}; \
     template <> \
-    Type::CounterSet<Type::counter_type> Type::thread_counters[MAX_THREADS] = {};
+    std::array<Type::CounterSet<Type::counter_type>, MAX_THREADS> Type::thread_counters = {};
 #endif
 
 #ifndef CREATE_ADAPTER
