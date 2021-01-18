@@ -88,6 +88,8 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
         if (DBParams::MVCC && txn.rw_txn) {
             Sto::mvcc_rw_upgrade();
         }
+        ADAPTER_OF(ycsb_value)::Commit();
+        ADAPTER_OF(ycsb_value)::ResetThread();
         for (auto& op : txn.ops) {
             bool col_parity = op.col_n % 2;
             auto col_group = col_parity ? nm::odd_columns : nm::even_columns;
@@ -125,9 +127,11 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                     if (col_parity) {
                         new_val->odd_columns = value.odd_columns();
                         new_val->odd_columns[op.col_n/2] = op.write_value;
+                        ADAPTER_OF(ycsb_value)::CountWrite(op.col_n);
                     } else {
                         new_val->even_columns = value.even_columns();
                         new_val->even_columns[op.col_n/2] = op.write_value;
+                        ADAPTER_OF(ycsb_value)::CountWrite(op.col_n);
                     }
                     db.ycsb_table().update_row(row, new_val);
                 }
@@ -147,6 +151,7 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
             }
         }
     } RETRY(true);
+    ADAPTER_OF(ycsb_value)::ResetThread();
 }
 
 };
