@@ -58,6 +58,115 @@ public:
         }
     }
 
+    // Returns number of columns in the "left split" (which also happens to be
+    // the index of the first column in the "right split")
+    static inline ssize_t ComputeSplitIndex() {
+        // Semi-consistent snapshot of the data; maybe use locks in the future
+        std::array<size_t, NCOUNTERS> read_freq;
+        std::array<size_t, NCOUNTERS> write_freq;
+        size_t read_total = 0;
+        size_t write_total = 0;
+        for (size_t index = 0; index < NCOUNTERS; index++) {
+            read_freq[index] = GetRead(index);
+            write_freq[index] = GetWrite(index);
+            read_total += read_freq[index];
+            write_total += write_freq[index];
+        }
+
+        // 25% of expectation is considered frequent
+        const size_t rfreq_threshold = read_total / (4 * NCOUNTERS);
+        const size_t wfreq_threshold = write_total / (4 * NCOUNTERS);
+
+        // (read, write) data
+        std::pair<size_t, size_t> left_data = std::make_pair(0, 0);
+        std::pair<size_t, size_t> right_data = std::make_pair(0, 0);
+        ssize_t left_count = 0;
+        ssize_t right_count = 0;
+        while (left_count + right_count < NCOUNTERS) {
+            if (!left_count) {
+                if (write_freq[left_count] >= wfreq_threshold) {
+                    left_data.second += write_freq[left_count];
+                }
+                if (read_freq[left_count] >= wfreq_threshold) {
+                    left_data.first += read_freq[left_count];
+                }
+                left_count++;
+                continue;
+            }
+            bool lfreq[2] = {
+                left_data.first >= rfreq_threshold * left_count / 2,
+                left_data.second >= wfreq_threshold * left_count / 2
+            };
+            bool rfreq[2] = {
+                right_data.first >= rfreq_threshold * right_count / 2,
+                right_data.second >= wfreq_threshold * right_count / 2
+            };
+            bool lfreq_curr[2] = {
+                read_freq[left_count] >= rfreq_threshold,
+                write_freq[left_count] >= wfreq_threshold
+            };
+            bool rfreq_curr[2] = {
+                read_freq[NCOUNTERS - right_count - 1] >= rfreq_threshold,
+                write_freq[NCOUNTERS - right_count - 1] >= wfreq_threshold
+            };
+
+            bool add_left = false;
+            if (lfreq[1] && lfreq_curr[1] || lfreq[0] && lfreq_curr[0]) {
+                add_left = true;
+            } else if (rfreq[1] && rfreq_curr[1] || rfreq[0] && rfreq_curr[0]) {
+                add_left = false;
+            } else if (!lfreq_curr[0] && !lfreq_curr[1]) {  // No match :(
+                add_left = true;
+            } else if (!rfreq_curr[0] && !rfreq_curr[1]) {
+                add_left = false;
+            } else if (!lfreq[1] && !lfreq_curr[1] && lfreq_curr[0]) {  // Has effect, minimize damage
+                add_left = true;
+            } else if (!lfreq[0] && !lfreq_curr[0] && !lfreq_curr[1]) {
+                add_left = true;
+            } else if (!rfreq[1] && !rfreq_curr[1] && rfreq_curr[0]) {
+                add_left = false;
+            } else if (!rfreq[0] && !rfreq_curr[0] && !rfreq_curr[1]) {
+                add_left = false;
+            } else {  // Damage has to happen, arbitrarily push to righ
+                add_left = false;
+            }
+            if (add_left) {
+                if (lfreq_curr[1]) {
+                    left_data.second += write_freq[left_count];
+                }
+                if (lfreq_curr[0]) {
+                    left_data.first += read_freq[left_count];
+                }
+                left_count++;
+            } else {
+                if (rfreq_curr[1]) {
+                    right_data.second += write_freq[NCOUNTERS - right_count - 1];
+                }
+                if (rfreq_curr[0]) {
+                    right_data.first += read_freq[NCOUNTERS - right_count - 1];
+                }
+                right_count++;
+            }
+        }
+
+        // Everything got put into one group and it's frequently written
+        if (left_count == NCOUNTERS && left_data.second >= wfreq_threshold * left_count / 2) {
+            size_t freq = 0;
+            for (left_count = 0; left_count < NCOUNTERS; left_count++) {
+                if (freq + write_freq[left_count] >= write_total / 2) {
+                    auto distance_without = write_total / 2 - freq;
+                    auto distance_with = (freq + write_freq[left_count]) - write_total / 2;
+                    if (distance_with > distance_without) {
+                        break;
+                    }
+                }
+                freq += write_freq[left_count];
+            }
+        }
+
+        return left_count;
+    }
+
     static inline void CountRead(const size_t index) {
         CountRead(index, 1);
     }
