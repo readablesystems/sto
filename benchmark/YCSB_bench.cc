@@ -314,6 +314,8 @@ public:
                 << "Write [" << index << "] = " << ADAPTER_OF(ycsb_value)::GetWrite(index) << std::endl;
         }
 
+        std::cout << "Computed split index: " << ADAPTER_OF(ycsb_value)::ComputeSplitIndex() << std::endl;
+
         Transaction::rcu_release_all(advancer, num_threads);
 
         return 0;
