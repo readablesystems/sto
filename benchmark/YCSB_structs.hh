@@ -7,6 +7,7 @@
 #include "str.hh" // lcdf::Str
 #include "Interface.hh"
 #include "DB_index.hh" // bench::get_version; bench::ordered_index; bench::version_adapter
+#include "Adapter.hh"
 
 namespace ycsb {
 
@@ -62,6 +63,8 @@ struct ycsb_value {
     std::array<col_type, HALF_NUM_COLUMNS> odd_columns;
     std::array<col_type, HALF_NUM_COLUMNS> even_columns;
 };
+
+CREATE_ADAPTER(ycsb_value, 2 * HALF_NUM_COLUMNS);
 
 class ycsb_input_generator {
 public:

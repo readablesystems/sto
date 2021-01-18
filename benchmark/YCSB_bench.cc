@@ -14,7 +14,7 @@ using bench::db_profiler;
 
 enum {
     opt_dbid = 1, opt_nthrs, opt_mode, opt_time, opt_perf, opt_pfcnt, opt_gc,
-    opt_node, opt_comm
+    opt_node, opt_comm, opt_ada
 };
 
 static const Clp_Option options[] = {
@@ -27,6 +27,7 @@ static const Clp_Option options[] = {
     { "gc",           'g', opt_gc,    Clp_NoVal,     Clp_Negate| Clp_Optional },
     { "node",         'n', opt_node,  Clp_NoVal,     Clp_Negate| Clp_Optional },
     { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate| Clp_Optional },
+    { "adapt",        'a', opt_ada,   Clp_NoVal,     Clp_Negate| Clp_Optional },
 };
 
 static inline void print_usage(const char *argv_0) {
@@ -207,6 +208,8 @@ public:
                 break;
             case opt_comm:
                 break;
+            case opt_ada:
+                break;
             default:
                 print_usage(argv[0]);
                 ret = 1;
@@ -234,6 +237,7 @@ public:
 
         db_profiler prof(spawn_perf);
         ycsb_db<DBParams> db;
+        ADAPTER_OF(ycsb_value)::ResetGlobal();
 
         std::cout << "Prepopulating database..." << std::endl;
         db.prepopulate();
@@ -262,6 +266,12 @@ public:
         auto num_trans = run_benchmark(db, prof, runners, time_limit);
         prof.finish(num_trans);
 
+        for (size_t index = 0; index < ADAPTER_OF(ycsb_value)::NCOUNTERS; index++) {
+            std::cout
+                << "Read [" << index << "] = " << ADAPTER_OF(ycsb_value)::GetRead(index) << "; "
+                << "Write [" << index << "] = " << ADAPTER_OF(ycsb_value)::GetWrite(index) << std::endl;
+        }
+
         Transaction::rcu_release_all(advancer, num_threads);
 
         return 0;
@@ -287,6 +297,7 @@ int main(int argc, const char *const *argv) {
     bool clp_stop = false;
     bool node_tracking = false;
     bool enable_commute = false;
+    bool enable_adapt = false;
     while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
         switch (opt) {
         case opt_dbid:
@@ -305,6 +316,9 @@ int main(int argc, const char *const *argv) {
         case opt_comm:
             enable_commute = !clp->negated;
             break;
+        case opt_ada:
+            enable_adapt = !clp->negated;
+            break;
         default:
             break;
         }
@@ -319,6 +333,8 @@ int main(int argc, const char *const *argv) {
         return 1;
     else
         constants::processor_tsc_frequency = cpu_freq;
+
+    sto::AdapterConfig::Enabled = enable_adapt;
 
     switch (dbid) {
     case db_params_id::Default:
