@@ -7,6 +7,8 @@
 #include "PlatformFeatures.hh"
 #include "DB_profiler.hh"
 
+bool sto::AdapterConfig::Enabled = false;
+
 namespace ycsb {
 
 using namespace db_params;

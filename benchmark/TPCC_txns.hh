@@ -9,6 +9,30 @@
 
 namespace tpcc {
 
+inline void tpcc_adapters_commit() {
+    ADAPTER_OF(warehouse_value)::Commit();
+    ADAPTER_OF(district_value)::Commit();
+    ADAPTER_OF(customer_idx_value)::Commit();
+    ADAPTER_OF(customer_value)::Commit();
+    ADAPTER_OF(history_value)::Commit();
+    ADAPTER_OF(order_value)::Commit();
+    ADAPTER_OF(orderline_value)::Commit();
+    ADAPTER_OF(item_value)::Commit();
+    ADAPTER_OF(stock_value)::Commit();
+}
+
+inline void tpcc_adapters_treset() {
+    ADAPTER_OF(warehouse_value)::ResetThread();
+    ADAPTER_OF(district_value)::ResetThread();
+    ADAPTER_OF(customer_idx_value)::ResetThread();
+    ADAPTER_OF(customer_value)::ResetThread();
+    ADAPTER_OF(history_value)::ResetThread();
+    ADAPTER_OF(order_value)::ResetThread();
+    ADAPTER_OF(orderline_value)::ResetThread();
+    ADAPTER_OF(item_value)::ResetThread();
+    ADAPTER_OF(stock_value)::ResetThread();
+}
+
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
     typedef warehouse_value::NamedColumn wh_nc;
@@ -65,6 +89,8 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     // begin txn
     RWTXN {
     ++starts;
+    tpcc_adapters_commit();
+    tpcc_adapters_treset();
 
     int64_t wh_tax_rate, dt_tax_rate;
     uint64_t dt_next_oid;
@@ -127,6 +153,11 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     {
     auto [abort, result] = db.tbl_orders(q_w_id).insert_row(ok, ov, false);
+    ADAPTER_OF(order_value)::CountWrite(0);
+    ADAPTER_OF(order_value)::CountWrite(1);
+    ADAPTER_OF(order_value)::CountWrite(2);
+    ADAPTER_OF(order_value)::CountWrite(3);
+    ADAPTER_OF(order_value)::CountWrite(4);
     (void)result;
     CHK(abort);
     assert(!result);
@@ -200,10 +231,15 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
                 new_sv->s_quantity += (91 - (int32_t) qty);
             new_sv->s_ytd += qty;
             new_sv->s_order_cnt += 1;
-            if (wid != q_w_id)
+            if (wid != q_w_id) {
                 new_sv->s_remote_cnt += 1;
+                ADAPTER_OF(stock_value)::CountWrite((int)st_nc::s_remote_cnt);
+            }
             db.tbl_stocks(wid).update_row(row, new_sv);
         }
+        ADAPTER_OF(stock_value)::CountWrite((int)st_nc::s_quantity);
+        ADAPTER_OF(stock_value)::CountWrite((int)st_nc::s_ytd);
+        ADAPTER_OF(stock_value)::CountWrite((int)st_nc::s_order_cnt);
 
         double ol_amount = qty * i_price/100.0;
 
@@ -230,6 +266,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     // commit txn
     // retry until commits
     } TEND(true);
+    tpcc_adapters_treset();
 
     TXP_INCREMENT(txp_tpcc_no_commits);
     TXP_ACCOUNT(txp_tpcc_no_aborts, starts - 1);
@@ -300,6 +337,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     RWTXN {
     Sto::transaction()->special_txp = true;
     ++starts;
+    tpcc_adapters_commit();
+    tpcc_adapters_treset();
 
     // select warehouse row for update and retrieve warehouse info
     {
@@ -333,6 +372,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         new_wv->w_ytd += h_amount;
         db.tbl_warehouses().update_row(row, new_wv);
     }
+    ADAPTER_OF(warehouse_value)::CountWrite((int)wh_nc::w_ytd);
     }
 
     // select district row and retrieve district info
@@ -370,6 +410,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         new_dv->d_ytd += h_amount;
         db.tbl_districts(q_w_id).update_row(row, new_dv);
     }
+    ADAPTER_OF(district_value)::CountWrite((int)dt_nc::d_ytd);
 
     TXP_INCREMENT(txp_tpcc_pm_stage2);
     }
@@ -437,6 +478,10 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         }
         db.tbl_customers(q_c_w_id).update_row(row, new_cv);
     }
+    ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_balance);
+    ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_payment_cnt);
+    ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_ytd_payment);
+    ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_data);
 
     TXP_INCREMENT(txp_tpcc_pm_stage5);
 
@@ -465,6 +510,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // commit txn
     // retry until commits
     } TEND(true);
+
+    tpcc_adapters_treset();
 
     TXP_INCREMENT(txp_tpcc_pm_commits);
     TXP_ACCOUNT(txp_tpcc_pm_aborts, starts - 1);
@@ -509,6 +556,8 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     TXN {
     ++starts;
+    tpcc_adapters_commit();
+    tpcc_adapters_treset();
 
     if (by_name) {
         customer_idx_key ck(q_w_id, q_d_id, last_name);
@@ -600,6 +649,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     // commit txn
     // retry until commits
     } TEND(true);
+    tpcc_adapters_treset();
 
     TXP_INCREMENT(txp_tpcc_os_commits);
     TXP_ACCOUNT(txp_tpcc_os_aborts, starts - 1);
@@ -631,6 +681,8 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
 
     RWTXN {
     ++starts;
+    tpcc_adapters_commit();
+    tpcc_adapters_treset();
 
     for (uint64_t q_d_id = 1; q_d_id <= 10; ++q_d_id) {
         order_id = 0;
@@ -685,6 +737,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
             new_ov->o_carrier_id = carrier_id;
             db.tbl_orders(q_w_id).update_row(row, new_ov);
         }
+        ADAPTER_OF(order_value)::CountWrite((int)od_nc::o_carrier_id);
         }
 
         {
@@ -712,6 +765,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
                 new_olv->ol_delivery_d = delivery_date;
                 db.tbl_orderlines(q_w_id).update_row(row, new_olv);
             }
+            ADAPTER_OF(orderline_value)::CountWrite((int)ol_nc::ol_delivery_d);
         }
         }
 
@@ -737,12 +791,15 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
             new_cv->c_delivery_cnt += 1;
             db.tbl_customers(q_w_id).update_row(row, new_cv);
         }
+        ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_balance);
+        ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_delivery_cnt);
         }
     }
 
     } TEND(true);
 
     last_delivered = delivered_order_ids;
+    tpcc_adapters_treset();
 
     TXP_INCREMENT(txp_tpcc_dl_commits);
     TXP_ACCOUNT(txp_tpcc_dl_aborts, starts - 1);
@@ -772,6 +829,8 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 
     TXN {
     ++starts;
+    tpcc_adapters_commit();
+    tpcc_adapters_treset();
 
     ol_iids.clear();
     auto d_next_oid = db.oid_generator().get(q_w_id, q_d_id);
@@ -797,9 +856,11 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
         if(value.s_quantity() < threshold) {
             out_count += 1;
         }
+        ADAPTER_OF(stock_value)::CountWrite((int)st_nc::s_quantity);
     }
 
     } TEND(true);
+    tpcc_adapters_treset();
 
     TXP_INCREMENT(txp_tpcc_st_commits);
     TXP_ACCOUNT(txp_tpcc_st_aborts, starts - 1);

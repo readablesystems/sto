@@ -1768,31 +1768,37 @@ class RecordAccessor<A, tpcc::stock_value> {
  public:
   
   const std::array<fix_string<24>, NUM_DISTRICTS_PER_WAREHOUSE>& s_dists() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(0);
     return impl().s_dists_impl();
   }
 
   
   const var_string<50>& s_data() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(1);
     return impl().s_data_impl();
   }
 
   
   const int32_t& s_quantity() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(2);
     return impl().s_quantity_impl();
   }
 
   
   const uint32_t& s_ytd() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(3);
     return impl().s_ytd_impl();
   }
 
   
   const uint32_t& s_order_cnt() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(4);
     return impl().s_order_cnt_impl();
   }
 
   
   const uint32_t& s_remote_cnt() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(5);
     return impl().s_remote_cnt_impl();
   }
 

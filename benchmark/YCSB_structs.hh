@@ -36,7 +36,7 @@ struct ycsb_key {
     uint64_t w_id;
 };
 
-#define COL_WIDTH 100
+#define COL_WIDTH 4
 #define HALF_NUM_COLUMNS 5
 typedef fix_string<COL_WIDTH> col_type;
 

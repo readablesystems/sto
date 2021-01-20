@@ -39,7 +39,7 @@
 // @section: clp parser definitions
 enum {
     opt_dbid = 1, opt_nwhs, opt_nthrs, opt_time, opt_perf, opt_pfcnt, opt_gc,
-    opt_gr, opt_node, opt_comm, opt_verb, opt_mix
+    opt_gr, opt_node, opt_comm, opt_verb, opt_mix, opt_ada
 };
 
 extern const char* workload_mix_names[];
@@ -883,6 +883,8 @@ public:
                     break;
                 case opt_comm:
                     break;
+                case opt_ada:
+                    break;
                 case opt_verb:
                     verbose = !clp->negated;
                     break;
@@ -919,6 +921,16 @@ public:
                       << (counter_mode ? "counter" : "record") << " mode" << std::endl;
         }
 
+        ADAPTER_OF(warehouse_value)::ResetGlobal();
+        ADAPTER_OF(district_value)::ResetGlobal();
+        ADAPTER_OF(customer_idx_value)::ResetGlobal();
+        ADAPTER_OF(customer_value)::ResetGlobal();
+        ADAPTER_OF(history_value)::ResetGlobal();
+        ADAPTER_OF(order_value)::ResetGlobal();
+        ADAPTER_OF(orderline_value)::ResetGlobal();
+        ADAPTER_OF(item_value)::ResetGlobal();
+        ADAPTER_OF(stock_value)::ResetGlobal();
+
         db_profiler prof(spawn_perf);
         tpcc_db<DBParams> db(num_warehouses);
 
@@ -948,6 +960,17 @@ public:
         std::cout << "Remaining unresolved deliveries: " << remaining_deliveries << std::endl;
 
         Transaction::rcu_release_all(advancer, num_threads);
+
+        ADAPTER_OF(warehouse_value)::PrintStats();
+        ADAPTER_OF(district_value)::PrintStats();
+        ADAPTER_OF(customer_idx_value)::PrintStats();
+        ADAPTER_OF(customer_value)::PrintStats();
+        ADAPTER_OF(history_value)::PrintStats();
+        ADAPTER_OF(order_value)::PrintStats();
+        ADAPTER_OF(orderline_value)::PrintStats();
+        ADAPTER_OF(item_value)::PrintStats();
+        ADAPTER_OF(stock_value)::PrintStats();
+
 
         return 0;
     }

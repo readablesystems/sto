@@ -7,6 +7,7 @@
 #include "DB_structs.hh"
 #include "xxhash.h"
 #include "str.hh" // lcdf::Str
+#include "Adapter.hh"
 
 #define NUM_DISTRICTS_PER_WAREHOUSE 10
 #define NUM_CUSTOMERS_PER_DISTRICT  3000
@@ -134,6 +135,7 @@ struct warehouse_value {
     int64_t        w_tax; // in 1/10000
     uint64_t       w_ytd; // in 1/100
 };
+DEFINE_ADAPTER(warehouse_value, 8);
 
 // DISTRICT
 
@@ -194,6 +196,7 @@ struct district_value {
     // we use the separate oid generator for better semantics in transactions
     //uint64_t       d_next_o_id;
 };
+DEFINE_ADAPTER(district_value, 8);
 
 
 // CUSTOMER
@@ -242,6 +245,7 @@ struct customer_idx_value {
 
     std::list<uint64_t> c_ids;
 };
+DEFINE_ADAPTER(customer_idx_value, 1);
 
 struct customer_key {
     customer_key(uint64_t wid, uint64_t did, uint64_t cid) {
@@ -338,6 +342,7 @@ struct customer_value {
     uint16_t        c_delivery_cnt;
     fix_string<500> c_data;
 };
+DEFINE_ADAPTER(customer_value, 18);
 
 struct c_data_info {
     c_data_info() = default;
@@ -412,6 +417,7 @@ struct history_value {
     int64_t        h_amount;
     var_string<24> h_data;
 };
+DEFINE_ADAPTER(history_value, 8);
 
 // ORDER
 
@@ -502,6 +508,7 @@ struct order_value{
     uint32_t o_all_local;
     uint64_t o_carrier_id;
 };
+DEFINE_ADAPTER(order_value, 5);
 
 // ORDER-LINE
 
@@ -561,6 +568,7 @@ struct orderline_value {
     fix_string<24> ol_dist_info;
     uint32_t       ol_delivery_d;
 };
+DEFINE_ADAPTER(orderline_value, 6);
 
 // ITEM
 
@@ -597,6 +605,7 @@ struct item_value {
     var_string<24> i_name;
     var_string<50> i_data;
 };
+DEFINE_ADAPTER(item_value, 4);
 
 // STOCK
 
@@ -651,6 +660,7 @@ struct stock_value {
     uint32_t       s_order_cnt;
     uint32_t       s_remote_cnt;
 };
+DEFINE_ADAPTER(stock_value, 6);
 
 }; // namespace tpcc
 
