@@ -7,7 +7,19 @@
 #include "TPCC_txns.hh"
 #include "PlatformFeatures.hh"
 
+bool sto::AdapterConfig::Enabled = false;
+
 namespace tpcc {
+
+INITIALIZE_ADAPTER(ADAPTER_OF(warehouse_value));
+INITIALIZE_ADAPTER(ADAPTER_OF(district_value));
+INITIALIZE_ADAPTER(ADAPTER_OF(customer_idx_value));
+INITIALIZE_ADAPTER(ADAPTER_OF(customer_value));
+INITIALIZE_ADAPTER(ADAPTER_OF(history_value));
+INITIALIZE_ADAPTER(ADAPTER_OF(order_value));
+INITIALIZE_ADAPTER(ADAPTER_OF(orderline_value));
+INITIALIZE_ADAPTER(ADAPTER_OF(item_value));
+INITIALIZE_ADAPTER(ADAPTER_OF(stock_value));
 
 const char* tpcc_input_generator::last_names[] = {
         "BAR", "OUGHT", "ABLE", "PRI", "PRES",
@@ -28,6 +40,7 @@ const Clp_Option options[] = {
         { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "verbose",      'v', opt_verb,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "mix",          'm', opt_mix,   Clp_ValInt,    Clp_Optional },
+        { "adapt",        'a', opt_ada,   Clp_NoVal,     Clp_Negate| Clp_Optional },
 };
 
 const char* workload_mix_names[] = { "Full", "NO-only", "NO+P-only" };
@@ -121,6 +134,7 @@ int main(int argc, const char *const *argv) {
     bool clp_stop = false;
     bool node_tracking = false;
     bool enable_commute = false;
+    bool enable_adapt = false;
     while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
         switch (opt) {
         case opt_dbid:
@@ -139,6 +153,9 @@ int main(int argc, const char *const *argv) {
         case opt_comm:
             enable_commute = !clp->negated;
             break;
+        case opt_ada:
+            enable_adapt = !clp->negated;
+            break;
         default:
             break;
         }
@@ -147,6 +164,8 @@ int main(int argc, const char *const *argv) {
     Clp_DeleteParser(clp);
     if (ret_code != 0)
         return ret_code;
+
+    sto::AdapterConfig::Enabled = enable_adapt;
 
     switch (dbid) {
     case db_params_id::Default:

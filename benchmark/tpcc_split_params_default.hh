@@ -47,41 +47,49 @@ class RecordAccessor<A, tpcc::warehouse_value> {
  public:
   
   const var_string<10>& w_name() const {
+    ADAPTER_OF(tpcc::warehouse_value)::CountRead(0);
     return impl().w_name_impl();
   }
 
   
   const var_string<20>& w_street_1() const {
+    ADAPTER_OF(tpcc::warehouse_value)::CountRead(1);
     return impl().w_street_1_impl();
   }
 
   
   const var_string<20>& w_street_2() const {
+    ADAPTER_OF(tpcc::warehouse_value)::CountRead(2);
     return impl().w_street_2_impl();
   }
 
   
   const var_string<20>& w_city() const {
+    ADAPTER_OF(tpcc::warehouse_value)::CountRead(3);
     return impl().w_city_impl();
   }
 
   
   const fix_string<2>& w_state() const {
+    ADAPTER_OF(tpcc::warehouse_value)::CountRead(4);
     return impl().w_state_impl();
   }
 
   
   const fix_string<9>& w_zip() const {
+    ADAPTER_OF(tpcc::warehouse_value)::CountRead(5);
     return impl().w_zip_impl();
   }
 
   
   const int64_t& w_tax() const {
+    ADAPTER_OF(tpcc::warehouse_value)::CountRead(6);
     return impl().w_tax_impl();
   }
 
   
   const uint64_t& w_ytd() const {
+    ADAPTER_OF(tpcc::warehouse_value)::CountRead(7);
     return impl().w_ytd_impl();
   }
 
@@ -282,41 +290,49 @@ class RecordAccessor<A, tpcc::district_value> {
  public:
   
   const var_string<10>& d_name() const {
+    ADAPTER_OF(tpcc::district_value)::CountRead(0);
     return impl().d_name_impl();
   }
 
   
   const var_string<20>& d_street_1() const {
+    ADAPTER_OF(tpcc::district_value)::CountRead(1);
     return impl().d_street_1_impl();
   }
 
   
   const var_string<20>& d_street_2() const {
+    ADAPTER_OF(tpcc::district_value)::CountRead(2);
     return impl().d_street_2_impl();
   }
 
   
   const var_string<20>& d_city() const {
+    ADAPTER_OF(tpcc::district_value)::CountRead(3);
     return impl().d_city_impl();
   }
 
   
   const fix_string<2>& d_state() const {
+    ADAPTER_OF(tpcc::district_value)::CountRead(4);
     return impl().d_state_impl();
   }
 
   
   const fix_string<9>& d_zip() const {
+    ADAPTER_OF(tpcc::district_value)::CountRead(5);
     return impl().d_zip_impl();
   }
 
   
   const int64_t& d_tax() const {
+    ADAPTER_OF(tpcc::district_value)::CountRead(6);
     return impl().d_tax_impl();
   }
 
   
   const int64_t& d_ytd() const {
+    ADAPTER_OF(tpcc::district_value)::CountRead(7);
     return impl().d_ytd_impl();
   }
 
@@ -537,91 +553,109 @@ class RecordAccessor<A, tpcc::customer_value> {
  public:
   
   const var_string<16>& c_first() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(0);
     return impl().c_first_impl();
   }
 
   
   const fix_string<2>& c_middle() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(1);
     return impl().c_middle_impl();
   }
 
   
   const var_string<16>& c_last() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(2);
     return impl().c_last_impl();
   }
 
   
   const var_string<20>& c_street_1() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(3);
     return impl().c_street_1_impl();
   }
 
   
   const var_string<20>& c_street_2() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(4);
     return impl().c_street_2_impl();
   }
 
   
   const var_string<20>& c_city() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(5);
     return impl().c_city_impl();
   }
 
   
   const fix_string<2>& c_state() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(6);
     return impl().c_state_impl();
   }
 
   
   const fix_string<9>& c_zip() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(7);
     return impl().c_zip_impl();
   }
 
   
   const fix_string<16>& c_phone() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(8);
     return impl().c_phone_impl();
   }
 
   
   const uint32_t& c_since() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(9);
     return impl().c_since_impl();
   }
 
   
   const fix_string<2>& c_credit() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(10);
     return impl().c_credit_impl();
   }
 
   
   const int64_t& c_credit_lim() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(11);
     return impl().c_credit_lim_impl();
   }
 
   
   const int64_t& c_discount() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(12);
     return impl().c_discount_impl();
   }
 
   
   const int64_t& c_balance() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(13);
     return impl().c_balance_impl();
   }
 
   
   const int64_t& c_ytd_payment() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(14);
     return impl().c_ytd_payment_impl();
   }
 
   
   const uint16_t& c_payment_cnt() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(15);
     return impl().c_payment_cnt_impl();
   }
 
   
   const uint16_t& c_delivery_cnt() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(16);
     return impl().c_delivery_cnt_impl();
   }
 
   
   const fix_string<500>& c_data() const {
+    ADAPTER_OF(tpcc::customer_value)::CountRead(17);
     return impl().c_data_impl();
   }
 
@@ -942,41 +976,49 @@ class RecordAccessor<A, tpcc::history_value> {
  public:
   
   const uint64_t& h_c_id() const {
+    ADAPTER_OF(tpcc::history_value)::CountRead(0);
     return impl().h_c_id_impl();
   }
 
   
   const uint64_t& h_c_d_id() const {
+    ADAPTER_OF(tpcc::history_value)::CountRead(1);
     return impl().h_c_d_id_impl();
   }
 
   
   const uint64_t& h_c_w_id() const {
+    ADAPTER_OF(tpcc::history_value)::CountRead(2);
     return impl().h_c_w_id_impl();
   }
 
   
   const uint64_t& h_d_id() const {
+    ADAPTER_OF(tpcc::history_value)::CountRead(3);
     return impl().h_d_id_impl();
   }
 
   
   const uint64_t& h_w_id() const {
+    ADAPTER_OF(tpcc::history_value)::CountRead(4);
     return impl().h_w_id_impl();
   }
 
   
   const uint32_t& h_date() const {
+    ADAPTER_OF(tpcc::history_value)::CountRead(5);
     return impl().h_date_impl();
   }
 
   
   const int64_t& h_amount() const {
+    ADAPTER_OF(tpcc::history_value)::CountRead(6);
     return impl().h_amount_impl();
   }
 
   
   const var_string<24>& h_data() const {
+    ADAPTER_OF(tpcc::history_value)::CountRead(7);
     return impl().h_data_impl();
   }
 
@@ -1171,26 +1213,31 @@ class RecordAccessor<A, tpcc::order_value> {
  public:
   
   const uint64_t& o_c_id() const {
+    ADAPTER_OF(tpcc::order_value)::CountRead(0);
     return impl().o_c_id_impl();
   }
 
   
   const uint32_t& o_entry_d() const {
+    ADAPTER_OF(tpcc::order_value)::CountRead(1);
     return impl().o_entry_d_impl();
   }
 
   
   const uint32_t& o_ol_cnt() const {
+    ADAPTER_OF(tpcc::order_value)::CountRead(2);
     return impl().o_ol_cnt_impl();
   }
 
   
   const uint32_t& o_all_local() const {
+    ADAPTER_OF(tpcc::order_value)::CountRead(3);
     return impl().o_all_local_impl();
   }
 
   
   const uint64_t& o_carrier_id() const {
+    ADAPTER_OF(tpcc::order_value)::CountRead(4);
     return impl().o_carrier_id_impl();
   }
 
@@ -1351,31 +1398,37 @@ class RecordAccessor<A, tpcc::orderline_value> {
  public:
   
   const uint64_t& ol_i_id() const {
+    ADAPTER_OF(tpcc::orderline_value)::CountRead(0);
     return impl().ol_i_id_impl();
   }
 
   
   const uint64_t& ol_supply_w_id() const {
+    ADAPTER_OF(tpcc::orderline_value)::CountRead(1);
     return impl().ol_supply_w_id_impl();
   }
 
   
   const uint32_t& ol_quantity() const {
+    ADAPTER_OF(tpcc::orderline_value)::CountRead(2);
     return impl().ol_quantity_impl();
   }
 
   
   const int32_t& ol_amount() const {
+    ADAPTER_OF(tpcc::orderline_value)::CountRead(3);
     return impl().ol_amount_impl();
   }
 
   
   const fix_string<24>& ol_dist_info() const {
+    ADAPTER_OF(tpcc::orderline_value)::CountRead(4);
     return impl().ol_dist_info_impl();
   }
 
   
   const uint32_t& ol_delivery_d() const {
+    ADAPTER_OF(tpcc::orderline_value)::CountRead(5);
     return impl().ol_delivery_d_impl();
   }
 
@@ -1544,21 +1597,25 @@ class RecordAccessor<A, tpcc::item_value> {
  public:
   
   const uint64_t& i_im_id() const {
+    ADAPTER_OF(tpcc::item_value)::CountRead(0);
     return impl().i_im_id_impl();
   }
 
   
   const uint32_t& i_price() const {
+    ADAPTER_OF(tpcc::item_value)::CountRead(1);
     return impl().i_price_impl();
   }
 
   
   const var_string<24>& i_name() const {
+    ADAPTER_OF(tpcc::item_value)::CountRead(2);
     return impl().i_name_impl();
   }
 
   
   const var_string<50>& i_data() const {
+    ADAPTER_OF(tpcc::item_value)::CountRead(3);
     return impl().i_data_impl();
   }
 
@@ -1707,31 +1764,37 @@ class RecordAccessor<A, tpcc::stock_value> {
  public:
   
   const std::array<fix_string<24>, NUM_DISTRICTS_PER_WAREHOUSE>& s_dists() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(0);
     return impl().s_dists_impl();
   }
 
   
   const var_string<50>& s_data() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(1);
     return impl().s_data_impl();
   }
 
   
   const int32_t& s_quantity() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(2);
     return impl().s_quantity_impl();
   }
 
   
   const uint32_t& s_ytd() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(3);
     return impl().s_ytd_impl();
   }
 
   
   const uint32_t& s_order_cnt() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(4);
     return impl().s_order_cnt_impl();
   }
 
   
   const uint32_t& s_remote_cnt() const {
+    ADAPTER_OF(tpcc::stock_value)::CountRead(5);
     return impl().s_remote_cnt_impl();
   }
 
@@ -1894,6 +1957,7 @@ class RecordAccessor<A, tpcc::customer_idx_value> {
  public:
   
   const std::list<uint64_t>& c_ids() const {
+    ADAPTER_OF(tpcc::customer_idx_value)::CountRead(0);
     return impl().c_ids_impl();
   }
 

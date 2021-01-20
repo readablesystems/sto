@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "Sto.hh"
+#include <cxxabi.h>
 
 namespace sto {
 
@@ -10,9 +11,8 @@ namespace sto {
 struct AdapterConfig {
     static bool Enabled;
 };
-bool AdapterConfig::Enabled = true;
 
-template <typename T, size_t NumCounters>
+template <typename T, ssize_t NumCounters>
 struct Adapter {
 public:
     static constexpr auto NCOUNTERS = NumCounters;
@@ -64,15 +64,52 @@ public:
         // Semi-consistent snapshot of the data; maybe use locks in the future
         std::array<size_t, NCOUNTERS> read_freq;
         std::array<size_t, NCOUNTERS> write_freq;
+        std::array<size_t, NCOUNTERS> read_psum;  // Prefix sums
+        std::array<size_t, NCOUNTERS> write_psum;  // Prefix sums
         size_t read_total = 0;
         size_t write_total = 0;
         for (size_t index = 0; index < NCOUNTERS; index++) {
             read_freq[index] = GetRead(index);
             write_freq[index] = GetWrite(index);
+            if (index) {
+                read_psum[index] = read_psum[index - 1] + read_freq[index];
+                write_psum[index] = write_psum[index - 1] + write_freq[index];
+            } else {
+                read_psum[index] = read_freq[index];
+                write_psum[index] = write_freq[index];
+            }
             read_total += read_freq[index];
             write_total += write_freq[index];
         }
 
+        size_t best_split = NCOUNTERS;
+        double best_data[2] = {read_psum[best_split - 1] * 1.0 / read_total, write_psum[best_split - 1] * 1.0 / write_total};
+        // Maximize write load vs read load difference
+        for (size_t current_split = NCOUNTERS - 1; current_split; current_split--) {
+            double current_data[2] = {read_psum[current_split - 1] * 1.0 / read_total, write_psum[current_split - 1] * 1.0 / write_total};
+            double best_diff = std::abs(best_data[1] - best_data[0]);
+            double current_diff = std::abs(current_data[1] - current_data[0]);
+            if (current_diff > best_diff * 1.05) {
+                best_split = current_split;
+                best_data[0] = current_data[0];
+                best_data[1] = current_data[1];
+            }
+        }
+
+        // Load difference is unsubstantial, try to balance writes
+        if (best_split == NCOUNTERS) {
+            for (size_t current_split = NCOUNTERS - 1; current_split; current_split--) {
+                double best_diff = std::abs(write_psum[best_split - 1] * 1.0 / read_total - 0.5);
+                double current_diff = std::abs(write_psum[current_split - 1] * 1.0 / write_total - 0.5);
+                if (current_diff > best_diff * 1.05) {
+                    best_split = current_split;
+                }
+            }
+        }
+
+        return best_split;
+
+        /*
         // 25% of expectation is considered frequent
         const size_t rfreq_threshold = read_total / (4 * NCOUNTERS);
         const size_t wfreq_threshold = write_total / (4 * NCOUNTERS);
@@ -111,11 +148,15 @@ public:
             };
 
             bool add_left = false;
-            if (lfreq[1] && lfreq_curr[1] || lfreq[0] && lfreq_curr[0]) {
+            if (lfreq[1] && lfreq_curr[1]) {  // Check write matching
                 add_left = true;
-            } else if (rfreq[1] && rfreq_curr[1] || rfreq[0] && rfreq_curr[0]) {
+            } else if (rfreq[1] && rfreq_curr[1]) {
                 add_left = false;
-            } else if (!lfreq_curr[0] && !lfreq_curr[1]) {  // No match :(
+            } else if (lfreq[0] && lfreq_curr[0]) {  // Check read matching
+                add_left = true;
+            } else if (rfreq[0] && rfreq_curr[0]) {
+                add_left = false;
+            } else if (!lfreq_curr[0] && !lfreq_curr[1]) {  // Low-effect columns
                 add_left = true;
             } else if (!rfreq_curr[0] && !rfreq_curr[1]) {
                 add_left = false;
@@ -127,7 +168,7 @@ public:
                 add_left = false;
             } else if (!rfreq[0] && !rfreq_curr[0] && !rfreq_curr[1]) {
                 add_left = false;
-            } else {  // Damage has to happen, arbitrarily push to righ
+            } else {  // Damage has to happen, arbitrarily push to right
                 add_left = false;
             }
             if (add_left) {
@@ -165,6 +206,7 @@ public:
         }
 
         return left_count;
+        */
     }
 
     static inline void CountRead(const size_t index) {
@@ -205,6 +247,19 @@ public:
             return global_counters.write_counters[index].load(std::memory_order::memory_order_relaxed);
         }
         return 0;
+    }
+
+    static void PrintStats() {
+        int status;
+        char* tname = abi::__cxa_demangle(typeid(T).name(), 0, 0, &status);
+        std::cout << tname << " stats:" << std::endl;
+        for (size_t index = 0; index < NCOUNTERS; index++) {
+            std::cout
+                << "Read [" << index << "] = " << GetRead(index) << "; "
+                << "Write [" << index << "] = " << GetWrite(index) << std::endl;
+        }
+
+        std::cout << "Computed split index: " << ComputeSplitIndex() << std::endl;
     }
 
     static inline void ResetGlobal() {
@@ -257,6 +312,11 @@ public:
 #define ADAPTER_OF(Type) Type##Adapter
 #endif
 
+#ifndef DEFINE_ADAPTER
+#define DEFINE_ADAPTER(Type, NumCounters) \
+    using ADAPTER_OF(Type) = ::sto::Adapter<Type, NumCounters>;
+#endif
+
 #ifndef INITIALIZE_ADAPTER
 #define INITIALIZE_ADAPTER(Type) \
     template <> \
@@ -267,7 +327,7 @@ public:
 
 #ifndef CREATE_ADAPTER
 #define CREATE_ADAPTER(Type, NumCounters) \
-    using ADAPTER_OF(Type) = ::sto::Adapter<Type, NumCounters>; \
+    DEFINE_ADAPTER(Type, NumCounters); \
     INITIALIZE_ADAPTER(ADAPTER_OF(Type));
 #endif
 
