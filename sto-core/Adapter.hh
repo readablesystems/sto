@@ -99,7 +99,7 @@ public:
         // Load difference is unsubstantial, try to balance writes
         if (best_split == NCOUNTERS) {
             for (size_t current_split = NCOUNTERS - 1; current_split; current_split--) {
-                double best_diff = std::abs(write_psum[best_split - 1] * 1.0 / read_total - 0.5);
+                double best_diff = std::abs(write_psum[best_split - 1] * 1.0 / write_total - 0.5);
                 double current_diff = std::abs(write_psum[current_split - 1] * 1.0 / write_total - 0.5);
                 if (current_diff > best_diff * 1.05) {
                     best_split = current_split;
