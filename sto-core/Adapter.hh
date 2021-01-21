@@ -102,7 +102,7 @@ public:
                 double best_diff = std::abs(write_psum[best_split - 1] * 1.0 / write_total - 0.5);
                 double current_diff = std::abs(write_psum[current_split - 1] * 1.0 / write_total - 0.5);
 
-                if (current_diff < best_diff * .95) {
+                if (current_diff < best_diff * 0.95) {
                     best_split = current_split;
                 }
             }
