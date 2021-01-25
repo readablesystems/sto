@@ -123,15 +123,16 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                     db.ycsb_table().update_row(row, new_val);
 #endif
                 } else {
-                    auto new_val = Sto::tx_alloc<ycsb_value>();
+                    auto new_val = new (Sto::tx_alloc<ycsb_value>()) ycsb_value();
+                    new (new_val) ycsb_value();
                     if (col_parity) {
                         new_val->odd_columns() = value.odd_columns();
                         new_val->odd_columns()[op.col_n/2] = op.write_value;
-                        ADAPTER_OF(ycsb_value)::CountWrite(op.col_n);
+                        ADAPTER_OF(ycsb_value)::CountWrite(op.col_n % 2);
                     } else {
                         new_val->even_columns() = value.even_columns();
                         new_val->even_columns()[op.col_n/2] = op.write_value;
-                        ADAPTER_OF(ycsb_value)::CountWrite(op.col_n);
+                        ADAPTER_OF(ycsb_value)::CountWrite(op.col_n % 2);
                     }
                     db.ycsb_table().update_row(row, new_val);
                 }

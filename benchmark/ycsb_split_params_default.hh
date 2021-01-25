@@ -35,17 +35,13 @@ class RecordAccessor<A, ycsb::ycsb_value> {
  public:
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() const {
-    for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
-        ADAPTER_OF(ycsb::ycsb_value)::CountRead(2 * i + 1);
-    }
+    ADAPTER_OF(ycsb::ycsb_value)::CountRead(1);
     return impl().odd_columns_impl();
   }
 
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns() const {
-    for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
-        ADAPTER_OF(ycsb::ycsb_value)::CountRead(2 * i);
-    }
+    ADAPTER_OF(ycsb::ycsb_value)::CountRead(0);
     return impl().even_columns_impl();
   }
 

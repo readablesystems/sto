@@ -47,8 +47,8 @@ typedef fix_string<COL_WIDTH> col_type;
 namespace ycsb_value_datatypes {
 
 enum class NamedColumn : int {
-    odd_columns = 0,
-    even_columns,
+    even_columns = 0,
+    odd_columns,
     COLCOUNT
 };
 
@@ -62,27 +62,27 @@ template <>
 struct split_value<0, 1> {
     explicit split_value() = default;
 
-    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS> odd_columns;
+    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS> even_columns;
 };
 template <>
 struct split_value<1, 2> {
     explicit split_value() = default;
 
-    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS> even_columns;
+    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS> odd_columns;
 };
 template <>
 struct unified_value<1> {
-    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() {
-        return split_0.odd_columns;
-    }
-    const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() const {
-        return split_0.odd_columns;
-    }
     std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns() {
-        return split_1.even_columns;
+        return split_0.even_columns;
     }
     const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns() const {
-        return split_1.even_columns;
+        return split_0.even_columns;
+    }
+    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() {
+        return split_1.odd_columns;
+    }
+    const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() const {
+        return split_1.odd_columns;
     }
 
     split_value<0, 1> split_0;
@@ -93,22 +93,22 @@ template <>
 struct split_value<0, 2> {
     explicit split_value() = default;
 
-    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS> odd_columns;
     std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS> even_columns;
+    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS> odd_columns;
 };
 template <>
 struct unified_value<2> {
-    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() {
-        return split_0.odd_columns;
-    }
-    const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() const {
-        return split_0.odd_columns;
-    }
     std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns() {
         return split_0.even_columns;
     }
     const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns() const {
         return split_0.even_columns;
+    }
+    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() {
+        return split_0.odd_columns;
+    }
+    const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() const {
+        return split_0.odd_columns;
     }
 
     split_value<0, 2> split_0;
@@ -119,18 +119,6 @@ struct ycsb_value {
 
     using NamedColumn = ycsb_value_datatypes::NamedColumn;
     
-    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() {
-        if (auto val = std::get_if<unified_value<1>>(&value)) {
-            return val->odd_columns();
-        }
-        return std::get<unified_value<2>>(value).odd_columns();
-    }
-    const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() const {
-        if (auto val = std::get_if<unified_value<1>>(&value)) {
-            return val->odd_columns();
-        }
-        return std::get<unified_value<2>>(value).odd_columns();
-    }
     std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns() {
         if (auto val = std::get_if<unified_value<1>>(&value)) {
             return val->even_columns();
@@ -143,10 +131,22 @@ struct ycsb_value {
         }
         return std::get<unified_value<2>>(value).even_columns();
     }
+    std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() {
+        if (auto val = std::get_if<unified_value<1>>(&value)) {
+            return val->odd_columns();
+        }
+        return std::get<unified_value<2>>(value).odd_columns();
+    }
+    const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() const {
+        if (auto val = std::get_if<unified_value<1>>(&value)) {
+            return val->odd_columns();
+        }
+        return std::get<unified_value<2>>(value).odd_columns();
+    }
 
     std::variant<
-        unified_value<1>,
-        unified_value<2>> value;
+        unified_value<2>,
+        unified_value<1>> value;
 };
 
 };  // namespace ycsb_value_datatypes
@@ -155,8 +155,8 @@ using ycsb_value = ycsb_value_datatypes::ycsb_value;
 CREATE_ADAPTER(ycsb_value, 2);
 
 
-using ycsb_odd_half_value = ycsb_value_datatypes::split_value<0, 1>;
-using ycsb_even_half_value = ycsb_value_datatypes::split_value<1, 2>;
+using ycsb_even_half_value = ycsb_value_datatypes::split_value<0, 1>;
+using ycsb_odd_half_value = ycsb_value_datatypes::split_value<1, 2>;
 
 class ycsb_input_generator {
 public:
