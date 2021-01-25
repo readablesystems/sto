@@ -48,11 +48,11 @@ struct {struct} {lbrace}
     output_struct_accessors(data, sdata)
 
     outfile.write('\n    std::variant<')
-    for splitindex in range(colcount):
-        if splitindex:
+    for splitindex in range(colcount, 0, -1):
+        if splitindex < colcount:
             outfile.write(',')
         outfile.write('\n        {unifiedstruct}<{index}>'.format(
-            index=splitindex + 1, **data))
+            index=splitindex, **data))
     outfile.write('> value;\n')
 
     outfile.write('''\
