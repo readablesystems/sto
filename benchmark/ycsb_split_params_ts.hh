@@ -10,22 +10,22 @@ struct SplitParams<ycsb::ycsb_value> {
   static constexpr auto split_builder = std::make_tuple(
     [](const ycsb::ycsb_value& in) -> ycsb::ycsb_odd_half_value {
       ycsb::ycsb_odd_half_value out;
-      out.odd_columns = in.odd_columns;
+      out.odd_columns() = in.odd_columns();
       return out;
     },
     [](const ycsb::ycsb_value& in) -> ycsb::ycsb_even_half_value {
       ycsb::ycsb_even_half_value out;
-      out.even_columns = in.even_columns;
+      out.even_columns() = in.even_columns();
       return out;
     }
   );
 
   static constexpr auto split_merger = std::make_tuple(
     [](ycsb::ycsb_value* out, const ycsb::ycsb_odd_half_value& in) -> void {
-      out->odd_columns = in.odd_columns;
+      out->odd_columns() = in.odd_columns();
     },
     [](ycsb::ycsb_value* out, const ycsb::ycsb_even_half_value& in) -> void {
-      out->even_columns = in.even_columns;
+      out->even_columns() = in.even_columns();
     }
   );
 
@@ -68,12 +68,12 @@ class UniRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<UniRecordAcces
  private:
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns_impl() const {
-    return vptr_->odd_columns;
+    return vptr_->odd_columns();
   }
 
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns_impl() const {
-    return vptr_->even_columns;
+    return vptr_->even_columns();
   }
 
 
@@ -81,8 +81,8 @@ class UniRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<UniRecordAcces
   void copy_into_impl(ycsb::ycsb_value* dst) const {
     
     if (vptr_) {
-      dst->odd_columns = vptr_->odd_columns;
-      dst->even_columns = vptr_->even_columns;
+      dst->odd_columns() = vptr_->odd_columns();
+      dst->even_columns() = vptr_->even_columns();
     }
   }
 
@@ -102,12 +102,12 @@ class SplitRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<SplitRecordA
  private:
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns_impl() const {
-    return vptr_0_->odd_columns;
+    return vptr_0_->odd_columns();
   }
 
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns_impl() const {
-    return vptr_1_->even_columns;
+    return vptr_1_->even_columns();
   }
 
 
@@ -115,12 +115,12 @@ class SplitRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<SplitRecordA
   void copy_into_impl(ycsb::ycsb_value* dst) const {
     
     if (vptr_0_) {
-      dst->odd_columns = vptr_0_->odd_columns;
+      dst->odd_columns() = vptr_0_->odd_columns();
     }
 
     
     if (vptr_1_) {
-      dst->even_columns = vptr_1_->even_columns;
+      dst->even_columns() = vptr_1_->even_columns();
     }
 
   }
