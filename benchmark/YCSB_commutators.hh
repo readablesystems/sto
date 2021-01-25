@@ -20,9 +20,9 @@ public:
 
     ycsb_value& operate(ycsb_value& fv) const {
         if (n % 2) {
-            fv.odd_columns[n/2] = v;
+            fv.odd_columns()[n/2] = v;
         } else {
-            fv.even_columns[n/2] = v;
+            fv.even_columns()[n/2] = v;
         }
         return fv;
     }
