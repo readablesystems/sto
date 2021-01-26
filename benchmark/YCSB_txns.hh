@@ -128,11 +128,9 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                     if (col_parity) {
                         new_val->odd_columns() = value.odd_columns();
                         new_val->odd_columns()[op.col_n/2] = op.write_value;
-                        ADAPTER_OF(ycsb_value)::CountWrite(op.col_n % 2);
                     } else {
                         new_val->even_columns() = value.even_columns();
                         new_val->even_columns()[op.col_n/2] = op.write_value;
-                        ADAPTER_OF(ycsb_value)::CountWrite(op.col_n % 2);
                     }
                     db.ycsb_table().update_row(row, new_val);
                 }
