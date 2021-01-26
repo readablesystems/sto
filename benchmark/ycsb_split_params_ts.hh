@@ -40,12 +40,12 @@ template <typename A>
 class RecordAccessor<A, ycsb::ycsb_value> {
  public:
   
-  const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() const {
+  const std::array<ycsb::ycsb_value_datatypes::accessor<1>, HALF_NUM_COLUMNS>& odd_columns() const {
     return impl().odd_columns_impl();
   }
 
   
-  const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns() const {
+  const std::array<ycsb::ycsb_value_datatypes::accessor<0>, HALF_NUM_COLUMNS>& even_columns() const {
     return impl().even_columns_impl();
   }
 
@@ -67,12 +67,12 @@ class UniRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<UniRecordAcces
 
  private:
   
-  const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns_impl() const {
+  const std::array<ycsb::ycsb_value_datatypes::accessor<1>, HALF_NUM_COLUMNS>& odd_columns_impl() const {
     return vptr_->odd_columns();
   }
 
   
-  const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns_impl() const {
+  const std::array<ycsb::ycsb_value_datatypes::accessor<0>, HALF_NUM_COLUMNS>& even_columns_impl() const {
     return vptr_->even_columns();
   }
 
@@ -101,12 +101,12 @@ class SplitRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<SplitRecordA
 
  private:
   
-  const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns_impl() const {
+  const std::array<ycsb::ycsb_value_datatypes::accessor<1>, HALF_NUM_COLUMNS>& odd_columns_impl() const {
     return vptr_0_->odd_columns();
   }
 
   
-  const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns_impl() const {
+  const std::array<ycsb::ycsb_value_datatypes::accessor<0>, HALF_NUM_COLUMNS>& even_columns_impl() const {
     return vptr_1_->even_columns();
   }
 
