@@ -4,155 +4,221 @@ import argparse
 import configparser
 import sys
 
-def output_struct(outfile, struct, sdata):
-    '''Output a single struct's variants.'''
-    colcount = len(sdata)
-    data = {
-            'colcount': colcount,
-            'lbrace': '{',
-            'ns': '{}_datatypes'.format(struct),
-            'rbrace': '}',
-            'splitstruct': 'split_value',
-            'unifiedstruct': 'unified_value',
-            'struct': struct,
-            }
+class Output:
+    def __init__(self, writer):
+        self._data = {}
+        self._indent = 0
+        self._writer = writer
+        self._tabwidth = 4
 
-    outfile.write('namespace {ns} {lbrace}\n\n'.format(**data))
+    def indent(self, amount=1):
+        self._indent += amount
 
-    output_struct_namedcolumns(data, sdata)
+    def unindent(self, amount=1):
+        self._indent = max(self._indent - amount, 0)
 
-    outfile.write('''\
+    def write(self, fmstring, **fmargs):
+        self._writer.write(fmstring.format(**fmargs, **self._data))
+
+    def writei(self, fmstring, **fmargs):
+        self.write('{}{}'.format(
+            ' ' * self._tabwidth * self._indent if fmstring else '',
+            fmstring),
+            **fmargs)
+
+    def writeln(self, fmstring='', **fmargs):
+        if fmstring:
+            self.writei(fmstring + '\n', **fmargs)
+        else:
+            self.write('\n')
+
+    def writelns(self, fmstring='', **fmargs):
+        for line in fmstring.split('\n'):
+            self.writeln(line, **fmargs)
+
+    ### Generation methods; hierarchical, not lexicographical
+
+    def convert_struct(self, struct, sdata):
+        '''Output a single struct's variants.'''
+        self.colcount = len(sdata)
+        self._data = {
+                'colcount': self.colcount,
+                'lbrace': '{',
+                'ns': '{}_datatypes'.format(struct),
+                'rbrace': '}',
+                'splitstruct': 'split_value',
+                'unifiedstruct': 'unified_value',
+                'struct': struct,
+                }
+        self.sdata = sdata
+
+        self.writelns('namespace {ns} {lbrace}\n')
+
+        self.convert_namedcolumns()
+
+        self.writelns('''\
 template <size_t StartIndex, size_t EndIndex>
 struct {splitstruct};
 
 template <size_t SplitIndex>
 struct {unifiedstruct};
 
-'''.format(**data))
+struct {struct};
 
-    for splitindex in range(colcount):
-        output_struct_split_variant(data, sdata, 0, splitindex + 1)
-        if splitindex + 1 < colcount:
-            output_struct_split_variant(data, sdata, splitindex + 1, colcount)
-        output_struct_unified_variant(data, sdata, splitindex + 1)
-        outfile.write('\n');
+CREATE_ADAPTER({struct}, {colcount});
+''')
 
-    outfile.write('''\
-struct {struct} {lbrace}
-    explicit {struct}() = default;
+        for splitindex in range(self.colcount):
+            self.convert_split_variant(0, splitindex + 1)
+            if splitindex + 1 < self.colcount:
+                self.convert_split_variant(splitindex + 1, self.colcount)
+            self.convert_unified_variant(splitindex + 1)
+            self.writelns();
 
-    using NamedColumn = {ns}::NamedColumn;
-    
-'''.format(**data))
+        self.writeln('struct {struct} {lbrace}')
 
-    output_struct_accessors(data, sdata)
+        self.indent()
 
-    outfile.write('\n    std::variant<')
-    for splitindex in range(colcount, 0, -1):
-        if splitindex < colcount:
-            outfile.write(',')
-        outfile.write('\n        {unifiedstruct}<{index}>'.format(
-            index=splitindex, **data))
-    outfile.write('> value;\n')
+        self.writelns('''\
+explicit {struct}() = default;
 
-    outfile.write('''\
+using NamedColumn = {ns}::NamedColumn;
+
+''')
+
+        self.convert_accessors()
+
+        self.writeln('std::variant<')
+
+        self.indent()
+
+        for splitindex in range(self.colcount, 0, -1):
+            self.writei('{unifiedstruct}<{index}>', index=splitindex)
+            if splitindex > 1:
+                self.write(',')
+            self.writeln()
+        self.writeln('> value;')
+
+        self.unindent(2)
+
+        self.writelns('''\
 {rbrace};
 
 {rbrace};  // namespace {ns}
 
 using {struct} = {ns}::{struct};
-CREATE_ADAPTER({struct}, {colcount});
-'''.format(**data))
+using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
+''')
 
-def output_struct_accessors(data, sdata):
-    '''Output the accessors.'''
-    for member, ctype in sdata.items():
-        for const in ('', 'const '):
-            outfile.write(
-                    '    {const}{ctype}& {member}() {const}{lbrace}\n'.format(
-                        const=const, ctype=ctype, member=member, **data))
-            for splitindex in range(data['colcount']):
-                if splitindex + 1 < data['colcount']:
-                    outfile.write('''\
-        if (auto val = std::get_if<{unifiedstruct}<{index}>>(&value)) {lbrace}
-            return val->{member}();
-        {rbrace}
-'''.format(index=splitindex + 1, member=member, **data))
-                else:
-                    outfile.write('''\
-        return std::get<{unifiedstruct}<{index}>>(value).{member}();
-'''.format(index=splitindex + 1, member=member, **data))
-            outfile.write('    {rbrace}\n'.format(
-                ctype=ctype, member=member, **data))
+    def convert_namedcolumns(self):
+        '''Output the NamedColumn for the given type.'''
+        self.writelns('enum class NamedColumn : int {lbrace}')
 
-def output_struct_namedcolumns(data, sdata):
-    '''Output the NamedColumn for the given type.'''
-    outfile.write('enum class NamedColumn : int {lbrace}\n'.format(**data))
-    first_member = True
-    for member in sdata:
+        self.indent()
+        first_member = True
+        for member in self.sdata:
+            if first_member:
+                self.writeln('{member} = 0,'.format(member=member))
+                first_member = False
+            else:
+                self.writeln('{member},'.format(member=member))
         if first_member:
-            outfile.write('    {member} = 0'.format(member=member))
-            first_member = False
+            self.writeln('COLCOUNT = {colcount}')
         else:
-            outfile.write(',\n    {member}'.format(member=member))
-    if first_member:
-        outfile.write('    COLCOUNT = {colcount}\n'.format(**data))
-    else:
-        outfile.write(',\n    COLCOUNT\n')
-    outfile.write('{rbrace};\n\n'.format(**data))
+            self.writeln('COLCOUNT')
+        self.unindent()
 
-def output_struct_split_variant(data, sdata, startindex, endindex):
-    '''Output a single split variant of a struct.
+        self.writelns('{rbrace};\n')
 
-    splitindex indicates the split to output, with 0 indicating the unsplit
-    base type.
-    '''
-    data['start'] = startindex
-    data['end'] = endindex
-    outfile.write('template <>\n')
-    struct_def = 'struct {splitstruct}<{start}, {end}> {lbrace}\n'
-    outfile.write(struct_def.format(**data))
-    outfile.write('    explicit {splitstruct}() = default;\n\n'.format(
-        **data))
+    def convert_accessors(self):
+        '''Output the accessors.'''
+        for member, ctype in self.sdata.items():
+            for const in ('', 'const '):
+                self.writeln(
+                        '{const}{ctype}& {member}() {const}{lbrace}',
+                        const=const, ctype=ctype, member=member)
+                self.indent()
 
-    index = 0
-    for member, ctype in sdata.items():
-        if startindex <= index < endindex:
-            outfile.write('    {ctype} {member};\n'.format(
-                ctype=ctype, member=member))
-        index += 1
+                # Generate member accessing
+                for splitindex in range(self.colcount):
+                    if splitindex + 1 < self.colcount:
+                        self.writelns('''\
+if (auto val = std::get_if<{unifiedstruct}<{index}>>(&value)) {lbrace}
+    return val->{member}();
+{rbrace}\
+''', index=splitindex + 1, member=member)
+                    else:
+                        self.writeln('''\
+return std::get<{unifiedstruct}<{index}>>(value).{member}();\
+''', index=splitindex + 1, member=member)
 
-    outfile.write('{rbrace};\n'.format(**data))
+                self.unindent()
+                self.writeln('{rbrace}')
+        self.writeln()
 
-def output_struct_unified_variant(data, sdata, splitindex):
-    '''Output the unified variant of the given split.'''
-    data['splitindex'] = splitindex
-    outfile.write('template <>\n')
-    struct_def = 'struct {unifiedstruct}<{splitindex}> {lbrace}\n'
-    outfile.write(struct_def.format(**data))
+    def convert_split_variant(self, startindex, endindex):
+        '''Output a single split variant of a struct.
 
-    index = 0
-    for member, ctype in sdata.items():
-        for const in ('', 'const '):
-            outfile.write(
-                    '    {const}{ctype}& {member}() {const}{lbrace}\n'.format(
-                        const=const, ctype=ctype, member=member, **data))
-            outfile.write(
-                    '        return split_{variant}.{member};\n'.format(
+        The split includes columns at [startindex, endindex).
+        '''
+        self.writeln('template <>')
+        self.writeln(
+                'struct {splitstruct}<{start}, {end}> {lbrace}',
+                start=startindex, end=endindex)
+
+        self.indent()
+
+        self.writelns('explicit {splitstruct}() = default;\n')
+
+        index = 0
+        for member, ctype in self.sdata.items():
+            if startindex <= index < endindex:
+                self.writeln('{ctype} {member};', ctype=ctype, member=member)
+            index += 1
+
+        self.unindent()
+
+        self.writeln('{rbrace};')
+
+    def convert_unified_variant(self, splitindex):
+        '''Output the unified variant of the given split.'''
+        self.writeln('template <>')
+        self.writeln(
+                'struct {unifiedstruct}<{splitindex}> {lbrace}',
+                splitindex=splitindex)
+
+        self.indent()
+
+        index = 0
+        for member, ctype in self.sdata.items():
+            for const in ('', 'const '):
+                self.writeln(
+                        '{const}{ctype}& {member}() {const}{lbrace}',
+                        const=const, ctype=ctype, member=member)
+
+                self.indent()
+                self.writeln(
+                        'return split_{variant}.{member};',
                         variant=0 if index < splitindex else 1,
-                        member=member,
-                        **data))
-            outfile.write('    {rbrace}\n'.format(**data))
-        index += 1
-    outfile.write('\n')
+                        member=member)
+                self.unindent()
 
-    outfile.write(
-            '    {splitstruct}<0, {splitindex}> split_0;\n'.format(**data))
-    if splitindex < data['colcount']:
-        tstr = '    {splitstruct}<{splitindex}, {colcount}> split_1;\n'
-        outfile.write(tstr.format(**data))
+                self.writeln('{rbrace}')
+            index += 1
 
-    outfile.write('{rbrace};\n'.format(**data))
+        self.writeln()
+
+        self.writeln(
+                '{splitstruct}<0, {splitindex}> split_0;',
+                splitindex=splitindex)
+        if splitindex < self.colcount:
+            self.writeln(
+                    '{splitstruct}<{splitindex}, {colcount}> split_1;',
+                    splitindex=splitindex)
+
+        self.unindent()
+
+        self.writeln('{rbrace};')
 
 if '__main__' == __name__:
     parser = argparse.ArgumentParser(description='STO struct generator')
@@ -170,6 +236,6 @@ if '__main__' == __name__:
     outfile = open(args.out, 'w') if args.out else sys.stdout
 
     for struct in config.sections():
-        output_struct(outfile, struct, config[struct])
+        Output(outfile).convert_struct(struct, config[struct])
 
     outfile.close()
