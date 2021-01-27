@@ -103,7 +103,6 @@ CREATE_ADAPTER({struct}, {colcount});
 explicit {struct}() = default;
 
 using NamedColumn = {ns}::NamedColumn;
-
 ''')
 
         self.convert_accessors()
@@ -121,9 +120,11 @@ using NamedColumn = {ns}::NamedColumn;
 
         self.unindent(2)
 
-        self.writelns('''\
-{rbrace};
+        self.writeln('{rbrace};')
 
+        self.convert_indexed_accessors()
+
+        self.writelns('''\
 {rbrace};  // namespace {ns}
 
 using {struct} = {ns}::{struct};
@@ -155,7 +156,10 @@ using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
         '''Output the accessor wrapper for each column.'''
 
         index = 0
-        for ctype in self.sdata.values():
+        for member, ctype in self.sdata.items():
+            member, nesting = Output.extract_member_type(member)
+            nested_type = nesting.format('{accessorstruct}<{index}>')
+
             self.writelns('''\
 template <>
 struct {accessorstruct}<{index}> {lbrace}\
@@ -163,12 +167,15 @@ struct {accessorstruct}<{index}> {lbrace}\
 
             self.indent()
 
-            self.writelns('using type = {ctype};\n', ctype=ctype)
+            self.writeln('using type = {ctype};', ctype=ctype)
+            self.writeln(
+                    'using access_type = ' + nested_type + ';', index=index)
+            self.writeln()
 
-            self.writeln('''\
-{accessorstruct}() = default;\
-{accessorstruct}(type& value) : value_(value) {lbrace}{rbrace}\
-{accessorstruct}(const type& value) : value_((type)value) {lbrace}{rbrace}\
+            self.writelns('''\
+{accessorstruct}() = default;
+{accessorstruct}(type& value) : value_(value) {lbrace}{rbrace}
+{accessorstruct}(const type& value) : value_((type)value) {lbrace}{rbrace}
 ''')
 
             self.writelns('''\
@@ -207,6 +214,30 @@ type operator =(const {accessorstruct}<{index}>& other) {lbrace}
 {indent}return value_ = other.value_;
 {rbrace}''', index=index)
 
+            self.writelns('''\
+type operator *() {lbrace}
+{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}return value_;
+{rbrace}''', index=index)
+
+            self.writelns('''\
+const type operator *() const {lbrace}
+{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}return value_;
+{rbrace}''', index=index)
+
+            self.writelns('''\
+type* operator ->() {lbrace}
+{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}return &value_;
+{rbrace}''', index=index)
+
+            self.writelns('''\
+const type* operator ->() const {lbrace}
+{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}return &value_;
+{rbrace}''', index=index)
+
             self.writelns('\ntype value_;')
 
             self.unindent()
@@ -218,6 +249,14 @@ type operator =(const {accessorstruct}<{index}>& other) {lbrace}
 
     def convert_accessors(self):
         '''Output the accessors.'''
+
+        self.writelns('''\
+template <size_t Index>
+inline typename {accessorstruct}<Index>::access_type& get();
+template <size_t Index>
+inline const typename {accessorstruct}<Index>::access_type& get() const;
+''')
+
         index = 0
         for member in self.sdata:
             member, nesting = Output.extract_member_type(member)
@@ -319,6 +358,32 @@ return std::get<{unifiedstruct}<{index}>>(value).{member}();\
         self.unindent()
 
         self.writeln('{rbrace};')
+
+    def convert_indexed_accessors(self):
+        '''Output the indexed accessor wrappers.'''
+
+        index = 0
+        for member in self.sdata:
+            member, _ = Output.extract_member_type(member)
+            rettype = 'typename {accessorstruct}<{index}>::access_type'
+            funcname = '{struct}::get<{index}>()'
+            for const in (False, True):
+                fmtstring = 'inline {const}{}& {} {const}{}'.format(
+                        rettype,
+                        funcname,
+                        '{lbrace}',
+                        const='const ' if const else '',
+                        )
+                self.writeln('template <>')
+                self.writeln(fmtstring, index=index)
+
+                self.indent()
+                self.writeln('return {member}();', member=member)
+                self.unindent()
+
+                self.writeln('{rbrace}')
+            index += 1
+        self.writeln()
 
 if '__main__' == __name__:
     parser = argparse.ArgumentParser(description='STO struct generator')
