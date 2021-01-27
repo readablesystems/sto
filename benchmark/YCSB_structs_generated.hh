@@ -22,8 +22,12 @@ CREATE_ADAPTER(ycsb_value, 2);
 template <>
 struct accessor<0> {
     using type = fix_string<COL_WIDTH>;
+    using access_type = std::array<accessor<0>, HALF_NUM_COLUMNS>;
 
-    accessor() = default;accessor(type& value) : value_(value) {}accessor(const type& value) : value_((type)value) {}
+    accessor() = default;
+    accessor(type& value) : value_(value) {}
+    accessor(const type& value) : value_((type)value) {}
+
     operator type() {
         ADAPTER_OF(ycsb_value)::CountRead(0);
         return value_;
@@ -48,14 +52,34 @@ struct accessor<0> {
         ADAPTER_OF(ycsb_value)::CountWrite(0);
         return value_ = other.value_;
     }
+    type operator *() {
+        ADAPTER_OF(ycsb_value)::CountRead(0);
+        return value_;
+    }
+    const type operator *() const {
+        ADAPTER_OF(ycsb_value)::CountRead(0);
+        return value_;
+    }
+    type* operator ->() {
+        ADAPTER_OF(ycsb_value)::CountRead(0);
+        return &value_;
+    }
+    const type* operator ->() const {
+        ADAPTER_OF(ycsb_value)::CountRead(0);
+        return &value_;
+    }
 
     type value_;
 };
 template <>
 struct accessor<1> {
     using type = fix_string<COL_WIDTH>;
+    using access_type = std::array<accessor<1>, HALF_NUM_COLUMNS>;
 
-    accessor() = default;accessor(type& value) : value_(value) {}accessor(const type& value) : value_((type)value) {}
+    accessor() = default;
+    accessor(type& value) : value_(value) {}
+    accessor(const type& value) : value_((type)value) {}
+
     operator type() {
         ADAPTER_OF(ycsb_value)::CountRead(1);
         return value_;
@@ -79,6 +103,22 @@ struct accessor<1> {
     type operator =(const accessor<1>& other) {
         ADAPTER_OF(ycsb_value)::CountWrite(1);
         return value_ = other.value_;
+    }
+    type operator *() {
+        ADAPTER_OF(ycsb_value)::CountRead(1);
+        return value_;
+    }
+    const type operator *() const {
+        ADAPTER_OF(ycsb_value)::CountRead(1);
+        return value_;
+    }
+    type* operator ->() {
+        ADAPTER_OF(ycsb_value)::CountRead(1);
+        return &value_;
+    }
+    const type* operator ->() const {
+        ADAPTER_OF(ycsb_value)::CountRead(1);
+        return &value_;
     }
 
     type value_;
@@ -142,6 +182,10 @@ struct ycsb_value {
 
     using NamedColumn = ycsb_value_datatypes::NamedColumn;
 
+    template <size_t Index>
+    inline typename accessor<Index>::access_type& get();
+    template <size_t Index>
+    inline const typename accessor<Index>::access_type& get() const;
 
     std::array<accessor<0>, HALF_NUM_COLUMNS>& even_columns() {
         if (auto val = std::get_if<unified_value<1>>(&value)) {
@@ -173,6 +217,22 @@ struct ycsb_value {
         unified_value<1>
         > value;
 };
+template <>
+inline typename accessor<0>::access_type& ycsb_value::get<0>() {
+    return even_columns();
+}
+template <>
+inline const typename accessor<0>::access_type& ycsb_value::get<0>() const {
+    return even_columns();
+}
+template <>
+inline typename accessor<1>::access_type& ycsb_value::get<1>() {
+    return odd_columns();
+}
+template <>
+inline const typename accessor<1>::access_type& ycsb_value::get<1>() const {
+    return odd_columns();
+}
 
 };  // namespace ycsb_value_datatypes
 
