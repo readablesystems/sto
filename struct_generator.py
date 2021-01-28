@@ -58,6 +58,7 @@ class Output:
         self._data = {
                 'accessorstruct': 'accessor',
                 'colcount': self.colcount,
+                'infostruct': 'accessor_info',
                 'lbrace': '{',
                 'ns': '{}_datatypes'.format(struct),
                 'rbrace': '}',
@@ -155,6 +156,11 @@ using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
     def convert_column_accessors(self):
         '''Output the accessor wrapper for each column.'''
 
+        self.writelns('''\
+template <size_t ColIndex>
+struct {infostruct};
+''')
+
         index = 0
         for member, ctype in self.sdata.items():
             member, nesting = Output.extract_member_type(member)
@@ -162,87 +168,90 @@ using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
 
             self.writelns('''\
 template <>
-struct {accessorstruct}<{index}> {lbrace}\
-''', index=index)
+struct {infostruct}<{index}> {lbrace}
+{indent}using type = {ctype};
+{indent}using access_type = ''' + nested_type + ''';
+{rbrace};
+''', index=index, ctype=ctype)
 
-            self.indent()
+            index += 1
 
-            self.writeln('using type = {ctype};', ctype=ctype)
-            self.writeln(
-                    'using access_type = ' + nested_type + ';', index=index)
-            self.writeln()
-
-            self.writelns('''\
-{accessorstruct}() = default;
-{accessorstruct}(type& value) : value_(value) {lbrace}{rbrace}
-{accessorstruct}(const type& value) : value_((type)value) {lbrace}{rbrace}
+        self.writelns('''\
+template <size_t ColIndex>
+struct {accessorstruct} {lbrace}\
 ''')
 
-            self.writelns('''\
+        self.indent()
+
+        self.writelns('''\
+using type = typename {infostruct}<ColIndex>::type;
+using access_type = typename {infostruct}<ColIndex>::access_type;
+
+{accessorstruct}() = default;
+{accessorstruct}(type& value) : value_(value) {lbrace}{rbrace}
+{accessorstruct}(const type& value) : value_(const_cast<type&>(value)) {lbrace}{rbrace}
+
 operator type() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
 {indent}return value_;
-{rbrace}''', index=index)
+{rbrace}
 
-            self.writelns('''\
 operator const type() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
 {indent}return value_;
-{rbrace}''', index=index)
+{rbrace}
 
-            self.writelns('''\
 operator type&() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
 {indent}return value_;
-{rbrace}''', index=index)
+{rbrace}
 
-            self.writelns('''\
 operator const type&() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
 {indent}return value_;
-{rbrace}''', index=index)
+{rbrace}
 
-            self.writelns('''\
 type operator =(const type& other) {lbrace}
-{indent}ADAPTER_OF({struct})::CountWrite({index});
+{indent}ADAPTER_OF({struct})::CountWrite(ColIndex);
 {indent}return value_ = other;
-{rbrace}''', index=index)
+{rbrace}
 
-            self.writelns('''\
-type operator =(const {accessorstruct}<{index}>& other) {lbrace}
-{indent}ADAPTER_OF({struct})::CountWrite({index});
+type operator =(const {accessorstruct}<ColIndex>& other) {lbrace}
+{indent}ADAPTER_OF({struct})::CountWrite(ColIndex);
 {indent}return value_ = other.value_;
-{rbrace}''', index=index)
+{rbrace}
 
-            self.writelns('''\
 type operator *() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
 {indent}return value_;
-{rbrace}''', index=index)
+{rbrace}
 
-            self.writelns('''\
 const type operator *() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
 {indent}return value_;
-{rbrace}''', index=index)
+{rbrace}
 
-            self.writelns('''\
 type* operator ->() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
 {indent}return &value_;
-{rbrace}''', index=index)
+{rbrace}
 
-            self.writelns('''\
 const type* operator ->() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead({index});
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
 {indent}return &value_;
-{rbrace}''', index=index)
+{rbrace}
 
-            self.writelns('\ntype value_;')
+type value_;\
+''')
 
-            self.unindent()
+        self.unindent()
 
-            self.writeln('{rbrace};')
+        self.writeln('{rbrace};')
+
+        index = 0
+        for member, ctype in self.sdata.items():
+            member, nesting = Output.extract_member_type(member)
+            nested_type = nesting.format('{accessorstruct}<{index}>')
 
             index += 1
         self.writeln()
