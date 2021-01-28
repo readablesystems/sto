@@ -20,9 +20,9 @@ public:
 
     ycsb_value& operate(ycsb_value& fv) const {
         if (n % 2) {
-            //fv.odd_columns()[n/2] = v;
+            fv.odd_columns(n/2) = v;
         } else {
-            //fv.even_columns()[n/2] = v;
+            fv.even_columns(n/2) = v;
         }
         return fv;
     }
@@ -45,7 +45,7 @@ public:
 
     ycsb_odd_half_value& operate(ycsb_odd_half_value& hv) const {
         if (n % 2) {
-            //hv.odd_columns[n/2] = v;
+            hv.odd_columns[n/2] = v;
         } else {
             always_assert(false, "Not to be executed.");
         }
@@ -63,7 +63,7 @@ public:
 
     ycsb_even_half_value& operate(ycsb_even_half_value& hv) const {
         if ((n % 2) == 0) {
-            //hv.even_columns[n/2] = v;
+            hv.even_columns[n/2] = v;
         } else {
             always_assert(false, "Not to be executed.");
         }
