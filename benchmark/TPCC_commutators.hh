@@ -41,7 +41,7 @@ public:
     explicit Commutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
 
     void operate(warehouse_value &w) const {
-        w.w_ytd += (uint64_t)delta_ytd;
+        w.w_ytd() += (uint64_t)delta_ytd;
     }
 
 private:
@@ -82,7 +82,7 @@ public:
     explicit Commutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
 
     void operate(district_value &d) const {
-        d.d_ytd += delta_ytd;
+        d.d_ytd() += delta_ytd;
     }
 
 private:
@@ -141,15 +141,15 @@ public:
 
     void operate(customer_value &c) const {
         if (op == OpType::Payment) {
-            c.c_balance += delta_balance;
-            c.c_payment_cnt += 1;
-            c.c_ytd_payment += delta_ytd_payment;
+            c.c_balance() += delta_balance;
+            c.c_payment_cnt() += 1;
+            c.c_ytd_payment() += delta_ytd_payment;
             if (bad_credit) {
-                c.c_data.insert_left(delta_data.buf(), c_data_info::len);
+                c.c_data()->insert_left(delta_data.buf(), c_data_info::len);
             }
         } else if (op == OpType::Delivery) {
-            c.c_balance += delta_balance;
-            c.c_delivery_cnt += 1;
+            c.c_balance() += delta_balance;
+            c.c_delivery_cnt() += 1;
         }
     }
 
@@ -190,7 +190,7 @@ public:
             c.c_payment_cnt += 1;
             c.c_ytd_payment += delta_ytd_payment;
             if (bad_credit) {
-                c.c_data.insert_left(delta_data.buf(), c_data_info::len);
+                c.c_data->insert_left(delta_data.buf(), c_data_info::len);
             }
         } else if (op == OpType::Delivery) {
             c.c_balance += delta_balance;
@@ -206,7 +206,7 @@ public:
 
     explicit Commutator(uint64_t write_carrier_id) : write_carrier_id(write_carrier_id) {}
     void operate(order_value& ov) const {
-        ov.o_carrier_id = write_carrier_id;
+        ov.o_carrier_id() = write_carrier_id;
     }
 private:
     uint64_t write_carrier_id;
@@ -246,7 +246,7 @@ public:
 
     explicit Commutator(uint32_t write_delivery_d) : write_delivery_d(write_delivery_d) {}
     void operate(orderline_value& ol) const {
-        ol.ol_delivery_d = write_delivery_d;
+        ol.ol_delivery_d() = write_delivery_d;
     }
 private:
     uint32_t write_delivery_d;
@@ -286,14 +286,14 @@ public:
 
     explicit Commutator(int32_t qty, bool remote) : update_qty(qty), is_remote(remote) {}
     void operate(stock_value& sv) const {
-        if ((sv.s_quantity - 10) >= update_qty)
-            sv.s_quantity -= update_qty;
+        if ((*sv.s_quantity() - 10) >= update_qty)
+            sv.s_quantity() -= update_qty;
         else
-            sv.s_quantity += (91 - update_qty);
-        sv.s_ytd += update_qty;
-        sv.s_order_cnt += 1;
+            sv.s_quantity() += (91 - update_qty);
+        sv.s_ytd() += update_qty;
+        sv.s_order_cnt() += 1;
         if (is_remote)
-            sv.s_remote_cnt += 1;
+            sv.s_remote_cnt() += 1;
     }
 
 private:
@@ -324,7 +324,7 @@ public:
     Commutator(Args&&... args) : Commutator<stock_value>(std::forward<Args>(args)...) {}
 
     void operate(stock_value_frequpd &sv) const {
-        if ((sv.s_quantity - 10) >= update_qty)
+        if ((*sv.s_quantity - 10) >= update_qty)
             sv.s_quantity -= update_qty;
         else
             sv.s_quantity += (91 - update_qty);

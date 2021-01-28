@@ -86,6 +86,8 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     size_t starts = 0;
 
+    tpcc_adapters_treset();
+
     // begin txn
     RWTXN {
     ++starts;
@@ -145,19 +147,15 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     order_key ok(q_w_id, q_d_id, dt_next_oid);
     order_cidx_key ock(q_w_id, q_d_id, q_c_id, dt_next_oid);
     order_value* ov = Sto::tx_alloc<order_value>();
-    ov->o_c_id = q_c_id;
-    ov->o_carrier_id = 0;
-    ov->o_all_local = all_local ? 1 : 0;
-    ov->o_entry_d = o_entry_d;
-    ov->o_ol_cnt = num_items;
+    new (ov) order_value();
+    ov->o_c_id() = q_c_id;
+    ov->o_carrier_id() = 0;
+    ov->o_all_local() = all_local ? 1 : 0;
+    ov->o_entry_d() = o_entry_d;
+    ov->o_ol_cnt() = num_items;
 
     {
     auto [abort, result] = db.tbl_orders(q_w_id).insert_row(ok, ov, false);
-    ADAPTER_OF(order_value)::CountWrite(0);
-    ADAPTER_OF(order_value)::CountWrite(1);
-    ADAPTER_OF(order_value)::CountWrite(2);
-    ADAPTER_OF(order_value)::CountWrite(3);
-    ADAPTER_OF(order_value)::CountWrite(4);
     (void)result;
     CHK(abort);
     assert(!result);
@@ -224,33 +222,31 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
             db.tbl_stocks(wid).update_row(row, comm);
         } else {
             stock_value* new_sv = Sto::tx_alloc<stock_value>();
+            new (new_sv) stock_value();
             value.copy_into(new_sv);
             if ((s_quantity - 10) >= (int32_t) qty)
-                new_sv->s_quantity -= qty;
+                new_sv->s_quantity() -= qty;
             else
-                new_sv->s_quantity += (91 - (int32_t) qty);
-            new_sv->s_ytd += qty;
-            new_sv->s_order_cnt += 1;
+                new_sv->s_quantity() += (91 - (int32_t) qty);
+            new_sv->s_ytd() += qty;
+            new_sv->s_order_cnt() += 1;
             if (wid != q_w_id) {
-                new_sv->s_remote_cnt += 1;
-                ADAPTER_OF(stock_value)::CountWrite((int)st_nc::s_remote_cnt);
+                new_sv->s_remote_cnt() += 1;
             }
             db.tbl_stocks(wid).update_row(row, new_sv);
         }
-        ADAPTER_OF(stock_value)::CountWrite((int)st_nc::s_quantity);
-        ADAPTER_OF(stock_value)::CountWrite((int)st_nc::s_ytd);
-        ADAPTER_OF(stock_value)::CountWrite((int)st_nc::s_order_cnt);
 
         double ol_amount = qty * i_price/100.0;
 
         orderline_key olk(q_w_id, q_d_id, dt_next_oid, i + 1);
         orderline_value *olv = Sto::tx_alloc<orderline_value>();
-        olv->ol_i_id = iid;
-        olv->ol_supply_w_id = wid;
-        olv->ol_delivery_d = 0;
-        olv->ol_quantity = qty;
-        olv->ol_amount = ol_amount;
-        olv->ol_dist_info = s_dist;
+        new (olv) orderline_value();
+        olv->ol_i_id() = iid;
+        olv->ol_supply_w_id() = wid;
+        olv->ol_delivery_d() = 0;
+        olv->ol_quantity() = qty;
+        olv->ol_amount() = ol_amount;
+        olv->ol_dist_info() = s_dist;
 
         std::tie(abort, result) = db.tbl_orderlines(q_w_id).insert_row(olk, olv, false);
         (void)result;
@@ -333,6 +329,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     size_t starts = 0;
 
+    tpcc_adapters_treset();
+
     // begin txn
     RWTXN {
     Sto::transaction()->special_txp = true;
@@ -368,11 +366,11 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         db.tbl_warehouses().update_row(row, commutator);
     } else {
         auto new_wv = Sto::tx_alloc<warehouse_value>();
+        new (new_wv) warehouse_value();
         value.copy_into(new_wv);
-        new_wv->w_ytd += h_amount;
+        new_wv->w_ytd() += h_amount;
         db.tbl_warehouses().update_row(row, new_wv);
     }
-    ADAPTER_OF(warehouse_value)::CountWrite((int)wh_nc::w_ytd);
     }
 
     // select district row and retrieve district info
@@ -405,12 +403,12 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         db.tbl_districts(q_w_id).update_row(row, commutator);
     } else {
         auto new_dv = Sto::tx_alloc<district_value>();
+        new (new_dv) district_value();
         value.copy_into(new_dv);
         // update district ytd in-place
-        new_dv->d_ytd += h_amount;
+        new_dv->d_ytd() += h_amount;
         db.tbl_districts(q_w_id).update_row(row, new_dv);
     }
-    ADAPTER_OF(district_value)::CountWrite((int)dt_nc::d_ytd);
 
     TXP_INCREMENT(txp_tpcc_pm_stage2);
     }
@@ -468,33 +466,31 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         }
     } else {
         auto new_cv = Sto::tx_alloc<customer_value>();
+        new (new_cv) customer_value();
         value.copy_into(new_cv);
-        new_cv->c_balance -= h_amount;
-        new_cv->c_payment_cnt += 1;
-        new_cv->c_ytd_payment += h_amount;
+        new_cv->c_balance() -= h_amount;
+        new_cv->c_payment_cnt() += 1;
+        new_cv->c_ytd_payment() += h_amount;
         if (value.c_credit() == "BC") {
             c_data_info info(q_c_id, q_c_d_id, q_c_w_id, q_d_id, q_w_id, h_amount);
-            new_cv->c_data.insert_left(info.buf(), c_data_info::len);
+            new_cv->c_data()->insert_left(info.buf(), c_data_info::len);
         }
         db.tbl_customers(q_c_w_id).update_row(row, new_cv);
     }
-    ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_balance);
-    ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_payment_cnt);
-    ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_ytd_payment);
-    ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_data);
 
     TXP_INCREMENT(txp_tpcc_pm_stage5);
 
     // insert to history table
     history_value *hv = Sto::tx_alloc<history_value>();
-    hv->h_c_id = q_c_id;
-    hv->h_c_d_id = q_c_d_id;
-    hv->h_c_w_id = q_c_w_id;
-    hv->h_d_id = q_d_id;
-    hv->h_w_id = q_w_id;
-    hv->h_date = h_date;
-    hv->h_amount = h_amount;
-    hv->h_data = std::string(out_w_name.c_str()) + "    " + std::string(out_d_name.c_str());
+    new (hv) history_value();
+    hv->h_c_id() = q_c_id;
+    hv->h_c_d_id() = q_c_d_id;
+    hv->h_c_w_id() = q_c_w_id;
+    hv->h_d_id() = q_d_id;
+    hv->h_w_id() = q_w_id;
+    hv->h_date() = h_date;
+    hv->h_amount() = h_amount;
+    hv->h_data() = std::string(out_w_name.c_str()) + "    " + std::string(out_d_name.c_str());
 
 #if HISTORY_SEQ_INSERT
     history_key hk(db.tbl_histories(q_c_w_id).gen_key());
@@ -553,6 +549,8 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     (void)out_o_entry_date;
 
     size_t starts = 0;
+
+    tpcc_adapters_treset();
 
     TXN {
     ++starts;
@@ -677,6 +675,8 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
 
     size_t starts = 0;
 
+    tpcc_adapters_treset();
+
     TXP_INCREMENT(txp_tpcc_dl_stage1);
 
     RWTXN {
@@ -733,11 +733,11 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
             db.tbl_orders(q_w_id).update_row(row, commutator);
         } else {
             order_value* new_ov = Sto::tx_alloc<order_value>();
+            new (new_ov) order_value();
             value.copy_into(new_ov);
-            new_ov->o_carrier_id = carrier_id;
+            new_ov->o_carrier_id() = carrier_id;
             db.tbl_orders(q_w_id).update_row(row, new_ov);
         }
-        ADAPTER_OF(order_value)::CountWrite((int)od_nc::o_carrier_id);
         }
 
         {
@@ -761,11 +761,11 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
                 db.tbl_orderlines(q_w_id).update_row(row, commutator);
             } else {
                 orderline_value* new_olv = Sto::tx_alloc<orderline_value>();
+                new (new_olv) orderline_value();
                 value.copy_into(new_olv);
-                new_olv->ol_delivery_d = delivery_date;
+                new_olv->ol_delivery_d() = delivery_date;
                 db.tbl_orderlines(q_w_id).update_row(row, new_olv);
             }
-            ADAPTER_OF(orderline_value)::CountWrite((int)ol_nc::ol_delivery_d);
         }
         }
 
@@ -786,13 +786,12 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
             db.tbl_customers(q_w_id).update_row(row, commutator);
         } else {
             auto new_cv = Sto::tx_alloc<customer_value>();
+            new (new_cv) customer_value();
             value.copy_into(new_cv);
-            new_cv->c_balance += (int64_t)ol_amount_sum;
-            new_cv->c_delivery_cnt += 1;
+            new_cv->c_balance() += (int64_t)ol_amount_sum;
+            new_cv->c_delivery_cnt() += 1;
             db.tbl_customers(q_w_id).update_row(row, new_cv);
         }
-        ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_balance);
-        ADAPTER_OF(customer_value)::CountWrite((int)cu_nc::c_delivery_cnt);
         }
     }
 
@@ -827,6 +826,8 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 
     size_t starts = 0;
 
+    tpcc_adapters_treset();
+
     TXN {
     ++starts;
     tpcc_adapters_commit();
@@ -856,7 +857,6 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
         if(value.s_quantity() < threshold) {
             out_count += 1;
         }
-        ADAPTER_OF(stock_value)::CountWrite((int)st_nc::s_quantity);
     }
 
     } TEND(true);
