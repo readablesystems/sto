@@ -125,22 +125,18 @@ struct unified_value<1> {
         }
         return split_1.even_columns[index - 1];
     }
-
     const auto& even_columns(size_t index) const {
         if (index < 1) {
             return split_0.even_columns[index];
         }
         return split_1.even_columns[index - 1];
     }
-
     auto& odd_columns(size_t index) {
         return split_1.odd_columns[index];
     }
-
     const auto& odd_columns(size_t index) const {
         return split_1.odd_columns[index];
     }
-
 
     split_value<0, 1> split_0;
     split_value<1, 10> split_1;
@@ -177,22 +173,18 @@ struct unified_value<2> {
         }
         return split_1.even_columns[index - 2];
     }
-
     const auto& even_columns(size_t index) const {
         if (index < 2) {
             return split_0.even_columns[index];
         }
         return split_1.even_columns[index - 2];
     }
-
     auto& odd_columns(size_t index) {
         return split_1.odd_columns[index];
     }
-
     const auto& odd_columns(size_t index) const {
         return split_1.odd_columns[index];
     }
-
 
     split_value<0, 2> split_0;
     split_value<2, 10> split_1;
@@ -229,22 +221,18 @@ struct unified_value<3> {
         }
         return split_1.even_columns[index - 3];
     }
-
     const auto& even_columns(size_t index) const {
         if (index < 3) {
             return split_0.even_columns[index];
         }
         return split_1.even_columns[index - 3];
     }
-
     auto& odd_columns(size_t index) {
         return split_1.odd_columns[index];
     }
-
     const auto& odd_columns(size_t index) const {
         return split_1.odd_columns[index];
     }
-
 
     split_value<0, 3> split_0;
     split_value<3, 10> split_1;
@@ -281,22 +269,18 @@ struct unified_value<4> {
         }
         return split_1.even_columns[index - 4];
     }
-
     const auto& even_columns(size_t index) const {
         if (index < 4) {
             return split_0.even_columns[index];
         }
         return split_1.even_columns[index - 4];
     }
-
     auto& odd_columns(size_t index) {
         return split_1.odd_columns[index];
     }
-
     const auto& odd_columns(size_t index) const {
         return split_1.odd_columns[index];
     }
-
 
     split_value<0, 4> split_0;
     split_value<4, 10> split_1;
@@ -329,19 +313,15 @@ struct unified_value<5> {
     auto& even_columns(size_t index) {
         return split_0.even_columns[index];
     }
-
     const auto& even_columns(size_t index) const {
         return split_0.even_columns[index];
     }
-
     auto& odd_columns(size_t index) {
         return split_1.odd_columns[index];
     }
-
     const auto& odd_columns(size_t index) const {
         return split_1.odd_columns[index];
     }
-
 
     split_value<0, 5> split_0;
     split_value<5, 10> split_1;
@@ -375,25 +355,21 @@ struct unified_value<6> {
     auto& even_columns(size_t index) {
         return split_0.even_columns[index];
     }
-
     const auto& even_columns(size_t index) const {
         return split_0.even_columns[index];
     }
-
     auto& odd_columns(size_t index) {
         if (index < 6) {
             return split_0.odd_columns[index];
         }
         return split_1.odd_columns[index - 1];
     }
-
     const auto& odd_columns(size_t index) const {
         if (index < 6) {
             return split_0.odd_columns[index];
         }
         return split_1.odd_columns[index - 1];
     }
-
 
     split_value<0, 6> split_0;
     split_value<6, 10> split_1;
@@ -427,25 +403,21 @@ struct unified_value<7> {
     auto& even_columns(size_t index) {
         return split_0.even_columns[index];
     }
-
     const auto& even_columns(size_t index) const {
         return split_0.even_columns[index];
     }
-
     auto& odd_columns(size_t index) {
         if (index < 7) {
             return split_0.odd_columns[index];
         }
         return split_1.odd_columns[index - 2];
     }
-
     const auto& odd_columns(size_t index) const {
         if (index < 7) {
             return split_0.odd_columns[index];
         }
         return split_1.odd_columns[index - 2];
     }
-
 
     split_value<0, 7> split_0;
     split_value<7, 10> split_1;
@@ -479,25 +451,21 @@ struct unified_value<8> {
     auto& even_columns(size_t index) {
         return split_0.even_columns[index];
     }
-
     const auto& even_columns(size_t index) const {
         return split_0.even_columns[index];
     }
-
     auto& odd_columns(size_t index) {
         if (index < 8) {
             return split_0.odd_columns[index];
         }
         return split_1.odd_columns[index - 3];
     }
-
     const auto& odd_columns(size_t index) const {
         if (index < 8) {
             return split_0.odd_columns[index];
         }
         return split_1.odd_columns[index - 3];
     }
-
 
     split_value<0, 8> split_0;
     split_value<8, 10> split_1;
@@ -531,25 +499,21 @@ struct unified_value<9> {
     auto& even_columns(size_t index) {
         return split_0.even_columns[index];
     }
-
     const auto& even_columns(size_t index) const {
         return split_0.even_columns[index];
     }
-
     auto& odd_columns(size_t index) {
         if (index < 9) {
             return split_0.odd_columns[index];
         }
         return split_1.odd_columns[index - 4];
     }
-
     const auto& odd_columns(size_t index) const {
         if (index < 9) {
             return split_0.odd_columns[index];
         }
         return split_1.odd_columns[index - 4];
     }
-
 
     split_value<0, 9> split_0;
     split_value<9, 10> split_1;
@@ -577,19 +541,15 @@ struct unified_value<10> {
     auto& even_columns(size_t index) {
         return split_0.even_columns[index];
     }
-
     const auto& even_columns(size_t index) const {
         return split_0.even_columns[index];
     }
-
     auto& odd_columns(size_t index) {
         return split_0.odd_columns[index];
     }
-
     const auto& odd_columns(size_t index) const {
         return split_0.odd_columns[index];
     }
-
 
     split_value<0, 10> split_0;
 };

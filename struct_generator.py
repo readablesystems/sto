@@ -100,7 +100,7 @@ struct {unifiedstruct};
 
 struct {struct};
 
-CREATE_ADAPTER({struct}, {colcount});
+DEFINE_ADAPTER({struct}, {colcount});
 ''')
 
         self.convert_column_accessors()
@@ -210,7 +210,7 @@ using type = typename {infostruct}<ColIndex>::type;
 {accessorstruct}(const type& value) : value_(const_cast<type&>(value)) {lbrace}{rbrace}
 
 operator type() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
 {indent}return value_;
 {rbrace}
 
@@ -220,7 +220,7 @@ operator const type() const {lbrace}
 {rbrace}
 
 operator type&() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
 {indent}return value_;
 {rbrace}
 
@@ -240,7 +240,7 @@ type operator =(const {accessorstruct}<ColIndex>& other) {lbrace}
 {rbrace}
 
 type operator *() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
 {indent}return value_;
 {rbrace}
 
@@ -250,7 +250,7 @@ const type operator *() const {lbrace}
 {rbrace}
 
 type* operator ->() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
 {indent}return &value_;
 {rbrace}
 
@@ -347,15 +347,15 @@ type value_;\
             for const in (False, True):
                 if count == 1:
                     fmtstring = '''\
-{const}auto& {member}(size_t index) {const}{lbrace}
+{const}auto& {member}() {const}{lbrace}
 {indent}return split_{variant}.{member};
-{rbrace}
+{rbrace}\
 '''
                 elif ((index < splitindex) == (index + count <= splitindex)):
                     fmtstring = '''\
 {const}auto& {member}(size_t index) {const}{lbrace}
 {indent}return split_{variant}.{member}[index];
-{rbrace}
+{rbrace}\
 '''
                 else:
                     fmtstring = '''\
@@ -364,7 +364,7 @@ type value_;\
 {indent}{indent}return split_0.{member}[index];
 {indent}{rbrace}
 {indent}return split_1.{member}[index - {indexdiff}];
-{rbrace}
+{rbrace}\
 '''
                 self.writelns(
                         fmtstring,

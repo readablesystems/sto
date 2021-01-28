@@ -3,6 +3,7 @@
 #include <string>
 #include <list>
 #include <cassert>
+#include <variant>
 
 #include "DB_structs.hh"
 #include "xxhash.h"
@@ -83,6 +84,8 @@ private:
     uint64_t num_enqueued[max_whs];
 };
 
+#include "TPCC_structs_generated.hh"
+
 // WAREHOUSE
 
 struct warehouse_key {
@@ -102,40 +105,8 @@ struct warehouse_key {
     uint64_t w_id;
 };
 
-struct warehouse_value_infreq {
-    var_string<10> w_name;
-    var_string<20> w_street_1;
-    var_string<20> w_street_2;
-    var_string<20> w_city;
-    fix_string<2>  w_state;
-    fix_string<9>  w_zip;
-    int64_t        w_tax; // in 1/10000
-};
-
-struct warehouse_value_frequpd {
-    uint64_t       w_ytd;
-};
-
-struct warehouse_value {
-    enum class NamedColumn : int { w_name = 0,
-                                   w_street_1,
-                                   w_street_2,
-                                   w_city,
-                                   w_state,
-                                   w_zip,
-                                   w_tax,
-                                   w_ytd };
-
-    var_string<10> w_name;
-    var_string<20> w_street_1;
-    var_string<20> w_street_2;
-    var_string<20> w_city;
-    fix_string<2>  w_state;
-    fix_string<9>  w_zip;
-    int64_t        w_tax; // in 1/10000
-    uint64_t       w_ytd; // in 1/100
-};
-DEFINE_ADAPTER(warehouse_value, 8);
+using warehouse_value_infreq = warehouse_value_datatypes::split_value<0, 7>;
+using warehouse_value_frequpd = warehouse_value_datatypes::split_value<7, 8>;
 
 // DISTRICT
 
@@ -158,46 +129,8 @@ struct district_key {
     uint64_t d_id;
 };
 
-
-struct district_value_infreq {
-    var_string<10> d_name;
-    var_string<20> d_street_1;
-    var_string<20> d_street_2;
-    var_string<20> d_city;
-    fix_string<2>  d_state;
-    fix_string<9>  d_zip;
-    int64_t        d_tax;
-};
-
-struct district_value_frequpd {
-    int64_t d_ytd;
-    // we use the separate oid generator for better semantics in transactions
-    //uint64_t       d_next_o_id;
-};
-
-struct district_value {
-    enum class NamedColumn : int { d_name = 0,
-                                   d_street_1,
-                                   d_street_2,
-                                   d_city,
-                                   d_state,
-                                   d_zip,
-                                   d_tax,
-                                   d_ytd };
-
-    var_string<10> d_name;
-    var_string<20> d_street_1;
-    var_string<20> d_street_2;
-    var_string<20> d_city;
-    fix_string<2>  d_state;
-    fix_string<9>  d_zip;
-    int64_t        d_tax;
-    int64_t        d_ytd;
-    // we use the separate oid generator for better semantics in transactions
-    //uint64_t       d_next_o_id;
-};
-DEFINE_ADAPTER(district_value, 8);
-
+using district_value_infreq = district_value_datatypes::split_value<0, 7>;
+using district_value_frequpd = district_value_datatypes::split_value<7, 8>;
 
 // CUSTOMER
 
@@ -236,17 +169,6 @@ struct customer_idx_key {
     char c_last[16];
 };
 
-struct customer_idx_value {
-    enum class NamedColumn : int { c_ids = 0 };
-
-    // Default constructor is never directly called; it's included to make the
-    // compiles happy with MVCC history element construction
-    customer_idx_value() = default;
-
-    std::list<uint64_t> c_ids;
-};
-DEFINE_ADAPTER(customer_idx_value, 1);
-
 struct customer_key {
     customer_key(uint64_t wid, uint64_t did, uint64_t cid) {
         c_w_id = bswap(wid);
@@ -277,72 +199,8 @@ struct customer_key {
     uint64_t c_id;
 };
 
-// Split customer table
-struct customer_value_infreq {
-    var_string<16>  c_first;
-    fix_string<2>   c_middle;
-    var_string<16>  c_last;
-    var_string<20>  c_street_1;
-    var_string<20>  c_street_2;
-    var_string<20>  c_city;
-    fix_string<2>   c_state;
-    fix_string<9>   c_zip;
-    fix_string<16>  c_phone;
-    uint32_t        c_since;
-    fix_string<2>   c_credit;
-    int64_t         c_credit_lim;
-    int64_t         c_discount;
-};
-
-struct customer_value_frequpd {
-    int64_t         c_balance;
-    int64_t         c_ytd_payment;
-    uint16_t        c_payment_cnt;
-    uint16_t        c_delivery_cnt;
-    fix_string<500> c_data;
-};
-
-// Unsplit customer table
-struct customer_value {
-    enum class NamedColumn : int { c_first = 0,
-                                   c_middle,
-                                   c_last,
-                                   c_street_1,
-                                   c_street_2,
-                                   c_city,
-                                   c_state,
-                                   c_zip,
-                                   c_phone,
-                                   c_since,
-                                   c_credit,
-                                   c_credit_lim,
-                                   c_discount,
-                                   c_balance,
-                                   c_ytd_payment,
-                                   c_payment_cnt,
-                                   c_delivery_cnt,
-                                   c_data };
-
-    var_string<16>  c_first;
-    fix_string<2>   c_middle;
-    var_string<16>  c_last;
-    var_string<20>  c_street_1;
-    var_string<20>  c_street_2;
-    var_string<20>  c_city;
-    fix_string<2>   c_state;
-    fix_string<9>   c_zip;
-    fix_string<16>  c_phone;
-    uint32_t        c_since;
-    fix_string<2>   c_credit;
-    int64_t         c_credit_lim;
-    int64_t         c_discount;
-    int64_t         c_balance;
-    int64_t         c_ytd_payment;
-    uint16_t        c_payment_cnt;
-    uint16_t        c_delivery_cnt;
-    fix_string<500> c_data;
-};
-DEFINE_ADAPTER(customer_value, 18);
+using customer_value_infreq = customer_value_datatypes::split_value<0, 13>;
+using customer_value_frequpd = customer_value_datatypes::split_value<13, 18>;
 
 struct c_data_info {
     c_data_info() = default;
@@ -397,27 +255,6 @@ struct history_key {
     uint64_t h_id;
 };
 #endif
-
-struct history_value {
-    enum class NamedColumn : int { h_c_id = 0,
-                                   h_c_d_id,
-                                   h_c_w_id,
-                                   h_d_id,
-                                   h_w_id,
-                                   h_date,
-                                   h_amount,
-                                   h_data };
-
-    uint64_t       h_c_id;
-    uint64_t       h_c_d_id;
-    uint64_t       h_c_w_id;
-    uint64_t       h_d_id;
-    uint64_t       h_w_id;
-    uint32_t       h_date;
-    int64_t        h_amount;
-    var_string<24> h_data;
-};
-DEFINE_ADAPTER(history_value, 8);
 
 // ORDER
 
@@ -484,31 +321,8 @@ struct order_key {
     oid_type o_id;
 };
 
-struct order_value_infreq {
-    uint64_t o_c_id;
-    uint32_t o_entry_d;
-    uint32_t o_ol_cnt;
-    uint32_t o_all_local;
-};
-
-struct order_value_frequpd {
-    uint64_t o_carrier_id;
-};
-
-struct order_value{
-    enum class NamedColumn : int { o_c_id = 0,
-                                   o_entry_d,
-                                   o_ol_cnt,
-                                   o_all_local,
-                                   o_carrier_id };
-
-    uint64_t o_c_id;
-    uint32_t o_entry_d;
-    uint32_t o_ol_cnt;
-    uint32_t o_all_local;
-    uint64_t o_carrier_id;
-};
-DEFINE_ADAPTER(order_value, 5);
+using order_value_infreq = order_value_datatypes::split_value<0, 4>;
+using order_value_frequpd = order_value_datatypes::split_value<4, 5>;
 
 // ORDER-LINE
 
@@ -541,34 +355,8 @@ struct orderline_key {
     uint64_t ol_number;
 };
 
-struct orderline_value_infreq {
-    uint64_t       ol_i_id;
-    uint64_t       ol_supply_w_id;
-    uint32_t       ol_quantity;
-    int32_t        ol_amount;
-    fix_string<24> ol_dist_info;
-};
-
-struct orderline_value_frequpd {
-    uint32_t ol_delivery_d;
-};
-
-struct orderline_value {
-    enum class NamedColumn : int { ol_i_id = 0,
-                                   ol_supply_w_id,
-                                   ol_quantity,
-                                   ol_amount,
-                                   ol_dist_info,
-                                   ol_delivery_d };
-
-    uint64_t       ol_i_id;
-    uint64_t       ol_supply_w_id;
-    uint32_t       ol_quantity;
-    int32_t        ol_amount;
-    fix_string<24> ol_dist_info;
-    uint32_t       ol_delivery_d;
-};
-DEFINE_ADAPTER(orderline_value, 6);
+using orderline_value_infreq = orderline_value_datatypes::split_value<0, 5>;
+using orderline_value_frequpd = orderline_value_datatypes::split_value<5, 6>;
 
 // ITEM
 
@@ -593,19 +381,6 @@ struct item_key {
 
     uint64_t i_id;
 };
-
-struct item_value {
-    enum class NamedColumn : int { i_im_id = 0,
-                                   i_price,
-                                   i_name,
-                                   i_data };
-
-    uint64_t       i_im_id;
-    uint32_t       i_price;
-    var_string<24> i_name;
-    var_string<50> i_data;
-};
-DEFINE_ADAPTER(item_value, 4);
 
 // STOCK
 
@@ -633,34 +408,8 @@ struct stock_key {
     uint64_t s_i_id;
 };
 
-struct stock_value_infreq {
-    std::array<fix_string<24>, NUM_DISTRICTS_PER_WAREHOUSE> s_dists;
-    var_string<50> s_data;
-};
-
-struct stock_value_frequpd {
-    int32_t        s_quantity;
-    uint32_t       s_ytd;
-    uint32_t       s_order_cnt;
-    uint32_t       s_remote_cnt;
-};
-
-struct stock_value {
-    enum class NamedColumn : int { s_dists = 0,
-                                   s_data,
-                                   s_quantity,
-                                   s_ytd,
-                                   s_order_cnt,
-                                   s_remote_cnt };
-
-    std::array<fix_string<24>, NUM_DISTRICTS_PER_WAREHOUSE> s_dists;
-    var_string<50> s_data;
-    int32_t        s_quantity;
-    uint32_t       s_ytd;
-    uint32_t       s_order_cnt;
-    uint32_t       s_remote_cnt;
-};
-DEFINE_ADAPTER(stock_value, 6);
+using stock_value_infreq = stock_value_datatypes::split_value<0, 2>;
+using stock_value_frequpd = stock_value_datatypes::split_value<2, 6>;
 
 }; // namespace tpcc
 
