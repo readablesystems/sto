@@ -19,105 +19,77 @@ struct ycsb_value;
 
 CREATE_ADAPTER(ycsb_value, 2);
 
+template <size_t ColIndex>
+struct accessor_info;
+
 template <>
-struct accessor<0> {
+struct accessor_info<0> {
     using type = fix_string<COL_WIDTH>;
     using access_type = std::array<accessor<0>, HALF_NUM_COLUMNS>;
-
-    accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_((type)value) {}
-
-    operator type() {
-        ADAPTER_OF(ycsb_value)::CountRead(0);
-        return value_;
-    }
-    operator const type() const {
-        ADAPTER_OF(ycsb_value)::CountRead(0);
-        return value_;
-    }
-    operator type&() {
-        ADAPTER_OF(ycsb_value)::CountRead(0);
-        return value_;
-    }
-    operator const type&() const {
-        ADAPTER_OF(ycsb_value)::CountRead(0);
-        return value_;
-    }
-    type operator =(const type& other) {
-        ADAPTER_OF(ycsb_value)::CountWrite(0);
-        return value_ = other;
-    }
-    type operator =(const accessor<0>& other) {
-        ADAPTER_OF(ycsb_value)::CountWrite(0);
-        return value_ = other.value_;
-    }
-    type operator *() {
-        ADAPTER_OF(ycsb_value)::CountRead(0);
-        return value_;
-    }
-    const type operator *() const {
-        ADAPTER_OF(ycsb_value)::CountRead(0);
-        return value_;
-    }
-    type* operator ->() {
-        ADAPTER_OF(ycsb_value)::CountRead(0);
-        return &value_;
-    }
-    const type* operator ->() const {
-        ADAPTER_OF(ycsb_value)::CountRead(0);
-        return &value_;
-    }
-
-    type value_;
 };
+
 template <>
-struct accessor<1> {
+struct accessor_info<1> {
     using type = fix_string<COL_WIDTH>;
     using access_type = std::array<accessor<1>, HALF_NUM_COLUMNS>;
+};
+
+template <size_t ColIndex>
+struct accessor {
+    using type = typename accessor_info<ColIndex>::type;
+    using access_type = typename accessor_info<ColIndex>::access_type;
 
     accessor() = default;
     accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_((type)value) {}
+    accessor(const type& value) : value_(const_cast<type&>(value)) {}
 
     operator type() {
-        ADAPTER_OF(ycsb_value)::CountRead(1);
+        ADAPTER_OF(ycsb_value)::CountRead(ColIndex);
         return value_;
     }
+
     operator const type() const {
-        ADAPTER_OF(ycsb_value)::CountRead(1);
+        ADAPTER_OF(ycsb_value)::CountRead(ColIndex);
         return value_;
     }
+
     operator type&() {
-        ADAPTER_OF(ycsb_value)::CountRead(1);
+        ADAPTER_OF(ycsb_value)::CountRead(ColIndex);
         return value_;
     }
+
     operator const type&() const {
-        ADAPTER_OF(ycsb_value)::CountRead(1);
+        ADAPTER_OF(ycsb_value)::CountRead(ColIndex);
         return value_;
     }
+
     type operator =(const type& other) {
-        ADAPTER_OF(ycsb_value)::CountWrite(1);
+        ADAPTER_OF(ycsb_value)::CountWrite(ColIndex);
         return value_ = other;
     }
-    type operator =(const accessor<1>& other) {
-        ADAPTER_OF(ycsb_value)::CountWrite(1);
+
+    type operator =(const accessor<ColIndex>& other) {
+        ADAPTER_OF(ycsb_value)::CountWrite(ColIndex);
         return value_ = other.value_;
     }
+
     type operator *() {
-        ADAPTER_OF(ycsb_value)::CountRead(1);
+        ADAPTER_OF(ycsb_value)::CountRead(ColIndex);
         return value_;
     }
+
     const type operator *() const {
-        ADAPTER_OF(ycsb_value)::CountRead(1);
+        ADAPTER_OF(ycsb_value)::CountRead(ColIndex);
         return value_;
     }
+
     type* operator ->() {
-        ADAPTER_OF(ycsb_value)::CountRead(1);
+        ADAPTER_OF(ycsb_value)::CountRead(ColIndex);
         return &value_;
     }
+
     const type* operator ->() const {
-        ADAPTER_OF(ycsb_value)::CountRead(1);
+        ADAPTER_OF(ycsb_value)::CountRead(ColIndex);
         return &value_;
     }
 
