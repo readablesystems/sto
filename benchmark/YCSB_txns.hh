@@ -49,6 +49,7 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
 
     (void)output;
 
+    ADAPTER_OF(ycsb_value)::ResetThread();
     TRANSACTION {
         if (DBParams::MVCC && txn.rw_txn) {
             Sto::mvcc_rw_upgrade();
@@ -66,6 +67,7 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                     {{col_group, Commute ? access_t::write : access_t::update}}
                 );
                 (void)result;
+                (void)value;
                 TXN_DO(success);
                 assert(result);
 
@@ -91,11 +93,9 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                     auto new_val = new (Sto::tx_alloc<ycsb_value>()) ycsb_value();
                     new (new_val) ycsb_value();
                     if (col_parity) {
-                        new_val->template get<1>() = value.odd_columns();
-                        new_val->template get<1>()[op.col_n/2] = op.write_value;
+                        new_val->odd_columns(op.col_n/2) = op.write_value;
                     } else {
-                        new_val->template get<0>() = value.even_columns();
-                        new_val->template get<0>()[op.col_n/2] = op.write_value;
+                        new_val->even_columns(op.col_n/2) = op.write_value;
                     }
                     db.ycsb_table().update_row(row, new_val);
                 }
@@ -108,9 +108,9 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                 assert(result);
 
                 if (col_parity) {
-                    output = value.odd_columns()[op.col_n/2];
+                    output = value.odd_columns(op.col_n/2);
                 } else {
-                    output = value.even_columns()[op.col_n/2];
+                    output = value.even_columns(op.col_n/2);
                 }
             }
         }
