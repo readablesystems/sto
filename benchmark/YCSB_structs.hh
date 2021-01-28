@@ -46,8 +46,8 @@ typedef fix_string<COL_WIDTH> col_type;
 
 #include "YCSB_structs_generated.hh"
 
-using ycsb_even_half_value = ycsb_value_datatypes::split_value<0, 1>;
-using ycsb_odd_half_value = ycsb_value_datatypes::split_value<1, 2>;
+using ycsb_even_half_value = ycsb_value_datatypes::split_value<0, 5>;
+using ycsb_odd_half_value = ycsb_value_datatypes::split_value<5, 10>;
 
 class ycsb_input_generator {
 public:
@@ -58,8 +58,8 @@ public:
     value_type random_ycsb_value() {
         value_type ret;
         for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
-            ret.odd_columns()[i] = random_a_string(COL_WIDTH);
-            ret.even_columns()[i] = random_a_string(COL_WIDTH);
+            ret.odd_columns(i) = random_a_string(COL_WIDTH);
+            ret.even_columns(i) = random_a_string(COL_WIDTH);
         }
         return ret;
     }

@@ -13,16 +13,32 @@ class Output:
         self._tabwidth = 4
 
     @staticmethod
+    def count_columns(members):
+        '''Count the number of columns, taking arrays into account.'''
+        total_count = 0
+        for member in members:
+            _, __, count = Output.extract_member_type(member)
+            total_count += count
+        return total_count
+
+    @staticmethod
     def extract_member_type(member):
         '''Pull the base member name and the array "nesting" format.'''
+        original = member
         nesting = '{}'
+        total_count = 1
         while member.rfind(']') >= 0:
             brackets = (member.rfind('['), member.rfind(']'))
             assert brackets[0] < brackets[1]
+            count = member[brackets[0] + 1 : brackets[1]]
+            if not count.isdigit():
+                raise ValueError(
+                        'Array-style declarations must use integers: {}'.format(original))
             nesting = 'std::array<{ctype}, {count}>'.format(
-                    ctype=nesting, count=member[brackets[0] + 1 : brackets[1]])
+                    ctype=nesting, count=count)
+            total_count *= int(count)
             member = member[:brackets[0]]
-        return member, nesting
+        return member, nesting, total_count
 
     def indent(self, amount=1):
         self._indent += amount
@@ -54,7 +70,7 @@ class Output:
 
     def convert_struct(self, struct, sdata):
         '''Output a single struct's variants.'''
-        self.colcount = len(sdata)
+        self.colcount = Output.count_columns(sdata.keys())
         self._data = {
                 'accessorstruct': 'accessor',
                 'colcount': self.colcount,
@@ -123,7 +139,7 @@ using NamedColumn = {ns}::NamedColumn;
 
         self.writeln('{rbrace};')
 
-        self.convert_indexed_accessors()
+        #self.convert_indexed_accessors()
 
         self.writelns('''\
 {rbrace};  // namespace {ns}
@@ -137,15 +153,20 @@ using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
         self.writelns('enum class NamedColumn : int {lbrace}')
 
         self.indent()
-        first_member = True
+        specify_value = True
+        total_count = 0
         for member in self.sdata:
-            member, _ = Output.extract_member_type(member)
-            if first_member:
-                self.writeln('{member} = 0,'.format(member=member))
-                first_member = False
+            member, _, count = Output.extract_member_type(member)
+            if specify_value:
+                value = total_count
+                self.writeln('{member} = {value},', member=member, value=value)
+                specify_value = False
             else:
-                self.writeln('{member},'.format(member=member))
-        if first_member:
+                self.writeln('{member},', member=member)
+            if count == 1:
+                specify_value = True
+            total_count += count
+        if specify_value:
             self.writeln('COLCOUNT = {colcount}')
         else:
             self.writeln('COLCOUNT')
@@ -163,18 +184,16 @@ struct {infostruct};
 
         index = 0
         for member, ctype in self.sdata.items():
-            member, nesting = Output.extract_member_type(member)
-            nested_type = nesting.format('{accessorstruct}<{index}>')
+            member, nesting, count = Output.extract_member_type(member)
 
             self.writelns('''\
 template <>
 struct {infostruct}<{index}> {lbrace}
 {indent}using type = {ctype};
-{indent}using access_type = ''' + nested_type + ''';
 {rbrace};
 ''', index=index, ctype=ctype)
 
-            index += 1
+            index += count
 
         self.writelns('''\
 template <size_t ColIndex>
@@ -185,116 +204,68 @@ struct {accessorstruct} {lbrace}\
 
         self.writelns('''\
 using type = typename {infostruct}<ColIndex>::type;
-using access_type = typename {infostruct}<ColIndex>::access_type;
 
 {accessorstruct}() = default;
 {accessorstruct}(type& value) : value_(value) {lbrace}{rbrace}
 {accessorstruct}(const type& value) : value_(const_cast<type&>(value)) {lbrace}{rbrace}
 
 operator type() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
 {indent}return value_;
 {rbrace}
 
 operator const type() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
 {indent}return value_;
 {rbrace}
 
 operator type&() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
 {indent}return value_;
 {rbrace}
 
 operator const type&() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
 {indent}return value_;
 {rbrace}
 
 type operator =(const type& other) {lbrace}
-{indent}ADAPTER_OF({struct})::CountWrite(ColIndex);
+{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
 {indent}return value_ = other;
 {rbrace}
 
 type operator =(const {accessorstruct}<ColIndex>& other) {lbrace}
-{indent}ADAPTER_OF({struct})::CountWrite(ColIndex);
+{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
 {indent}return value_ = other.value_;
 {rbrace}
 
 type operator *() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
 {indent}return value_;
 {rbrace}
 
 const type operator *() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
 {indent}return value_;
 {rbrace}
 
 type* operator ->() {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
 {indent}return &value_;
 {rbrace}
 
 const type* operator ->() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex);
+{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
 {indent}return &value_;
 {rbrace}
 
+size_t index_ = 0;
 type value_;\
 ''')
 
         self.unindent()
 
         self.writeln('{rbrace};')
-
-        index = 0
-        for member, ctype in self.sdata.items():
-            member, nesting = Output.extract_member_type(member)
-            nested_type = nesting.format('{accessorstruct}<{index}>')
-
-            index += 1
-        self.writeln()
-
-    def convert_accessors(self):
-        '''Output the accessors.'''
-
-        self.writelns('''\
-template <size_t Index>
-inline typename {accessorstruct}<Index>::access_type& get();
-template <size_t Index>
-inline const typename {accessorstruct}<Index>::access_type& get() const;
-''')
-
-        index = 0
-        for member in self.sdata:
-            member, nesting = Output.extract_member_type(member)
-            rettype = nesting.format('{accessorstruct}<{index}>')
-            for const in (False, True):
-                if const:
-                    fmtstring = 'const ' + rettype + '& {member}() const {lbrace}'
-                else:
-                    fmtstring = rettype + '& {member}() {lbrace}'
-                self.writeln(fmtstring, index=index, member=member)
-
-                self.indent()
-
-                # Generate member accessing
-                for splitindex in range(self.colcount):
-                    if splitindex + 1 < self.colcount:
-                        self.writelns('''\
-if (auto val = std::get_if<{unifiedstruct}<{index}>>(&value)) {lbrace}
-{indent}return val->{member}();
-{rbrace}\
-''', index=splitindex + 1, member=member)
-                    else:
-                        self.writeln('''\
-return std::get<{unifiedstruct}<{index}>>(value).{member}();\
-''', index=splitindex + 1, member=member)
-
-                self.unindent()
-                self.writeln('{rbrace}')
-            index += 1
         self.writeln()
 
     def convert_split_variant(self, startindex, endindex):
@@ -309,16 +280,52 @@ return std::get<{unifiedstruct}<{index}>>(value).{member}();\
 
         self.indent()
 
-        self.writeln('explicit {splitstruct}() = default;')
+        has_array = False
+        index = 0
+        for member in self.sdata:
+            member, nesting, count = Output.extract_member_type(member)
+            if startindex < index + count != index < endindex:
+                if count > 1:
+                    has_array = True
+                    break
+            index += count
+
+        if has_array:
+            self.writeln('explicit {splitstruct}() {lbrace}')
+
+            self.indent()
+            index = 0
+            for member in self.sdata:
+                member, nesting, count = Output.extract_member_type(member)
+                if startindex < index + count != index < endindex:
+                    if count > 1:
+                        for arrindex in range(index, index + count):
+                            if startindex <= arrindex < endindex:
+                                self.writeln('{member}[{arrindex}].index_ = {index};',
+                                        member=member,
+                                        arrindex=arrindex - max(index, startindex),
+                                        index=arrindex - index)
+                index += count
+            self.unindent()
+
+            self.writeln('{rbrace}')
+        else:
+            self.writeln('explicit {splitstruct}() = default;')
 
         index = 0
         for member in self.sdata:
-            if startindex <= index < endindex:
-                member, nesting = Output.extract_member_type(member)
-                rettype = nesting.format('{accessorstruct}<{index}>')
-                self.writeln(
-                        rettype + ' {member};', index=index, member=member)
-            index += 1
+            member, nesting, count = Output.extract_member_type(member)
+            if startindex < index + count != index < endindex:
+                if count == 1:
+                    self.writeln(
+                            '{accessorstruct}<{index}> {member};',
+                            index=index, member=member)
+                else:
+                    size = min(index + count, endindex) - max(startindex, index)
+                    self.writeln(
+                            'std::array<{accessorstruct}<{index}>, {count}> {member};',
+                            count=size, index=index, member=member)
+            index += count
 
         self.unindent()
 
@@ -335,24 +342,40 @@ return std::get<{unifiedstruct}<{index}>>(value).{member}();\
 
         index = 0
         for member in self.sdata:
-            member, nesting = Output.extract_member_type(member)
-            rettype = nesting.format('{accessorstruct}<{index}>')
+            member, nesting, count = Output.extract_member_type(member)
+            rettype = '{accessorstruct}<{index}>'
             for const in (False, True):
-                if const:
-                    fmtstring = 'const ' + rettype + '& {member}() const {lbrace}'
+                if count == 1:
+                    fmtstring = '''\
+{const}auto& {member}(size_t index) {const}{lbrace}
+{indent}return split_{variant}.{member};
+{rbrace}
+'''
+                elif ((index < splitindex) == (index + count <= splitindex)):
+                    fmtstring = '''\
+{const}auto& {member}(size_t index) {const}{lbrace}
+{indent}return split_{variant}.{member}[index];
+{rbrace}
+'''
                 else:
-                    fmtstring = rettype + '& {member}() {lbrace}'
-                self.writeln(fmtstring, index=index, member=member)
-
-                self.indent()
-                self.writeln(
-                        'return split_{variant}.{member};',
+                    fmtstring = '''\
+{const}auto& {member}(size_t index) {const}{lbrace}
+{indent}if (index < {splitindex}) {lbrace}
+{indent}{indent}return split_0.{member}[index];
+{indent}{rbrace}
+{indent}return split_1.{member}[index - {indexdiff}];
+{rbrace}
+'''
+                self.writelns(
+                        fmtstring,
+                        const='const ' if const else '',
+                        index=index,
+                        splitindex=splitindex,
+                        member=member,
                         variant=0 if index < splitindex else 1,
-                        member=member)
-                self.unindent()
-
-                self.writeln('{rbrace}')
-            index += 1
+                        indexdiff=splitindex - index,
+                        )
+            index += count
 
         self.writeln()
 
@@ -368,30 +391,79 @@ return std::get<{unifiedstruct}<{index}>>(value).{member}();\
 
         self.writeln('{rbrace};')
 
-    def convert_indexed_accessors(self):
-        '''Output the indexed accessor wrappers.'''
+    def convert_accessors(self):
+        '''Output the accessors.'''
+
+        if False:
+            self.writelns('''\
+inline auto& get(size_t index);
+inline const auto& get(size_t index) const;
+''')
 
         index = 0
         for member in self.sdata:
-            member, _ = Output.extract_member_type(member)
-            rettype = 'typename {accessorstruct}<{index}>::access_type'
-            funcname = '{struct}::get<{index}>()'
+            member, nesting, count = Output.extract_member_type(member)
             for const in (False, True):
-                fmtstring = 'inline {const}{}& {} {const}{}'.format(
-                        rettype,
-                        funcname,
-                        '{lbrace}',
+                if count == 1:
+                    fmtstring = '''\
+{const}auto& {member}() {const}{lbrace}
+{indent}return std::visit([this] (auto&& val) -> {const}auto& {lbrace}
+{indent}{indent}{indent}return val.{member}();
+{indent}{indent}{rbrace}, value);
+{rbrace}\
+'''
+                else:
+                    fmtstring = '''\
+{const}auto& {member}(size_t index) {const}{lbrace}
+{indent}return std::visit([this, index] (auto&& val) -> {const}auto& {lbrace}
+{indent}{indent}{indent}return val.{member}(index);
+{indent}{indent}{rbrace}, value);
+{rbrace}\
+'''
+                self.writelns(
+                        fmtstring,
                         const='const ' if const else '',
-                        )
-                self.writeln('template <>')
-                self.writeln(fmtstring, index=index)
+                        index=index,
+                        member=member)
+            index += count
+        self.writeln()
 
-                self.indent()
-                self.writeln('return {member}();', member=member)
-                self.unindent()
+    def convert_indexed_accessors(self):
+        '''Output the indexed accessor wrappers.'''
 
-                self.writeln('{rbrace}')
-            index += 1
+        for const in (False, True):
+            fmtstring = '''\
+inline {const}auto& {struct}::get(size_t index) {const}{lbrace}\
+'''
+            self.writeln(
+                    fmtstring,
+                    const='const ' if const else '')
+
+            self.indent()
+            self.writeln('switch (index) {lbrace}')
+
+            self.indent()
+            index = 0
+            for member in self.sdata:
+                member, _, count = Output.extract_member_type(member)
+                for realindex in range(index, index + count):
+                    self.writei('case {index}: ', index=realindex)
+                    if count == 1:
+                        self.write('return {member}();', member=member)
+                    else:
+                        self.write(
+                                'return {member}({arrindex});',
+                                arrindex=realindex - index,
+                                member=member)
+                    self.writeln()
+                index += count
+            self.unindent()
+
+            self.writeln('{rbrace}')
+            self.unindent()
+
+            self.writeln('{rbrace}')
+
         self.writeln()
 
 if '__main__' == __name__:

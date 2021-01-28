@@ -10,22 +10,30 @@ struct SplitParams<ycsb::ycsb_value> {
   static constexpr auto split_builder = std::make_tuple(
     [](const ycsb::ycsb_value& in) -> ycsb::ycsb_odd_half_value {
       ycsb::ycsb_odd_half_value out;
-      out.odd_columns() = in.odd_columns();
+      for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
+        out.odd_columns(i) = in.odd_columns(i);
+      }
       return out;
     },
     [](const ycsb::ycsb_value& in) -> ycsb::ycsb_even_half_value {
       ycsb::ycsb_even_half_value out;
-      out.even_columns() = in.even_columns();
+      for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
+        out.even_columns(i) = in.even_columns(i);
+      }
       return out;
     }
   );
 
   static constexpr auto split_merger = std::make_tuple(
     [](ycsb::ycsb_value* out, const ycsb::ycsb_odd_half_value& in) -> void {
-      out->odd_columns() = in.odd_columns();
+      for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
+        out->odd_columns(i) = in.odd_columns(i);
+      }
     },
     [](ycsb::ycsb_value* out, const ycsb::ycsb_even_half_value& in) -> void {
-      out->even_columns() = in.even_columns();
+      for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
+        out->even_columns(i) = in.even_columns(i);
+      }
     }
   );
 
@@ -40,13 +48,13 @@ template <typename A>
 class RecordAccessor<A, ycsb::ycsb_value> {
  public:
   
-  const std::array<ycsb::ycsb_value_datatypes::accessor<1>, HALF_NUM_COLUMNS>& odd_columns() const {
-    return impl().odd_columns_impl();
+  const ycsb::ycsb_value_datatypes::accessor<5>& odd_columns(size_t i) const {
+    return impl().odd_columns_impl(i);
   }
 
   
-  const std::array<ycsb::ycsb_value_datatypes::accessor<0>, HALF_NUM_COLUMNS>& even_columns() const {
-    return impl().even_columns_impl();
+  const ycsb::ycsb_value_datatypes::accessor<0>& even_columns(size_t i) const {
+    return impl().even_columns_impl(i);
   }
 
 
@@ -67,13 +75,13 @@ class UniRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<UniRecordAcces
 
  private:
   
-  const std::array<ycsb::ycsb_value_datatypes::accessor<1>, HALF_NUM_COLUMNS>& odd_columns_impl() const {
-    return vptr_->odd_columns();
+  const ycsb::ycsb_value_datatypes::accessor<5>& odd_columns_impl(size_t i) const {
+    return vptr_->odd_columns(i);
   }
 
   
-  const std::array<ycsb::ycsb_value_datatypes::accessor<0>, HALF_NUM_COLUMNS>& even_columns_impl() const {
-    return vptr_->even_columns();
+  const ycsb::ycsb_value_datatypes::accessor<0>& even_columns_impl(size_t i) const {
+    return vptr_->even_columns(i);
   }
 
 
@@ -81,8 +89,10 @@ class UniRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<UniRecordAcces
   void copy_into_impl(ycsb::ycsb_value* dst) const {
     
     if (vptr_) {
-      dst->odd_columns() = vptr_->odd_columns();
-      dst->even_columns() = vptr_->even_columns();
+      for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
+        dst->odd_columns(i) = vptr_->odd_columns(i);
+        dst->even_columns(i) = vptr_->even_columns(i);
+      }
     }
   }
 
@@ -101,13 +111,13 @@ class SplitRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<SplitRecordA
 
  private:
   
-  const std::array<ycsb::ycsb_value_datatypes::accessor<1>, HALF_NUM_COLUMNS>& odd_columns_impl() const {
+  const ycsb::ycsb_value_datatypes::accessor<5>& odd_columns_impl(size_t i) const {
     return vptr_0_->odd_columns();
   }
 
   
-  const std::array<ycsb::ycsb_value_datatypes::accessor<0>, HALF_NUM_COLUMNS>& even_columns_impl() const {
-    return vptr_1_->even_columns();
+  const ycsb::ycsb_value_datatypes::accessor<0>& even_columns_impl(size_t i) const {
+    return vptr_1_->even_columns(i);
   }
 
 
@@ -115,12 +125,16 @@ class SplitRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<SplitRecordA
   void copy_into_impl(ycsb::ycsb_value* dst) const {
     
     if (vptr_0_) {
-      dst->odd_columns() = vptr_0_->odd_columns();
+      for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
+        dst->odd_columns(i) = vptr_0_->even_columns(i);
+      }
     }
 
     
     if (vptr_1_) {
-      dst->even_columns() = vptr_1_->even_columns();
+      for (size_t i = 0; i < HALF_NUM_COLUMNS; i++) {
+        dst->even_columns(i) = vptr_1_->even_columns(i);
+      }
     }
 
   }
