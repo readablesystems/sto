@@ -131,14 +131,16 @@ public:
         return versions_[0];
     }
 
+    version_type& version_at(int cell) {
+        return versions_[cell];
+    }
+
     RowType row;
 
 private:
     template <nc Column>
     void install_by_cell(int cell, const RowType* new_row) {
-        if constexpr (Column >= nc::COLCOUNT) {
-            return;
-        }
+        static_assert(Column < nc::COLCOUNT);
 
         if (row.split_of(Column) == cell) {
             auto& old_col = row.template get<Column>();
@@ -146,7 +148,10 @@ private:
             old_col.value_ = new_col.value_;
         }
 
-        install_by_cell<Column + 1>(cell, new_row);
+        // This constexpr is necessary for template deduction purposes
+        if constexpr (Column + 1 < nc::COLCOUNT) {
+            install_by_cell<Column + 1>(cell, new_row);
+        }
     }
 
     std::array<version_type, num_versions> versions_;
