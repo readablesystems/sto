@@ -194,7 +194,7 @@ using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
         self.writelns('''\
 {rbrace};
 
-NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {lbrace}
+constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {lbrace}
 {indent}return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 {rbrace}
 
@@ -216,6 +216,30 @@ std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {lbrace}
 {indent}return out;
 {rbrace}
 ''')
+
+        self.writelns('''\
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {lbrace}
+{indent}static_assert(Column < NamedColumn::COLCOUNT);\
+''')
+
+        self.indent()
+        keys = tuple(self.sdata.keys())
+        for index in range(len(keys) - 1):
+            member = Output.extract_member_type(keys[index])[0]
+            nextmember = Output.extract_member_type(keys[index + 1])[0]
+            self.writelns('''\
+if constexpr (Column < NamedColumn::{nextmember}) {lbrace}
+{indent}return NamedColumn::{member};
+{rbrace}\
+''', member=member, nextmember=nextmember)
+        self.writeln(
+                'return NamedColumn::{member};',
+                member=Output.extract_member_type(keys[-1])[0])
+
+        self.unindent();
+
+        self.writeln('{rbrace}\n')
 
     def convert_column_accessors(self):
         '''Output the accessor wrapper for each column.'''
@@ -443,7 +467,10 @@ const auto split_of(NamedColumn index) const {lbrace}
 
         self.writelns('''\
 template <NamedColumn Column>
-inline auto& get();
+inline accessor<RoundedNamedColumn<Column>()>& get();
+
+template <NamedColumn Column>
+inline const accessor<RoundedNamedColumn<Column>()>& get() const;
 ''')
 
         index = 0
@@ -485,7 +512,7 @@ const auto split_of(NamedColumn index) const {lbrace}
 
         fmtstring = '''
 template <>
-inline auto& {struct}::get<NamedColumn({realindex})>() {lbrace}
+inline {const}accessor<RoundedNamedColumn<NamedColumn({index})>()>& {struct}::get<NamedColumn({realindex})>() {const}{lbrace}
 {indent}return {member}({arrindex});
 {rbrace}\
 '''
@@ -494,11 +521,14 @@ inline auto& {struct}::get<NamedColumn({realindex})>() {lbrace}
         for member in self.sdata:
             member, _, count = Output.extract_member_type(member)
             for realindex in range(index, index + count):
-                self.writelns(
-                        fmtstring,
-                        realindex=realindex,
-                        member=member,
-                        arrindex='' if count == 1 else realindex - index)
+                for const in (False, True):
+                    self.writelns(
+                            fmtstring,
+                            const='const ' if const else '',
+                            index=index,
+                            realindex=realindex,
+                            member=member,
+                            arrindex='' if count == 1 else realindex - index)
             index += count
 
     def convert_version_selectors(self):

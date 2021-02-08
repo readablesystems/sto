@@ -14,7 +14,7 @@ enum class NamedColumn : int {
     COLCOUNT = 10
 };
 
-NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 }
 
@@ -34,6 +34,15 @@ NamedColumn& operator++(NamedColumn& nc, int) {
 std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
     out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
     return out;
+}
+
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    if constexpr (Column < NamedColumn::odd_columns) {
+        return NamedColumn::even_columns;
+    }
+    return NamedColumn::odd_columns;
 }
 
 template <NamedColumn Column>
@@ -631,7 +640,10 @@ struct ycsb_value {
     explicit ycsb_value() = default;
 
     template <NamedColumn Column>
-    inline auto& get();
+    inline accessor<RoundedNamedColumn<Column>()>& get();
+
+    template <NamedColumn Column>
+    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
 
     auto& even_columns(size_t index) {
         return std::visit([this, index] (auto&& val) -> auto& {
@@ -675,52 +687,102 @@ struct ycsb_value {
 };
 
 template <>
-inline auto& ycsb_value::get<NamedColumn(0)>() {
+inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(0)>() {
     return even_columns(0);
 }
 
 template <>
-inline auto& ycsb_value::get<NamedColumn(1)>() {
+inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(0)>() const {
+    return even_columns(0);
+}
+
+template <>
+inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(1)>() {
     return even_columns(1);
 }
 
 template <>
-inline auto& ycsb_value::get<NamedColumn(2)>() {
+inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(1)>() const {
+    return even_columns(1);
+}
+
+template <>
+inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(2)>() {
     return even_columns(2);
 }
 
 template <>
-inline auto& ycsb_value::get<NamedColumn(3)>() {
+inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(2)>() const {
+    return even_columns(2);
+}
+
+template <>
+inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(3)>() {
     return even_columns(3);
 }
 
 template <>
-inline auto& ycsb_value::get<NamedColumn(4)>() {
+inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(3)>() const {
+    return even_columns(3);
+}
+
+template <>
+inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(4)>() {
     return even_columns(4);
 }
 
 template <>
-inline auto& ycsb_value::get<NamedColumn(5)>() {
+inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(4)>() const {
+    return even_columns(4);
+}
+
+template <>
+inline accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(5)>() {
     return odd_columns(0);
 }
 
 template <>
-inline auto& ycsb_value::get<NamedColumn(6)>() {
+inline const accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(5)>() const {
+    return odd_columns(0);
+}
+
+template <>
+inline accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(6)>() {
     return odd_columns(1);
 }
 
 template <>
-inline auto& ycsb_value::get<NamedColumn(7)>() {
+inline const accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(6)>() const {
+    return odd_columns(1);
+}
+
+template <>
+inline accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(7)>() {
     return odd_columns(2);
 }
 
 template <>
-inline auto& ycsb_value::get<NamedColumn(8)>() {
+inline const accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(7)>() const {
+    return odd_columns(2);
+}
+
+template <>
+inline accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(8)>() {
     return odd_columns(3);
 }
 
 template <>
-inline auto& ycsb_value::get<NamedColumn(9)>() {
+inline const accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(8)>() const {
+    return odd_columns(3);
+}
+
+template <>
+inline accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(9)>() {
+    return odd_columns(4);
+}
+
+template <>
+inline const accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(9)>() const {
     return odd_columns(4);
 }
 

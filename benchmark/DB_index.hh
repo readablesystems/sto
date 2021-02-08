@@ -221,7 +221,7 @@ public:
         std::fill(cell_accesses.begin(), cell_accesses.end(), access_t::none);
 
         for (auto it = accesses.begin(); it != accesses.end(); ++it) {
-            int cell_id = T::map(it->col_id);
+            int cell_id = 0;  // XXX: T::map(it->col_id);
             cell_accesses[cell_id]  = static_cast<access_t>(
                     static_cast<uint8_t>(cell_accesses[cell_id]) | static_cast<uint8_t>(it->access));
         }
@@ -236,7 +236,7 @@ public:
         std::fill(cell_accesses.begin(), cell_accesses.end(), access_t::none);
 
         for (auto it = accesses.begin(); it != accesses.end(); ++it) {
-            int cell_id = T::map(it->col_id);
+            int cell_id = 0;  // XXX: T::map(it->col_id);
             cell_accesses[cell_id]  = static_cast<access_t>(
                     static_cast<uint8_t>(cell_accesses[cell_id]) | static_cast<uint8_t>(it->access));
         }
@@ -617,7 +617,7 @@ public:
 
     typedef typename value_type::NamedColumn NamedColumn;
     typedef typename get_version<DBParams>::type version_type;
-    typedef IndexValueContainer<V, version_type> value_container_type;
+    typedef AdaptiveValueContainer<V, version_type> value_container_type;
     typedef commutators::Commutator<value_type> comm_type;
 
     typedef typename std::conditional_t<DBParams::MVCC,
