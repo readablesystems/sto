@@ -98,7 +98,7 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
             if (op.is_write) {
                 ycsb_key key(op.key);
                 auto [success, result, row, value]
-                    = db.ycsb_table().select_split_row(key,
+                    = db.ycsb_table().select_row(key,
                     {{col_group, Commute ? access_t::write : access_t::update}}
                 );
                 (void)result;
@@ -137,15 +137,15 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
             } else {
                 ycsb_key key(op.key);
                 auto [success, result, row, value]
-                    = db.ycsb_table().select_split_row(key, {{col_group, access_t::read}});
+                    = db.ycsb_table().select_row(key, {{col_group, access_t::read}});
                 (void)result; (void)row;
                 TXN_DO(success);
                 assert(result);
 
                 if (col_parity) {
-                    output = value.odd_columns(op.col_n/2);
+                    output = value->odd_columns(op.col_n/2);
                 } else {
-                    output = value.even_columns(op.col_n/2);
+                    output = value->even_columns(op.col_n/2);
                 }
             }
         }

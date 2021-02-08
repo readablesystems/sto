@@ -11,6 +11,8 @@ bool sto::AdapterConfig::Enabled = false;
 
 namespace ycsb {
 
+INITIALIZE_ADAPTER(ADAPTER_OF(ycsb_value));
+
 using namespace db_params;
 using bench::db_profiler;
 
@@ -310,7 +312,7 @@ public:
             std::cout << "Collapse 2 throughput: " << (double)result.collapse2_count / (elapsed_ms / 1000) << " txns/sec" << std::endl;
         }
 
-        for (size_t index = 0; index < ADAPTER_OF(ycsb_value)::NCOUNTERS; index++) {
+        for (auto index = ycsb_value::NamedColumn(0); index < ycsb_value::NamedColumn::COLCOUNT; index++) {
             std::cout
                 << "Read [" << index << "] = " << ADAPTER_OF(ycsb_value)::GetRead(index) << "; "
                 << "Write [" << index << "] = " << ADAPTER_OF(ycsb_value)::GetWrite(index) << std::endl;

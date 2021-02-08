@@ -6,9 +6,10 @@ import re
 import sys
 
 class Output:
-    def __init__(self, writer):
+    def __init__(self, writer, namespaces):
         self._data = {}
         self._indent = 0
+        self._namespaces = namespaces
         self._writer = writer
         self._tabwidth = 4
 
@@ -80,27 +81,39 @@ class Output:
                 'rbrace': '}',
                 'splitstruct': 'split_value',
                 'unifiedstruct': 'unified_value',
+                'qns': ''.join('::' + ns for ns in self._namespaces),  # Globally-qualified namespace
                 'struct': struct,
                 }
         self.sdata = sdata
 
-        self.writelns('namespace {ns} {lbrace}\n')
+        self.writelns('''\
+#pragma once
+
+#include "Adapter.hh"
+#include "Sto.hh"
+#include "VersionSelector.hh"
+''')
+
+        for ns in self._namespaces:
+            self.writeln('namespace {nsname} {lbrace}\n', nsname=ns)
+
+        self.writeln('namespace {ns} {lbrace}\n')
 
         self.convert_namedcolumns()
 
         self.writelns('''\
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct {accessorstruct};
 
-template <size_t StartIndex, size_t EndIndex>
+template <NamedColumn StartIndex, NamedColumn EndIndex>
 struct {splitstruct};
 
-template <size_t SplitIndex>
+template <NamedColumn SplitIndex>
 struct {unifiedstruct};
 
 struct {struct};
 
-DEFINE_ADAPTER({struct}, {colcount});
+DEFINE_ADAPTER({struct}, NamedColumn);
 ''')
 
         self.convert_column_accessors()
@@ -117,9 +130,10 @@ DEFINE_ADAPTER({struct}, {colcount});
         self.indent()
 
         self.writelns('''\
-explicit {struct}() = default;
-
 using NamedColumn = {ns}::NamedColumn;
+static constexpr auto MAX_SPLITS = 2;
+
+explicit {struct}() = default;
 ''')
 
         self.convert_accessors()
@@ -129,7 +143,7 @@ using NamedColumn = {ns}::NamedColumn;
         self.indent()
 
         for splitindex in range(self.colcount, 0, -1):
-            self.writei('{unifiedstruct}<{index}>', index=splitindex)
+            self.writei('{unifiedstruct}<NamedColumn({index})>', index=splitindex)
             if splitindex > 1:
                 self.write(',')
             self.writeln()
@@ -139,18 +153,23 @@ using NamedColumn = {ns}::NamedColumn;
 
         self.writeln('{rbrace};')
 
-        #self.convert_indexed_accessors()
+        self.convert_indexed_accessors()
 
-        self.writelns('''\
+        self.writelns('''
 {rbrace};  // namespace {ns}
 
 using {struct} = {ns}::{struct};
 using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
 ''')
 
+        for ns in self._namespaces:
+            self.writeln('{rbrace};  // namespace {nsname}\n', nsname=ns)
+
+        #self.convert_version_selectors()
+
     def convert_namedcolumns(self):
         '''Output the NamedColumn for the given type.'''
-        self.writelns('enum class NamedColumn : int {lbrace}')
+        self.writeln('enum class NamedColumn : int {lbrace}')
 
         self.indent()
         specify_value = True
@@ -163,7 +182,7 @@ using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
                 specify_value = False
             else:
                 self.writeln('{member},', member=member)
-            if count == 1:
+            if count != 1:
                 specify_value = True
             total_count += count
         if specify_value:
@@ -172,13 +191,37 @@ using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
             self.writeln('COLCOUNT')
         self.unindent()
 
-        self.writelns('{rbrace};\n')
+        self.writelns('''\
+{rbrace};
+
+NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {lbrace}
+{indent}return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+{rbrace}
+
+NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {lbrace}
+{indent}nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+{indent}return nc;
+{rbrace}
+
+NamedColumn& operator++(NamedColumn& nc) {lbrace}
+{indent}return nc += 1;
+{rbrace}
+
+NamedColumn& operator++(NamedColumn& nc, int) {lbrace}
+{indent}return nc += 1;
+{rbrace}
+
+std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {lbrace}
+{indent}out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
+{indent}return out;
+{rbrace}
+''')
 
     def convert_column_accessors(self):
         '''Output the accessor wrapper for each column.'''
 
         self.writelns('''\
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct {infostruct};
 ''')
 
@@ -188,78 +231,78 @@ struct {infostruct};
 
             self.writelns('''\
 template <>
-struct {infostruct}<{index}> {lbrace}
+struct {infostruct}<NamedColumn::{member}> {lbrace}
 {indent}using type = {ctype};
 {rbrace};
-''', index=index, ctype=ctype)
+''', ctype=ctype, member=member)
 
             index += count
 
         self.writelns('''\
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct {accessorstruct} {lbrace}\
 ''')
 
         self.indent()
 
         self.writelns('''\
-using type = typename {infostruct}<ColIndex>::type;
+using type = typename {infostruct}<Column>::type;
 
 {accessorstruct}() = default;
 {accessorstruct}(type& value) : value_(value) {lbrace}{rbrace}
 {accessorstruct}(const type& value) : value_(const_cast<type&>(value)) {lbrace}{rbrace}
 
 operator type() {lbrace}
-{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountWrite(Column + index_);
 {indent}return value_;
 {rbrace}
 
 operator const type() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountRead(Column + index_);
 {indent}return value_;
 {rbrace}
 
 operator type&() {lbrace}
-{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountWrite(Column + index_);
 {indent}return value_;
 {rbrace}
 
 operator const type&() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountRead(Column + index_);
 {indent}return value_;
 {rbrace}
 
 type operator =(const type& other) {lbrace}
-{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountWrite(Column + index_);
 {indent}return value_ = other;
 {rbrace}
 
-type operator =(const {accessorstruct}<ColIndex>& other) {lbrace}
-{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
+type operator =(const {accessorstruct}<Column>& other) {lbrace}
+{indent}ADAPTER_OF({struct})::CountWrite(Column + index_);
 {indent}return value_ = other.value_;
 {rbrace}
 
 type operator *() {lbrace}
-{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountWrite(Column + index_);
 {indent}return value_;
 {rbrace}
 
 const type operator *() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountRead(Column + index_);
 {indent}return value_;
 {rbrace}
 
 type* operator ->() {lbrace}
-{indent}ADAPTER_OF({struct})::CountWrite(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountWrite(Column + index_);
 {indent}return &value_;
 {rbrace}
 
 const type* operator ->() const {lbrace}
-{indent}ADAPTER_OF({struct})::CountRead(ColIndex + index_);
+{indent}ADAPTER_OF({struct})::CountRead(Column + index_);
 {indent}return &value_;
 {rbrace}
 
-size_t index_ = 0;
+std::underlying_type_t<NamedColumn> index_ = 0;
 type value_;\
 ''')
 
@@ -275,7 +318,7 @@ type value_;\
         '''
         self.writeln('template <>')
         self.writeln(
-                'struct {splitstruct}<{start}, {end}> {lbrace}',
+                'struct {splitstruct}<NamedColumn({start}), NamedColumn({end})> {lbrace}',
                 start=startindex, end=endindex)
 
         self.indent()
@@ -318,13 +361,13 @@ type value_;\
             if startindex < index + count != index < endindex:
                 if count == 1:
                     self.writeln(
-                            '{accessorstruct}<{index}> {member};',
-                            index=index, member=member)
+                            '{accessorstruct}<NamedColumn::{member}> {member};',
+                            member=member)
                 else:
                     size = min(index + count, endindex) - max(startindex, index)
                     self.writeln(
-                            'std::array<{accessorstruct}<{index}>, {count}> {member};',
-                            count=size, index=index, member=member)
+                            'std::array<{accessorstruct}<NamedColumn::{member}>, {count}> {member};',
+                            count=size, member=member)
             index += count
 
         self.unindent()
@@ -335,7 +378,7 @@ type value_;\
         '''Output the unified variant of the given split.'''
         self.writeln('template <>')
         self.writeln(
-                'struct {unifiedstruct}<{splitindex}> {lbrace}',
+                'struct {unifiedstruct}<NamedColumn({splitindex})> {lbrace}',
                 splitindex=splitindex)
 
         self.indent()
@@ -377,14 +420,18 @@ type value_;\
                         )
             index += count
 
-        self.writeln()
+        self.writelns('''
+const auto split_of(NamedColumn index) const {lbrace}
+{indent}return index < NamedColumn({splitindex}) ? 0 : 1;
+{rbrace}
+''', splitindex=splitindex)
 
         self.writeln(
-                '{splitstruct}<0, {splitindex}> split_0;',
+                '{splitstruct}<NamedColumn(0), NamedColumn({splitindex})> split_0;',
                 splitindex=splitindex)
         if splitindex < self.colcount:
             self.writeln(
-                    '{splitstruct}<{splitindex}, {colcount}> split_1;',
+                    '{splitstruct}<NamedColumn({splitindex}), NamedColumn({colcount})> split_1;',
                     splitindex=splitindex)
 
         self.unindent()
@@ -394,10 +441,9 @@ type value_;\
     def convert_accessors(self):
         '''Output the accessors.'''
 
-        if False:
-            self.writelns('''\
-inline auto& get(size_t index);
-inline const auto& get(size_t index) const;
+        self.writelns('''\
+template <NamedColumn Column>
+inline auto& get();
 ''')
 
         index = 0
@@ -426,50 +472,94 @@ inline const auto& get(size_t index) const;
                         index=index,
                         member=member)
             index += count
-        self.writeln()
+        self.writelns('''
+const auto split_of(NamedColumn index) const {lbrace}
+{indent}return std::visit([this, index] (auto&& val) -> const auto {lbrace}
+{indent}{indent}{indent}return val.split_of(index);
+{indent}{indent}{rbrace}, value);
+{rbrace}
+''')
 
     def convert_indexed_accessors(self):
         '''Output the indexed accessor wrappers.'''
 
-        for const in (False, True):
-            fmtstring = '''\
-inline {const}auto& {struct}::get(size_t index) {const}{lbrace}\
+        fmtstring = '''
+template <>
+inline auto& {struct}::get<NamedColumn({realindex})>() {lbrace}
+{indent}return {member}({arrindex});
+{rbrace}\
 '''
-            self.writeln(
-                    fmtstring,
-                    const='const ' if const else '')
 
-            self.indent()
-            self.writeln('switch (index) {lbrace}')
+        index = 0
+        for member in self.sdata:
+            member, _, count = Output.extract_member_type(member)
+            for realindex in range(index, index + count):
+                self.writelns(
+                        fmtstring,
+                        realindex=realindex,
+                        member=member,
+                        arrindex='' if count == 1 else realindex - index)
+            index += count
 
-            self.indent()
-            index = 0
-            for member in self.sdata:
-                member, _, count = Output.extract_member_type(member)
-                for realindex in range(index, index + count):
-                    self.writei('case {index}: ', index=realindex)
-                    if count == 1:
-                        self.write('return {member}();', member=member)
-                    else:
-                        self.write(
-                                'return {member}({arrindex});',
-                                arrindex=realindex - index,
-                                member=member)
-                    self.writeln()
-                index += count
-            self.unindent()
+    def convert_version_selectors(self):
+        '''Output the version selector implementations.'''
+        self.writeln('''\
+namespace ver_sel {lbrace}
 
-            self.writeln('{rbrace}')
-            self.unindent()
+template <typename VersImpl>
+class VerSel<{qns}::{struct}, VersImpl> : public VerSelBase<VerSel<{qns}::{struct}, VersImpl>, VersImpl> {lbrace}
+public:
+    typedef VersImpl version_type;
+    static constexpr size_t num_versions = 2;
 
-            self.writeln('{rbrace}')
+    explicit VerSel(type v) : vers_() {lbrace}
+        new (&vers_[0]) version_type(v);
+    {rbrace}
+    
+    VerSel(type v, bool insert) : vers_() {lbrace}
+        new (&vers_[0]) version_type(v, insert);
+    {rbrace}
 
-        self.writeln()
+    constexpr static int map_impl(int col_n) {lbrace}
+        typedef {qns}::{struct}::NamedColumn nc;
+        auto col_name = static_cast<nc>(col_n);
+        if (col_name == nc::odd_columns)
+            return 0;
+        else
+            return 1;
+    {rbrace}
+
+    version_type& version_at_impl(int cell) {lbrace}
+        return vers_[cell];
+    {rbrace}
+
+    void install_by_cell_impl(ycsb::ycsb_value *dst, const ycsb::ycsb_value *src, int cell) {lbrace}
+        if (cell != 1 && cell != 0) {lbrace}
+            always_assert(false, "Invalid cell id.");
+        {rbrace}
+        if (cell == 0) {lbrace}
+            dst->odd_columns = src->odd_columns;
+        {rbrace} else {lbrace}
+            dst->even_columns = src->even_columns;
+        {rbrace}
+    {rbrace}
+
+private:
+    version_type vers_[num_versions];
+{rbrace};
+''')
+
+        self.writeln('{rbrace};  // namespace ver_sel')
 
 if '__main__' == __name__:
     parser = argparse.ArgumentParser(description='STO struct generator')
     parser.add_argument(
             'file', type=str, help='INI-style struct definition file')
+    parser.add_argument(
+            '-n', '--namespace', default='::', type=str,
+            help='''\
+The fully-qualified namespace for the struct, e.g. ::benchmark::tpcc\
+''')
     parser.add_argument(
             '-o', '--out', default=None, type=str,
             help='Output file for generated structs, defaults to stdout')
@@ -483,7 +573,14 @@ if '__main__' == __name__:
 
     outfile = open(args.out, 'w') if args.out else sys.stdout
 
+    namespace = args.namespace
+    if not namespace.startswith('::'):
+        namespace = '::' + namespace
+    namespaces = namespace[2:].split('::')
+    if not namespaces[-1]:
+        namespaces = namespaces[:-1]
+
     for struct in config.sections():
-        Output(outfile).convert_struct(struct, config[struct])
+        Output(outfile, namespaces).convert_struct(struct, config[struct])
 
     outfile.close()

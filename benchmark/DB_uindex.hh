@@ -141,6 +141,23 @@ public:
     }
 #endif
 
+    sel_return_type
+    select_row(const key_type& k, std::initializer_list<column_access_t> accesses) {
+        bucket_entry& buck = map_[find_bucket_idx(k)];
+        bucket_version_type buck_vers = buck.version;
+        fence();
+        internal_elem *e = find_in_bucket(buck, k);
+
+        if (e != nullptr) {
+            return select_row(reinterpret_cast<uintptr_t>(e), accesses);
+        } else {
+            if (!Sto::item(this, make_bucket_key(buck)).observe(buck_vers)) {
+                return { false, false, 0, nullptr };
+            }
+            return { true, false, 0, nullptr };
+        }
+    }
+
     sel_split_return_type
     select_split_row(const key_type& k, std::initializer_list<column_access_t> accesses) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
@@ -201,6 +218,42 @@ public:
         return { true, true, rid, &(e->row_container.row) };
     }
 #endif
+
+    sel_return_type
+    select_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
+        auto e = reinterpret_cast<internal_elem*>(rid);
+        TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+
+        auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
+
+        std::array<TransItem*, value_container_type::num_versions> cell_items {};
+        bool any_has_write;
+        bool ok;
+        std::tie(any_has_write, cell_items) = extract_item_list<value_container_type>(cell_accesses, this, e);
+
+        if (is_phantom(e, row_item))
+            return { false, false, 0, nullptr };
+
+        if (index_read_my_write) {
+            if (has_delete(row_item)) {
+                return { true, false, 0, nullptr };
+            }
+            if (any_has_write || has_row_update(row_item)) {
+                value_type *vptr;
+                if (has_insert(row_item))
+                    vptr = &(e->row_container.row);
+                else
+                    vptr = row_item.template raw_write_value<value_type *>();
+                return { true, true, rid, vptr };
+            }
+        }
+
+        ok = access_all(cell_accesses, cell_items, e->row_container);
+        if (!ok)
+            return { false, false, 0, nullptr };
+
+        return { true, true, rid, &(e->row_container.row) };
+    }
 
     sel_split_return_type
     select_split_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
@@ -789,6 +842,37 @@ public:
         }
     }
 #endif
+
+    // Select row
+    sel_return_type
+    select_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
+        bucket_entry& buck = map_[find_bucket_idx(key)];
+        bucket_version_type buck_vers = buck.version;
+        fence();
+        KVNode *n = find_in_bucket(buck, key);
+
+        if (n) {
+            auto e = &n->elem;
+            return select_row(reinterpret_cast<uintptr_t>(e), accesses);
+        } else {
+            return {
+                Sto::item(this, make_bucket_key(buck)).observe(buck_vers),
+                false,
+                0,
+                nullptr
+            };
+        }
+    }
+
+    sel_return_type
+    select_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
+        using split_params = SplitParams<value_type>;
+        auto e = reinterpret_cast<internal_elem*>(rid);
+        auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
+        bool found;
+        auto result = MvSplitAccessAll::run_select(&found, cell_accesses, this, e);
+        return {true, found, rid, static_cast<value_type*>(result[0])};
+    }
 
     // Split version select row
     sel_split_return_type
