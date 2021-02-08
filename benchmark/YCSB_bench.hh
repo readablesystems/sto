@@ -15,10 +15,12 @@
 #include "DB_index.hh"
 #include "DB_params.hh"
 
+#if 0
 #if TABLE_FINE_GRAINED
 #include "ycsb_split_params_ts.hh"
 #else
 #include "ycsb_split_params_default.hh"
+#endif
 #endif
 
 namespace ycsb {

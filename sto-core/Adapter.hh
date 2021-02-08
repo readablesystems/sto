@@ -12,13 +12,14 @@ struct AdapterConfig {
     static bool Enabled;
 };
 
-template <typename T, ssize_t NumCounters>
+template <typename T, typename IndexType>
 struct Adapter {
 public:
-    static constexpr auto NCOUNTERS = NumCounters;
+    static constexpr auto NCOUNTERS = static_cast<size_t>(IndexType::COLCOUNT);
 
     typedef size_t counter_type;
     typedef std::atomic<counter_type> atomic_counter_type;
+    using Index = IndexType;
 
     template <typename CounterType>
     struct __attribute__((aligned(128))) CounterSet {
@@ -68,18 +69,19 @@ public:
         std::array<size_t, NCOUNTERS> write_psum;  // Prefix sums
         size_t read_total = 0;
         size_t write_total = 0;
-        for (size_t index = 0; index < NCOUNTERS; index++) {
-            read_freq[index] = GetRead(index);
-            write_freq[index] = GetWrite(index);
-            if (index) {
-                read_psum[index] = read_psum[index - 1] + read_freq[index];
-                write_psum[index] = write_psum[index - 1] + write_freq[index];
+        for (auto index = Index(0); index < Index::COLCOUNT; index++) {
+            auto numindex = static_cast<std::underlying_type_t<Index>>(index);
+            read_freq[numindex] = GetRead(index);
+            write_freq[numindex] = GetWrite(index);
+            if (numindex) {
+                read_psum[numindex] = read_psum[numindex - 1] + read_freq[numindex];
+                write_psum[numindex] = write_psum[numindex - 1] + write_freq[numindex];
             } else {
-                read_psum[index] = read_freq[index];
-                write_psum[index] = write_freq[index];
+                read_psum[numindex] = read_freq[numindex];
+                write_psum[numindex] = write_freq[numindex];
             }
-            read_total += read_freq[index];
-            write_total += write_freq[index];
+            read_total += read_freq[numindex];
+            write_total += write_freq[numindex];
         }
 
         size_t best_split = NCOUNTERS;
@@ -109,143 +111,50 @@ public:
         }
 
         return best_split;
-
-        /*
-        // 25% of expectation is considered frequent
-        const size_t rfreq_threshold = read_total / (4 * NCOUNTERS);
-        const size_t wfreq_threshold = write_total / (4 * NCOUNTERS);
-
-        // (read, write) data
-        std::pair<size_t, size_t> left_data = std::make_pair(0, 0);
-        std::pair<size_t, size_t> right_data = std::make_pair(0, 0);
-        ssize_t left_count = 0;
-        ssize_t right_count = 0;
-        while (left_count + right_count < NCOUNTERS) {
-            if (!left_count) {
-                if (write_freq[left_count] >= wfreq_threshold) {
-                    left_data.second += write_freq[left_count];
-                }
-                if (read_freq[left_count] >= wfreq_threshold) {
-                    left_data.first += read_freq[left_count];
-                }
-                left_count++;
-                continue;
-            }
-            bool lfreq[2] = {
-                left_data.first >= rfreq_threshold * left_count / 2,
-                left_data.second >= wfreq_threshold * left_count / 2
-            };
-            bool rfreq[2] = {
-                right_data.first >= rfreq_threshold * right_count / 2,
-                right_data.second >= wfreq_threshold * right_count / 2
-            };
-            bool lfreq_curr[2] = {
-                read_freq[left_count] >= rfreq_threshold,
-                write_freq[left_count] >= wfreq_threshold
-            };
-            bool rfreq_curr[2] = {
-                read_freq[NCOUNTERS - right_count - 1] >= rfreq_threshold,
-                write_freq[NCOUNTERS - right_count - 1] >= wfreq_threshold
-            };
-
-            bool add_left = false;
-            if (lfreq[1] && lfreq_curr[1]) {  // Check write matching
-                add_left = true;
-            } else if (rfreq[1] && rfreq_curr[1]) {
-                add_left = false;
-            } else if (lfreq[0] && lfreq_curr[0]) {  // Check read matching
-                add_left = true;
-            } else if (rfreq[0] && rfreq_curr[0]) {
-                add_left = false;
-            } else if (!lfreq_curr[0] && !lfreq_curr[1]) {  // Low-effect columns
-                add_left = true;
-            } else if (!rfreq_curr[0] && !rfreq_curr[1]) {
-                add_left = false;
-            } else if (!lfreq[1] && !lfreq_curr[1] && lfreq_curr[0]) {  // Has effect, minimize damage
-                add_left = true;
-            } else if (!lfreq[0] && !lfreq_curr[0] && !lfreq_curr[1]) {
-                add_left = true;
-            } else if (!rfreq[1] && !rfreq_curr[1] && rfreq_curr[0]) {
-                add_left = false;
-            } else if (!rfreq[0] && !rfreq_curr[0] && !rfreq_curr[1]) {
-                add_left = false;
-            } else {  // Damage has to happen, arbitrarily push to right
-                add_left = false;
-            }
-            if (add_left) {
-                if (lfreq_curr[1]) {
-                    left_data.second += write_freq[left_count];
-                }
-                if (lfreq_curr[0]) {
-                    left_data.first += read_freq[left_count];
-                }
-                left_count++;
-            } else {
-                if (rfreq_curr[1]) {
-                    right_data.second += write_freq[NCOUNTERS - right_count - 1];
-                }
-                if (rfreq_curr[0]) {
-                    right_data.first += read_freq[NCOUNTERS - right_count - 1];
-                }
-                right_count++;
-            }
-        }
-
-        // Everything got put into one group and it's frequently written
-        if (left_count == NCOUNTERS && left_data.second >= wfreq_threshold * left_count / 2) {
-            size_t freq = 0;
-            for (left_count = 0; left_count < NCOUNTERS; left_count++) {
-                if (freq + write_freq[left_count] >= write_total / 2) {
-                    auto distance_without = write_total / 2 - freq;
-                    auto distance_with = (freq + write_freq[left_count]) - write_total / 2;
-                    if (distance_with > distance_without) {
-                        break;
-                    }
-                }
-                freq += write_freq[left_count];
-            }
-        }
-
-        return left_count;
-        */
     }
 
-    static inline void CountRead(const size_t index) {
+    static inline void CountRead(const Index index) {
         CountRead(index, 1);
     }
 
-    static inline void CountRead(const size_t index, const counter_type count) {
-        assert(index < NCOUNTERS);
+    static inline void CountRead(const Index index, const counter_type count) {
+        assert(index < Index::COLCOUNT);
         if (AdapterConfig::Enabled) {
-            thread_counters[TThread::id()].read_counters[index] += count;
+            auto numindex = static_cast<std::underlying_type_t<Index>>(index);
+            thread_counters[TThread::id()].read_counters[numindex] += count;
         }
     }
 
-    static inline void CountWrite(const size_t index) {
+    static inline void CountWrite(const Index index) {
         CountWrite(index, 1);
     }
 
-    static inline void CountWrite(const size_t index, const counter_type count) {
-        assert(index < NCOUNTERS);
+    static inline void CountWrite(const Index index, const counter_type count) {
+        assert(index < Index::COLCOUNT);
         if (AdapterConfig::Enabled) {
-            thread_counters[TThread::id()].write_counters[index] += count;
+            auto numindex = static_cast<std::underlying_type_t<Index>>(index);
+            thread_counters[TThread::id()].write_counters[numindex] += count;
         }
     }
 
-    static inline std::pair<counter_type, counter_type> Get(const size_t index) {
+    static inline std::pair<counter_type, counter_type> Get(const Index index) {
         return std::make_pair(GetRead(index), GetWrite(index));
     }
 
-    static inline counter_type GetRead(const size_t index) {
+    static inline counter_type GetRead(const Index index) {
         if (AdapterConfig::Enabled) {
-            return global_counters.read_counters[index].load(std::memory_order::memory_order_relaxed);
+            auto numindex = static_cast<std::underlying_type_t<Index>>(index);
+            return global_counters.read_counters[numindex]
+                .load(std::memory_order::memory_order_relaxed);
         }
         return 0;
     }
 
-    static inline counter_type GetWrite(const size_t index) {
+    static inline counter_type GetWrite(const Index index) {
         if (AdapterConfig::Enabled) {
-            return global_counters.write_counters[index].load(std::memory_order::memory_order_relaxed);
+            auto numindex = static_cast<std::underlying_type_t<Index>>(index);
+            return global_counters.write_counters[numindex]
+                .load(std::memory_order::memory_order_relaxed);
         }
         return 0;
     }
@@ -254,7 +163,7 @@ public:
         int status;
         char* tname = abi::__cxa_demangle(typeid(T).name(), 0, 0, &status);
         std::cout << tname << " stats:" << std::endl;
-        for (size_t index = 0; index < NCOUNTERS; index++) {
+        for (Index index = 0; index < NCOUNTERS; index++) {
             std::cout
                 << "Read [" << index << "] = " << GetRead(index) << "; "
                 << "Write [" << index << "] = " << GetWrite(index) << std::endl;
@@ -275,30 +184,30 @@ public:
         }
     };
 
-    static inline std::pair<counter_type, counter_type> TGet(const size_t index) {
+    static inline std::pair<counter_type, counter_type> TGet(const Index index) {
         return std::make_pair(TGetRead(index), TGetWrite(index));
     }
 
-    static inline std::pair<counter_type, counter_type> TGet(const size_t threadid, const size_t index) {
+    static inline std::pair<counter_type, counter_type> TGet(const size_t threadid, const Index index) {
         return std::make_pair(TGetRead(threadid, index), TGetWrite(threadid, index));
     }
 
-    static inline counter_type TGetRead(const size_t index) {
+    static inline counter_type TGetRead(const Index index) {
         return TGetRead(TThread::id(), index);
     }
 
-    static inline counter_type TGetRead(const size_t threadid, const size_t index) {
+    static inline counter_type TGetRead(const size_t threadid, const Index index) {
         if (AdapterConfig::Enabled) {
             return thread_counters[threadid].read_counters[index];
         }
         return 0;
     }
 
-    static inline counter_type TGetWrite(const size_t index) {
+    static inline counter_type TGetWrite(const Index index) {
         return TGetWrite(TThread::id(), index);
     }
 
-    static inline counter_type TGetWrite(const size_t threadid, const size_t index) {
+    static inline counter_type TGetWrite(const size_t threadid, const Index index) {
         if (AdapterConfig::Enabled) {
             return thread_counters[threadid].write_counters[index];
         }
@@ -314,8 +223,8 @@ public:
 #endif
 
 #ifndef DEFINE_ADAPTER
-#define DEFINE_ADAPTER(Type, NumCounters) \
-    using ADAPTER_OF(Type) = ::sto::Adapter<Type, NumCounters>;
+#define DEFINE_ADAPTER(Type, IndexType) \
+    using ADAPTER_OF(Type) = ::sto::Adapter<Type, IndexType>;
 #endif
 
 #ifndef INITIALIZE_ADAPTER
@@ -327,8 +236,8 @@ public:
 #endif
 
 #ifndef CREATE_ADAPTER
-#define CREATE_ADAPTER(Type, NumCounters) \
-    DEFINE_ADAPTER(Type, NumCounters); \
+#define CREATE_ADAPTER(Type, IndexType) \
+    DEFINE_ADAPTER(Type, IndexType); \
     INITIALIZE_ADAPTER(ADAPTER_OF(Type));
 #endif
 

@@ -8,7 +8,10 @@
 #include "str.hh" // lcdf::Str
 #include "Interface.hh"
 #include "DB_index.hh" // bench::get_version; bench::ordered_index; bench::version_adapter
-#include "Adapter.hh"
+
+#define COL_WIDTH 4
+#define HALF_NUM_COLUMNS 5
+#include "YCSB_structs_generated.hh"
 
 namespace ycsb {
 
@@ -37,14 +40,10 @@ struct ycsb_key {
     uint64_t w_id;
 };
 
-#define COL_WIDTH 4
-#define HALF_NUM_COLUMNS 5
 typedef fix_string<COL_WIDTH> col_type;
 
-#include "YCSB_structs_generated.hh"
-
-using ycsb_even_half_value = ycsb_value_datatypes::split_value<0, 5>;
-using ycsb_odd_half_value = ycsb_value_datatypes::split_value<5, 10>;
+using ycsb_even_half_value = ycsb_value_datatypes::split_value<ycsb_value::NamedColumn::even_columns, ycsb_value::NamedColumn::odd_columns>;
+using ycsb_odd_half_value = ycsb_value_datatypes::split_value<ycsb_value::NamedColumn::odd_columns, ycsb_value::NamedColumn::COLCOUNT>;
 
 class ycsb_input_generator {
 public:

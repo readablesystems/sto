@@ -102,6 +102,56 @@ public:
     }
 };
 
+// Container for adaptively-split value containers
+template <typename RowType, typename VersImpl>
+class AdaptiveValueContainer {
+public:
+    using comm_type = commutators::Commutator<RowType>;
+    using nc = typename RowType::NamedColumn;
+    using type = TransactionTid::type;
+    using version_type = VersImpl;
+    static constexpr auto num_versions = RowType::MAX_SPLITS;
+
+    AdaptiveValueContainer(type v, const RowType& r) : row(r), versions_() {
+        new (&versions_[0]) version_type(v);
+    }
+    AdaptiveValueContainer(type v, bool insert, const RowType& r) : row(r), versions_() {
+        new (&versions_[0]) version_type(v, insert);
+    }
+
+    void install_cell(const comm_type& comm) {
+        comm.operate(row);
+    }
+
+    void install_cell(int cell, const RowType* new_row) {
+        install_by_cell<nc(0)>(cell, new_row);
+    }
+
+    version_type& row_version() {
+        return versions_[0];
+    }
+
+    RowType row;
+
+private:
+    template <nc Column>
+    void install_by_cell(int cell, const RowType* new_row) {
+        if constexpr (Column >= nc::COLCOUNT) {
+            return;
+        }
+
+        if (row.split_of(Column) == cell) {
+            auto& old_col = row.template get<Column>();
+            auto& new_col = new_row->template get<Column>();
+            old_col.value_ = new_col.value_;
+        }
+
+        install_by_cell<Column + 1>(cell, new_row);
+    }
+
+    std::array<version_type, num_versions> versions_;
+};
+
 /////////////////////////////
 // @end Common definitions //
 /////////////////////////////
