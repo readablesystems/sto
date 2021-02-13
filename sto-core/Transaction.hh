@@ -689,7 +689,7 @@ private:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
-        mvcc_rw = false;
+        mvcc_rw_ = false;
         if (commit_tid_ > 0)
             prev_commit_tid_ = commit_tid_;
         start_tid_ = read_tid_ = commit_tid_ = 0;
@@ -1034,7 +1034,7 @@ public:
 
     // flips the manual rw flag for mvcc
     void mvcc_rw_upgrade() const {
-        mvcc_rw = true;
+        mvcc_rw_ = true;
     }
 
     // transaction start
@@ -1042,7 +1042,7 @@ public:
         if (!read_tid_) {
             TXP_INCREMENT(txp_rtid_atomic);
             fence();
-            if (mvcc_rw) {
+            if (mvcc_rw_) {
                 //read_tid_ = _TID.load(std::memory_order_relaxed);
                 read_tid_ = write_tid();
             } else {
@@ -1204,7 +1204,7 @@ private:
     bool restarted;
     TransItem* tset_next_;
     unsigned tset_size_;
-    mutable bool mvcc_rw;  // manual MVCC read-write flag
+    mutable bool mvcc_rw_;  // manual MVCC read-write flag
     mutable tid_type start_tid_;
     mutable tid_type read_tid_;
     mutable tid_type commit_tid_;
