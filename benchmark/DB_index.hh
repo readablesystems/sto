@@ -261,6 +261,25 @@ public:
         return { any_has_write, cell_items };
     }
 
+    template <typename T>
+    static std::pair<bool, std::array<TransItem*, T::num_versions>>
+    extract_items(const std::array<AccessType, T::num_versions>& cell_accesses, TObject *tobj, internal_elem *e) {
+        bool any_has_write = false;
+        std::array<TransItem*, T::num_versions> cell_items { nullptr };
+        std::fill(cell_items.begin(), cell_items.end(), nullptr);
+
+        for (size_t i = 0; i < T::num_versions; ++i) {
+            if (cell_accesses[i] != AccessType::none) {
+                auto item = Sto::item(tobj, item_key_t(e, i));
+                if (IndexType::index_read_my_write && !any_has_write && item.has_write()) {
+                    any_has_write = true;
+                }
+                cell_items[i] = &item.item();
+            }
+        }
+        return { any_has_write, cell_items };
+    }
+
     // mvcc_*_loop() methods: Template meta-programs that iterates through all version "splits" at compile time.
     // Template parameters:
     // C: size of split (should be constant throughout the recursive instantiation)

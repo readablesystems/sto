@@ -40,8 +40,6 @@ void ycsb_runner<DBParams>::gen_workload(int txn_size) {
     }
 }
 
-using bench::access_t;
-
 template <typename DBParams>
 void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
     col_type output;
@@ -57,14 +55,15 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
         ADAPTER_OF(ycsb_value)::Commit();
         ADAPTER_OF(ycsb_value)::ResetThread();
         for (auto& op : txn.ops) {
+            if constexpr (!DBParams::MVCC) {
             bool col_parity = op.col_n % 2;
-            auto col_group = col_parity ? nm::odd_columns : nm::even_columns;
-            (void)col_group;
+            auto col_index = op.col_n / 2;
+            auto col_group = (col_parity ? nm::odd_columns : nm::even_columns) + col_index;
             if (op.is_write) {
                 ycsb_key key(op.key);
                 auto [success, result, row, value]
                     = db.ycsb_table().select_row(key,
-                    {{col_group, Commute ? access_t::write : access_t::update}}
+                    {{col_group, Commute ? AccessType::write : AccessType::update}}
                 );
                 (void)result;
                 (void)value;
@@ -91,27 +90,30 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
 #endif
                 } else {
                     auto new_val = new (Sto::tx_alloc<ycsb_value>()) ycsb_value();
-                    new (new_val) ycsb_value();
+                    new (new_val) ycsb_value(*value);
                     if (col_parity) {
-                        new_val->odd_columns(op.col_n/2) = op.write_value;
+                        new_val->odd_columns(col_index) = op.write_value;
                     } else {
-                        new_val->even_columns(op.col_n/2) = op.write_value;
+                        new_val->even_columns(col_index) = op.write_value;
                     }
                     db.ycsb_table().update_row(row, new_val);
                 }
             } else {
                 ycsb_key key(op.key);
                 auto [success, result, row, value]
-                    = db.ycsb_table().select_row(key, {{col_group, access_t::read}});
+                    = db.ycsb_table().select_row(key, {{col_group, AccessType::read}});
                 (void)result; (void)row;
                 TXN_DO(success);
                 assert(result);
 
                 if (col_parity) {
-                    output = value->odd_columns(op.col_n/2);
+                    output = value->odd_columns(col_index);
                 } else {
-                    output = value->even_columns(op.col_n/2);
+                    output = value->even_columns(col_index);
                 }
+            }
+            } else {
+                TXN_DO(false);
             }
         }
     } RETRY(true);
