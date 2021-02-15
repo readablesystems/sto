@@ -20,6 +20,8 @@ public:
     using typename C::value_container_type;
     using typename C::comm_type;
 
+    using ColumnAccess = typename value_container_type::ColumnAccess;
+
     using C::invalid_bit;
     using C::insert_bit;
     using C::delete_bit;
@@ -101,6 +103,9 @@ public:
     template <typename T>
     static constexpr auto extract_item_list
         = split_version_helpers<index_t>::template extract_item_list<T>;
+    template <typename T>
+    static constexpr auto extract_items
+        = split_version_helpers<index_t>::template extract_items<T>;
 
     // Main constructor
     unordered_index(size_t size, Hash h = Hash(), Pred p = Pred()) :
@@ -142,7 +147,7 @@ public:
 #endif
 
     sel_return_type
-    select_row(const key_type& k, std::initializer_list<column_access_t> accesses) {
+    select_row(const key_type& k, std::initializer_list<ColumnAccess> accesses) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
         bucket_version_type buck_vers = buck.version;
         fence();
@@ -220,19 +225,21 @@ public:
 #endif
 
     sel_return_type
-    select_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
+    select_row(uintptr_t rid, std::initializer_list<ColumnAccess> accesses) {
         auto e = reinterpret_cast<internal_elem*>(rid);
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-        auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
+        //auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
+        auto cell_accesses = e->row_container.split_accesses(accesses);
 
         std::array<TransItem*, value_container_type::num_versions> cell_items {};
         bool any_has_write;
         bool ok;
-        std::tie(any_has_write, cell_items) = extract_item_list<value_container_type>(cell_accesses, this, e);
+        std::tie(any_has_write, cell_items) = extract_items<value_container_type>(cell_accesses, this, e);
 
-        if (is_phantom(e, row_item))
+        if (is_phantom(e, row_item)) {
             return { false, false, 0, nullptr };
+        }
 
         if (index_read_my_write) {
             if (has_delete(row_item)) {
@@ -240,17 +247,19 @@ public:
             }
             if (any_has_write || has_row_update(row_item)) {
                 value_type *vptr;
-                if (has_insert(row_item))
+                if (has_insert(row_item)) {
                     vptr = &(e->row_container.row);
-                else
+                } else {
                     vptr = row_item.template raw_write_value<value_type *>();
+                }
                 return { true, true, rid, vptr };
             }
         }
 
-        ok = access_all(cell_accesses, cell_items, e->row_container);
-        if (!ok)
+        ok = e->row_container.template access<item_key_t>(cell_accesses, cell_items, row_cell_bit);
+        if (!ok) {
             return { false, false, 0, nullptr };
+        }
 
         return { true, true, rid, &(e->row_container.row) };
     }

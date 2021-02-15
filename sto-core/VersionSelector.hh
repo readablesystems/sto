@@ -102,6 +102,26 @@ public:
     }
 };
 
+enum class AccessType : int8_t {none = 0, read = 1, write = 2, update = 3};
+
+inline AccessType operator&(const AccessType& lhs, const AccessType& rhs) {
+    return static_cast<AccessType>(
+            static_cast<std::underlying_type_t<AccessType>>(lhs) &
+            static_cast<std::underlying_type_t<AccessType>>(rhs));
+};
+
+inline AccessType operator|(const AccessType& lhs, const AccessType& rhs) {
+    return static_cast<AccessType>(
+            static_cast<std::underlying_type_t<AccessType>>(lhs) |
+            static_cast<std::underlying_type_t<AccessType>>(rhs));
+};
+
+inline AccessType& operator|=(AccessType& lhs, const AccessType& rhs) {
+    return lhs = static_cast<AccessType>(
+            static_cast<std::underlying_type_t<AccessType>>(lhs) |
+            static_cast<std::underlying_type_t<AccessType>>(rhs));
+};
+
 // Container for adaptively-split value containers
 template <typename RowType, typename VersImpl>
 class AdaptiveValueContainer {
@@ -111,12 +131,67 @@ public:
     using type = TransactionTid::type;
     using version_type = VersImpl;
     static constexpr auto num_versions = RowType::MAX_SPLITS;
+    static constexpr auto NUM_VERSIONS = RowType::MAX_SPLITS;
+
+    struct ColumnAccess {
+        ColumnAccess(nc column, AccessType access)
+            : column(column), access(access) {}
+
+        nc column;
+        AccessType access;
+    };
 
     AdaptiveValueContainer(type v, const RowType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v);
     }
     AdaptiveValueContainer(type v, bool insert, const RowType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v, insert);
+    }
+
+    template <typename KeyType>
+    bool access(
+            std::array<AccessType, NUM_VERSIONS>& split_accesses,
+            std::array<TransItem*, NUM_VERSIONS>& split_items,
+            TransItem::flags_type split_bit) {
+
+        for (size_t idx = 0; idx < split_accesses.size(); ++idx) {
+            auto& access = split_accesses[idx];
+            auto proxy = TransProxy(*Sto::transaction(), *split_items[idx]);
+            if ((access & AccessType::read) != AccessType::none) {
+                if (!proxy.observe(version_at(idx))) {
+                    return false;
+                }
+            }
+            if ((access & AccessType::write) != AccessType::none) {
+                if (!proxy.acquire_write(version_at(idx))) {
+                    return false;
+                }
+                if (proxy.item().key<KeyType>().is_row_item()) {
+                    proxy.item().add_flags(split_bit);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    std::array<AccessType, NUM_VERSIONS>
+    split_accesses(std::initializer_list<ColumnAccess> accesses) const {
+        std::array<AccessType, NUM_VERSIONS> split_accesses = {};
+
+        for (auto colaccess : accesses) {
+            const auto split = row.split_of(colaccess.column);
+            split_accesses[split] |= colaccess.access;
+        }
+
+        return split_accesses;
+    }
+
+    void install(const comm_type& comm) {
+        comm.operate(row);
+    }
+
+    void install(const RowType* new_row) {
     }
 
     void install_cell(const comm_type& comm) {
