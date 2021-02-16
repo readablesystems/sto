@@ -2,6 +2,7 @@
 
 #include "MVCC.hh"
 #include "VersionBase.hh"
+#include "Adapter.hh"
 
 namespace ver_sel {
 
@@ -176,11 +177,18 @@ public:
     }
 
     std::array<AccessType, NUM_VERSIONS>
-    split_accesses(std::initializer_list<ColumnAccess> accesses) const {
+    split_accesses(std::initializer_list<ColumnAccess> accesses) {
         std::array<AccessType, NUM_VERSIONS> split_accesses = {};
 
+        /*
         for (auto colaccess : accesses) {
             const auto split = row.split_of(colaccess.column);
+            split_accesses[split] |= colaccess.access;
+        }
+        */
+        const auto current_split = ::sto::Adapter<RowType, typename RowType::NamedColumn>::CurrentSplit();
+        for (auto colaccess : accesses) {
+            const auto split = colaccess.column < current_split;
             split_accesses[split] |= colaccess.access;
         }
 
@@ -188,14 +196,24 @@ public:
     }
 
     void install(const comm_type& comm) {
-        comm.operate(row);
+        comm.operate(*read_row);
     }
 
     void install(const RowType* new_row) {
+        // Resplit
+        if (new_row->value.index() != read_row->value.index()) {
+            auto write_row = write_ptr();
+            write_row->value = new_row->value;
+            read_row = write_row;
+        } else {
+            auto write_row = write_ptr();
+            write_row->value = new_row->value;
+            read_row = write_row;
+        }
     }
 
     void install_cell(const comm_type& comm) {
-        comm.operate(row);
+        comm.operate(*read_row);
     }
 
     void install_cell(int cell, const RowType* new_row) {
@@ -211,6 +229,8 @@ public:
     }
 
     RowType row;
+    RowType row2;
+    RowType* read_row = &row;
 
 private:
     template <nc Column>
@@ -218,7 +238,7 @@ private:
         static_assert(Column < nc::COLCOUNT);
 
         if (row.split_of(Column) == cell) {
-            auto& old_col = row.template get<Column>();
+            auto& old_col = read_row->template get<Column>();
             auto& new_col = new_row->template get<Column>();
             old_col.value_ = new_col.value_;
         }
@@ -227,6 +247,13 @@ private:
         if constexpr (Column + 1 < nc::COLCOUNT) {
             install_by_cell<Column + 1>(cell, new_row);
         }
+    }
+
+    RowType* write_ptr() const {
+        auto rptr = reinterpret_cast<uintptr_t>(read_row);
+        auto r1ptr = reinterpret_cast<uintptr_t>(&row);
+        auto r2ptr = reinterpret_cast<uintptr_t>(&row2);
+        return reinterpret_cast<RowType*>(rptr ^ r1ptr ^ r2ptr);
     }
 
     std::array<version_type, num_versions> versions_;

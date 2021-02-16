@@ -47,6 +47,10 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
 
     (void)output;
 
+    if (!TThread::id() && !(ud->sample() % 1000)) {
+        ADAPTER_OF(ycsb_value)::RecomputeSplit();
+    }
+
     ADAPTER_OF(ycsb_value)::ResetThread();
     TRANSACTION {
         if (DBParams::MVCC && txn.rw_txn) {
@@ -90,7 +94,7 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
 #endif
                 } else {
                     auto new_val = new (Sto::tx_alloc<ycsb_value>()) ycsb_value();
-                    new (new_val) ycsb_value(*value);
+                    ycsb_value::resplit(*new_val, *value, ADAPTER_OF(ycsb_value)::CurrentSplit());
                     if (col_parity) {
                         new_val->odd_columns(col_index) = op.write_value;
                     } else {

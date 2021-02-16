@@ -248,7 +248,7 @@ public:
             if (any_has_write || has_row_update(row_item)) {
                 value_type *vptr;
                 if (has_insert(row_item)) {
-                    vptr = &(e->row_container.row);
+                    vptr = e->row_container.read_row;
                 } else {
                     vptr = row_item.template raw_write_value<value_type *>();
                 }
@@ -261,7 +261,7 @@ public:
             return { false, false, 0, nullptr };
         }
 
-        return { true, true, rid, &(e->row_container.row) };
+        return { true, true, rid, e->row_container.read_row };
     }
 
     sel_split_return_type
@@ -422,7 +422,7 @@ public:
         internal_elem* e = find_in_bucket(buck, k);
         if (e == nullptr)
             return nullptr;
-        return &(e->row_container.row);
+        return e->row_container.read_row;
     }
 
     void nontrans_put(const key_type& k, const value_type& v) {
@@ -484,18 +484,24 @@ public:
                 // update
                 if (item.has_commute()) {
                     comm_type &comm = item.write_value<comm_type>();
+                    /*
                     if (has_row_update(item)) {
                         copy_row(e, comm);
                     } else if (has_row_cell(item)) {
-                        e->row_container.install_cell(comm);
+                        e->row_container.install(comm);
                     }
+                    */
+                    e->row_container.install(comm);
                 } else {
                     auto vptr = item.write_value<value_type*>();
+                    /*
                     if (has_row_update(item)) {
                         copy_row(e, vptr);
                     } else if (has_row_cell(item)) {
-                        e->row_container.install_cell(0, vptr);
+                        e->row_container.install(vptr);
                     }
+                    */
+                    e->row_container.install(vptr);
                 }
             }
             txn.set_version_unlock(e->version(), item);
@@ -634,12 +640,12 @@ private:
     }
 
     static void copy_row(internal_elem *e, comm_type &comm) {
-        comm.operate(e->row_container.row);
+        comm.operate(*e->row_container.read_row);
     }
     static void copy_row(internal_elem *table_row, const value_type *value) {
         if (value == nullptr)
             return;
-        table_row->row_container.row = *value;
+        *table_row->row_container.read_row = *value;
     }
 };
 
