@@ -639,6 +639,15 @@ struct ycsb_value {
 
     explicit ycsb_value() = default;
 
+    static inline void resplit(
+            ycsb_value& newvalue, const ycsb_value& oldvalue, NamedColumn index);
+
+    template <NamedColumn Column>
+    static inline void set_unified(ycsb_value& value, NamedColumn index);
+
+    template <NamedColumn Column>
+    static inline void copy_data(ycsb_value& newvalue, const ycsb_value& oldvalue);
+
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -685,6 +694,38 @@ struct ycsb_value {
         unified_value<NamedColumn(1)>
         > value;
 };
+
+inline void ycsb_value::resplit(
+        ycsb_value& newvalue, const ycsb_value& oldvalue, NamedColumn index) {
+    assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+    set_unified<NamedColumn(1)>(newvalue, index);
+    if (newvalue.value.index() == oldvalue.value.index()) {
+        newvalue.value = oldvalue.value;
+    } else {
+        copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
+}
+
+template <NamedColumn Column>
+inline void ycsb_value::set_unified(ycsb_value& value, NamedColumn index) {
+    static_assert(Column <= NamedColumn::COLCOUNT);
+    if (Column == index) {
+        value.value = unified_value<Column>();
+        return;
+    }
+    if constexpr (Column < NamedColumn::COLCOUNT) {
+        set_unified<Column + 1>(value, index);
+    }
+}
+
+template <NamedColumn Column>
+inline void ycsb_value::copy_data(ycsb_value& newvalue, const ycsb_value& oldvalue) {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+    if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
+        copy_data<Column + 1>(newvalue, oldvalue);
+    }
+}
 
 template <>
 inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(0)>() {

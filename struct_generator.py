@@ -134,6 +134,15 @@ using NamedColumn = {ns}::NamedColumn;
 static constexpr auto MAX_SPLITS = 2;
 
 explicit {struct}() = default;
+
+static inline void resplit(
+{indent}{indent}{struct}& newvalue, const {struct}& oldvalue, NamedColumn index);
+
+template <NamedColumn Column>
+static inline void set_unified({struct}& value, NamedColumn index);
+
+template <NamedColumn Column>
+static inline void copy_data({struct}& newvalue, const {struct}& oldvalue);
 ''')
 
         self.convert_accessors()
@@ -152,6 +161,8 @@ explicit {struct}() = default;
         self.unindent(2)
 
         self.writeln('{rbrace};')
+
+        self.convert_resplitter()
 
         self.convert_indexed_accessors()
 
@@ -505,6 +516,43 @@ const auto split_of(NamedColumn index) const {lbrace}
 {indent}{indent}{indent}return val.split_of(index);
 {indent}{indent}{rbrace}, value);
 {rbrace}
+''')
+
+    def convert_resplitter(self):
+        '''Output the resplitting functionality.'''
+
+        self.writelns('''
+inline void {struct}::resplit(
+{indent}{indent}{struct}& newvalue, const {struct}& oldvalue, NamedColumn index) {lbrace}
+{indent}assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+{indent}set_unified<NamedColumn(1)>(newvalue, index);
+{indent}if (newvalue.value.index() == oldvalue.value.index()) {lbrace}
+{indent}{indent}newvalue.value = oldvalue.value;
+{indent}{rbrace} else {lbrace}
+{indent}{indent}copy_data<NamedColumn(0)>(newvalue, oldvalue);
+{indent}{rbrace}
+{rbrace}
+
+template <NamedColumn Column>
+inline void {struct}::set_unified({struct}& value, NamedColumn index) {lbrace}
+{indent}static_assert(Column <= NamedColumn::COLCOUNT);
+{indent}if (Column == index) {lbrace}
+{indent}{indent}value.value = {unifiedstruct}<Column>();
+{indent}{indent}return;
+{indent}{rbrace}
+{indent}if constexpr (Column < NamedColumn::COLCOUNT) {lbrace}
+{indent}{indent}set_unified<Column + 1>(value, index);
+{indent}{rbrace}
+{rbrace}
+
+template <NamedColumn Column>
+inline void {struct}::copy_data({struct}& newvalue, const {struct}& oldvalue) {lbrace}
+{indent}static_assert(Column < NamedColumn::COLCOUNT);
+{indent}newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+{indent}if constexpr (Column + 1 < NamedColumn::COLCOUNT) {lbrace}
+{indent}{indent}copy_data<Column + 1>(newvalue, oldvalue);
+{indent}{rbrace}
+{rbrace}\
 ''')
 
     def convert_indexed_accessors(self):

@@ -137,6 +137,16 @@ public:
         }
     }
 
+    static inline Index CurrentSplit() {
+        // 0 is an invalid split
+        if (current_split == Index(0)) {
+            return Index::COLCOUNT;
+        }
+
+        return current_split;
+
+    }
+
     static inline std::pair<counter_type, counter_type> Get(const Index index) {
         return std::make_pair(GetRead(index), GetWrite(index));
     }
@@ -170,6 +180,15 @@ public:
         }
 
         std::cout << "Computed split index: " << ComputeSplitIndex() << std::endl;
+    }
+
+    static inline bool RecomputeSplit() {
+        auto split = Index(ComputeSplitIndex());
+        ResetGlobal();
+        std::cout << "Recomputed split: " << split << std::endl;
+        bool changed = (split != current_split);
+        current_split = split;
+        return changed;
     }
 
     static inline void ResetGlobal() {
@@ -214,6 +233,7 @@ public:
         return 0;
     }
 
+    static Index current_split;
     static CounterSet<atomic_counter_type> global_counters;
     static std::array<CounterSet<counter_type>, MAX_THREADS> thread_counters;
 };
@@ -229,6 +249,8 @@ public:
 
 #ifndef INITIALIZE_ADAPTER
 #define INITIALIZE_ADAPTER(Type) \
+    template <> \
+    Type::Index Type::current_split = {}; \
     template <> \
     Type::CounterSet<Type::atomic_counter_type> Type::global_counters = {}; \
     template <> \
