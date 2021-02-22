@@ -217,7 +217,8 @@ public:
 
     static inline counter_type TGetRead(const size_t threadid, const Index index) {
         if (AdapterConfig::Enabled) {
-            return thread_counters[threadid].read_counters[index];
+            return thread_counters[threadid].read_counters[
+                static_cast<std::underlying_type_t<Index>>(index)];
         }
         return 0;
     }
@@ -228,7 +229,8 @@ public:
 
     static inline counter_type TGetWrite(const size_t threadid, const Index index) {
         if (AdapterConfig::Enabled) {
-            return thread_counters[threadid].write_counters[index];
+            return thread_counters[threadid].write_counters[
+                static_cast<std::underlying_type_t<Index>>(index)];
         }
         return 0;
     }
