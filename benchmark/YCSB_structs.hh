@@ -9,7 +9,7 @@
 #include "Interface.hh"
 #include "DB_index.hh" // bench::get_version; bench::ordered_index; bench::version_adapter
 
-#define COL_WIDTH 4
+#define COL_WIDTH 100
 #define HALF_NUM_COLUMNS 5
 #include "YCSB_structs_generated.hh"
 

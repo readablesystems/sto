@@ -199,16 +199,14 @@ public:
         comm.operate(*read_row);
     }
 
-    void install(const RowType* new_row) {
+    void install(RowType* new_row) {
         // Resplit
         if (new_row->value.index() != read_row->value.index()) {
             auto write_row = write_ptr();
-            write_row->value = new_row->value;
+            write_row->value.swap(new_row->value);
             read_row = write_row;
         } else {
-            auto write_row = write_ptr();
-            write_row->value = new_row->value;
-            read_row = write_row;
+            read_row->value.swap(new_row->value);
         }
     }
 

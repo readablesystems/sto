@@ -699,18 +699,14 @@ inline void ycsb_value::resplit(
         ycsb_value& newvalue, const ycsb_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
     set_unified<NamedColumn(1)>(newvalue, index);
-    if (newvalue.value.index() == oldvalue.value.index()) {
-        newvalue.value = oldvalue.value;
-    } else {
-        copy_data<NamedColumn(0)>(newvalue, oldvalue);
-    }
+    copy_data<NamedColumn(0)>(newvalue, oldvalue);
 }
 
 template <NamedColumn Column>
 inline void ycsb_value::set_unified(ycsb_value& value, NamedColumn index) {
     static_assert(Column <= NamedColumn::COLCOUNT);
     if (Column == index) {
-        value.value = unified_value<Column>();
+        value.value.emplace<unified_value<Column>>();
         return;
     }
     if constexpr (Column < NamedColumn::COLCOUNT) {

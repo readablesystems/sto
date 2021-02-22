@@ -526,18 +526,14 @@ inline void {struct}::resplit(
 {indent}{indent}{struct}& newvalue, const {struct}& oldvalue, NamedColumn index) {lbrace}
 {indent}assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
 {indent}set_unified<NamedColumn(1)>(newvalue, index);
-{indent}if (newvalue.value.index() == oldvalue.value.index()) {lbrace}
-{indent}{indent}newvalue.value = oldvalue.value;
-{indent}{rbrace} else {lbrace}
-{indent}{indent}copy_data<NamedColumn(0)>(newvalue, oldvalue);
-{indent}{rbrace}
+{indent}copy_data<NamedColumn(0)>(newvalue, oldvalue);
 {rbrace}
 
 template <NamedColumn Column>
 inline void {struct}::set_unified({struct}& value, NamedColumn index) {lbrace}
 {indent}static_assert(Column <= NamedColumn::COLCOUNT);
 {indent}if (Column == index) {lbrace}
-{indent}{indent}value.value = {unifiedstruct}<Column>();
+{indent}{indent}value.value.emplace<{unifiedstruct}<Column>>();
 {indent}{indent}return;
 {indent}{rbrace}
 {indent}if constexpr (Column < NamedColumn::COLCOUNT) {lbrace}
