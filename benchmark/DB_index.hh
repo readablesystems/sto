@@ -236,7 +236,7 @@ public:
         std::fill(cell_accesses.begin(), cell_accesses.end(), access_t::none);
 
         for (auto it = accesses.begin(); it != accesses.end(); ++it) {
-            int cell_id = 0;  // XXX: T::map(it->col_id);
+            int cell_id = T::map(it->col_id);
             cell_accesses[cell_id]  = static_cast<access_t>(
                     static_cast<uint8_t>(cell_accesses[cell_id]) | static_cast<uint8_t>(it->access));
         }

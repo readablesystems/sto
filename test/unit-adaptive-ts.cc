@@ -31,14 +31,22 @@ struct index_value {
     enum class NamedColumn : int {
         value_1 = 0,
         value_2a,
-        value_2b
+        value_2b,
+        COLCOUNT
     };
     int64_t value_1;
     int64_t value_2a;
     int64_t value_2b;
 };
 
-CREATE_ADAPTER(index_value, 3);
+index_value::NamedColumn& operator++(
+        index_value::NamedColumn& nc, std::underlying_type_t<index_value::NamedColumn>) {
+    nc = static_cast<index_value::NamedColumn>(
+            static_cast<std::underlying_type_t<index_value::NamedColumn>>(nc) + 1);
+    return nc;
+};
+
+CREATE_ADAPTER(index_value, index_value::NamedColumn);
 using Adapter = ADAPTER_OF(index_value);
 
 struct index_value_part1 {
@@ -107,17 +115,17 @@ template<typename A>
 class RecordAccessor<A, index_value> {
  public:
     int64_t value_1() const {
-        Adapter::CountRead(0);
+        Adapter::CountRead(index_value::NamedColumn::value_1);
         return impl().value_1_impl();
     }
 
     int64_t value_2a() const {
-        Adapter::CountRead(1);
+        Adapter::CountRead(index_value::NamedColumn::value_2a);
         return impl().value_2a_impl();
     }
 
     int64_t value_2b() const {
-        Adapter::CountRead(2);
+        Adapter::CountRead(index_value::NamedColumn::value_2b);
         return impl().value_2b_impl();
     }
 
@@ -306,12 +314,12 @@ void AdaptiveIndexTester<Ordered>::SelectSplitTest() {
 
         assert(accessor.value_1() == 4);
         assert(accessor.value_2b() == 6);
-        assert(Adapter::TGetRead(0) == 1);
-        assert(Adapter::TGetRead(1) == 0);
-        assert(Adapter::TGetRead(2) == 1);
-        assert(Adapter::TGetWrite(0) == 0);
-        assert(Adapter::TGetWrite(1) == 0);
-        assert(Adapter::TGetWrite(2) == 0);
+        assert(Adapter::TGetRead(index_value::NamedColumn::value_1) == 1);
+        assert(Adapter::TGetRead(index_value::NamedColumn::value_2a) == 0);
+        assert(Adapter::TGetRead(index_value::NamedColumn::value_2b) == 1);
+        assert(Adapter::TGetWrite(index_value::NamedColumn::value_1) == 0);
+        assert(Adapter::TGetWrite(index_value::NamedColumn::value_2a) == 0);
+        assert(Adapter::TGetWrite(index_value::NamedColumn::value_2b) == 0);
 
         assert(t.try_commit());
     }
@@ -329,46 +337,46 @@ void AdaptiveIndexTester<Ordered>::SelectSplitTest() {
 
         assert(accessor.value_1() == 4);
         assert(accessor.value_2a() == 5);
-        assert(Adapter::TGetRead(0) == 1);
-        assert(Adapter::TGetRead(1) == 1);
-        assert(Adapter::TGetRead(2) == 0);
-        assert(Adapter::TGetWrite(0) == 0);
-        assert(Adapter::TGetWrite(1) == 0);
-        assert(Adapter::TGetWrite(2) == 0);
+        assert(Adapter::TGetRead(index_value::NamedColumn::value_1) == 1);
+        assert(Adapter::TGetRead(index_value::NamedColumn::value_2a) == 1);
+        assert(Adapter::TGetRead(index_value::NamedColumn::value_2b) == 0);
+        assert(Adapter::TGetWrite(index_value::NamedColumn::value_1) == 0);
+        assert(Adapter::TGetWrite(index_value::NamedColumn::value_2a) == 0);
+        assert(Adapter::TGetWrite(index_value::NamedColumn::value_2b) == 0);
 
         assert(t.try_commit());
     }
 
-    assert(Adapter::TGetRead(0, 0) == 1);
-    assert(Adapter::TGetRead(0, 1) == 0);
-    assert(Adapter::TGetRead(0, 2) == 1);
-    assert(Adapter::TGetWrite(0, 0) == 0);
-    assert(Adapter::TGetWrite(0, 1) == 0);
-    assert(Adapter::TGetWrite(0, 2) == 0);
-    assert(Adapter::TGetRead(1, 0) == 1);
-    assert(Adapter::TGetRead(1, 1) == 1);
-    assert(Adapter::TGetRead(1, 2) == 0);
-    assert(Adapter::TGetWrite(1, 0) == 0);
-    assert(Adapter::TGetWrite(1, 1) == 0);
-    assert(Adapter::TGetWrite(1, 2) == 0);
+    assert(Adapter::TGetRead(0, index_value::NamedColumn::value_1) == 1);
+    assert(Adapter::TGetRead(0, index_value::NamedColumn::value_2a) == 0);
+    assert(Adapter::TGetRead(0, index_value::NamedColumn::value_2b) == 1);
+    assert(Adapter::TGetWrite(0, index_value::NamedColumn::value_1) == 0);
+    assert(Adapter::TGetWrite(0, index_value::NamedColumn::value_2a) == 0);
+    assert(Adapter::TGetWrite(0, index_value::NamedColumn::value_2b) == 0);
+    assert(Adapter::TGetRead(1, index_value::NamedColumn::value_1) == 1);
+    assert(Adapter::TGetRead(1, index_value::NamedColumn::value_2a) == 1);
+    assert(Adapter::TGetRead(1, index_value::NamedColumn::value_2b) == 0);
+    assert(Adapter::TGetWrite(1, index_value::NamedColumn::value_1) == 0);
+    assert(Adapter::TGetWrite(1, index_value::NamedColumn::value_2a) == 0);
+    assert(Adapter::TGetWrite(1, index_value::NamedColumn::value_2b) == 0);
 
     Adapter::Commit(0);
 
-    assert(Adapter::GetRead(0) == 1);
-    assert(Adapter::GetRead(1) == 0);
-    assert(Adapter::GetRead(2) == 1);
-    assert(Adapter::GetWrite(0) == 0);
-    assert(Adapter::GetWrite(1) == 0);
-    assert(Adapter::GetWrite(2) == 0);
+    assert(Adapter::GetRead(index_value::NamedColumn::value_1) == 1);
+    assert(Adapter::GetRead(index_value::NamedColumn::value_2a) == 0);
+    assert(Adapter::GetRead(index_value::NamedColumn::value_2b) == 1);
+    assert(Adapter::GetWrite(index_value::NamedColumn::value_1) == 0);
+    assert(Adapter::GetWrite(index_value::NamedColumn::value_2a) == 0);
+    assert(Adapter::GetWrite(index_value::NamedColumn::value_2b) == 0);
 
     Adapter::Commit(1);
 
-    assert(Adapter::GetRead(0) == 2);
-    assert(Adapter::GetRead(1) == 1);
-    assert(Adapter::GetRead(2) == 1);
-    assert(Adapter::GetWrite(0) == 0);
-    assert(Adapter::GetWrite(1) == 0);
-    assert(Adapter::GetWrite(2) == 0);
+    assert(Adapter::GetRead(index_value::NamedColumn::value_1) == 2);
+    assert(Adapter::GetRead(index_value::NamedColumn::value_2a) == 1);
+    assert(Adapter::GetRead(index_value::NamedColumn::value_2b) == 1);
+    assert(Adapter::GetWrite(index_value::NamedColumn::value_1) == 0);
+    assert(Adapter::GetWrite(index_value::NamedColumn::value_2a) == 0);
+    assert(Adapter::GetWrite(index_value::NamedColumn::value_2b) == 0);
 
     printf("Test pass: SelectSplitTest\n");
 }
@@ -456,7 +464,7 @@ void AdaptiveTester::NoSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountRead(0);
+            Adapter::CountRead(index_value::NamedColumn::value_1);
         }
         Adapter::Commit();
         t.try_commit();
@@ -470,7 +478,7 @@ void AdaptiveTester::NoSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountRead(2);
+            Adapter::CountRead(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
@@ -484,8 +492,8 @@ void AdaptiveTester::NoSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountRead(0);
-            Adapter::CountRead(2);
+            Adapter::CountRead(index_value::NamedColumn::value_1);
+            Adapter::CountRead(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
@@ -499,7 +507,7 @@ void AdaptiveTester::NoSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountWrite(0);
+            Adapter::CountWrite(index_value::NamedColumn::value_1);
         }
         Adapter::Commit();
         t.try_commit();
@@ -513,7 +521,7 @@ void AdaptiveTester::NoSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountWrite(2);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
@@ -531,10 +539,10 @@ void AdaptiveTester::AllWritesSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountWrite(0);
-            Adapter::CountWrite(1);
-            Adapter::CountWrite(2);
-            Adapter::CountWrite(2);
+            Adapter::CountWrite(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_2a);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
@@ -548,13 +556,13 @@ void AdaptiveTester::AllWritesSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountRead(0);
-            Adapter::CountWrite(0);
-            Adapter::CountRead(1);
-            Adapter::CountWrite(1);
-            Adapter::CountRead(2);
-            Adapter::CountWrite(2);
-            Adapter::CountWrite(2);
+            Adapter::CountRead(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_1);
+            Adapter::CountRead(index_value::NamedColumn::value_2a);
+            Adapter::CountWrite(index_value::NamedColumn::value_2a);
+            Adapter::CountRead(index_value::NamedColumn::value_2b);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
@@ -572,9 +580,9 @@ void AdaptiveTester::SomeWritesSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountWrite(0);
-            Adapter::CountRead(1);
-            Adapter::CountWrite(2);
+            Adapter::CountWrite(index_value::NamedColumn::value_1);
+            Adapter::CountRead(index_value::NamedColumn::value_2a);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
@@ -589,10 +597,10 @@ void AdaptiveTester::SomeWritesSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountRead(0);
-            Adapter::CountWrite(0);
-            Adapter::CountWrite(1);
-            Adapter::CountWrite(2);
+            Adapter::CountRead(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_2a);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
@@ -606,10 +614,10 @@ void AdaptiveTester::SomeWritesSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountWrite(0);
-            Adapter::CountWrite(1);
-            Adapter::CountRead(2);
-            Adapter::CountWrite(2);
+            Adapter::CountWrite(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_2a);
+            Adapter::CountRead(index_value::NamedColumn::value_2b);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
@@ -623,11 +631,11 @@ void AdaptiveTester::SomeWritesSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountRead(0);
-            Adapter::CountWrite(0);
-            Adapter::CountWrite(1);
-            Adapter::CountRead(2);
-            Adapter::CountWrite(2);
+            Adapter::CountRead(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_2a);
+            Adapter::CountRead(index_value::NamedColumn::value_2b);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
@@ -642,11 +650,11 @@ void AdaptiveTester::SomeWritesSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountRead(0);
-            Adapter::CountWrite(0);
-            Adapter::CountWrite(1);
-            Adapter::CountRead(2);
-            Adapter::CountWrite(2);
+            Adapter::CountRead(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_2a);
+            Adapter::CountRead(index_value::NamedColumn::value_2b);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
@@ -661,12 +669,12 @@ void AdaptiveTester::SomeWritesSplitTest() {
         TestTransaction t(0);
         Adapter::ResetThread();
         for (size_t i = 0; i < 100; i++) {
-            Adapter::CountRead(0);
-            Adapter::CountWrite(0);
-            Adapter::CountWrite(1);
-            Adapter::CountRead(2);
-            Adapter::CountRead(2);
-            Adapter::CountWrite(2);
+            Adapter::CountRead(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_1);
+            Adapter::CountWrite(index_value::NamedColumn::value_2a);
+            Adapter::CountRead(index_value::NamedColumn::value_2b);
+            Adapter::CountRead(index_value::NamedColumn::value_2b);
+            Adapter::CountWrite(index_value::NamedColumn::value_2b);
         }
         Adapter::Commit();
         t.try_commit();
