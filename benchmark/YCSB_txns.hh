@@ -47,9 +47,11 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
 
     (void)output;
 
-    if (!TThread::id() && !(ud->sample() % 1000)) {
+    /*
+    if (!TThread::id() && !(ud->sample() % 5000)) {
         ADAPTER_OF(ycsb_value)::RecomputeSplit();
     }
+    */
 
     ADAPTER_OF(ycsb_value)::ResetThread();
     TRANSACTION {
