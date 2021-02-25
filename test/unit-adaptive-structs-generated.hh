@@ -86,36 +86,48 @@ struct accessor {
     accessor(type& value) : value_(value) {}
     accessor(const type& value) : value_(const_cast<type&>(value)) {}
 
-    operator type() {
+    explicit operator type() {
         ADAPTER_OF(index_value)::CountWrite(Column + index_);
         return value_;
     }
 
-    operator const type() const {
+    explicit operator const type() const {
         ADAPTER_OF(index_value)::CountRead(Column + index_);
         return value_;
     }
 
-    operator type&() {
+    explicit operator type&() {
         ADAPTER_OF(index_value)::CountWrite(Column + index_);
         return value_;
     }
 
-    operator const type&() const {
+    explicit operator const type&() const {
         ADAPTER_OF(index_value)::CountRead(Column + index_);
         return value_;
     }
 
-    type operator =(const type& other) {
-        ADAPTER_OF(index_value)::CountWrite(Column + index_);
-        return value_ = other;
+    type& operator =(type& other) {
+        ADAPTER_OF(index_value)::CountRead(Column + index_);
+        printf("ASDF1\n");
+        return other = value_;
     }
 
-    type operator =(const accessor<Column>& other) {
+    accessor<Column>& operator =(const type& other) {
         ADAPTER_OF(index_value)::CountWrite(Column + index_);
-        return value_ = other.value_;
+        printf("ASDF2\n");
+        value_ = other;
+        return *this;
     }
 
+    accessor<Column>& operator =(const accessor<Column>& other) {
+        ADAPTER_OF(index_value)::CountWrite(Column + index_);
+        ADAPTER_OF(index_value)::CountRead(Column + other.index_);
+        printf("ASDF3\n");
+        value_ = other.value_;
+        return *this;
+    }
+
+    /*
     type operator *() {
         ADAPTER_OF(index_value)::CountWrite(Column + index_);
         return value_;
@@ -135,6 +147,7 @@ struct accessor {
         ADAPTER_OF(index_value)::CountRead(Column + index_);
         return &value_;
     }
+    */
 
     std::underlying_type_t<NamedColumn> index_ = 0;
     type value_;

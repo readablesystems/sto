@@ -29,8 +29,10 @@ private:
         Ordered,
         ordered_index<key_type, index_value, db_params::db_mvcc_params>,
         unordered_index<key_type, index_value, db_params::db_mvcc_params>>;
+    using adapter_type = ADAPTER_OF(index_value);
     typedef index_value::NamedColumn nc;
 
+    void CounterTest();
     void ResplittingTest();
 };
 
@@ -42,7 +44,37 @@ void Tester<Ordered>::RunTests() {
         printf("Testing Adapter on Unordered Index:\n");
     }
 
+    CounterTest();
     ResplittingTest();
+}
+
+template <bool Ordered>
+void Tester<Ordered>::CounterTest() {
+    {
+        adapter_type::ResetThread();
+
+        value_type v1, v2;
+        assert(adapter_type::TGetRead(nc::data) == 0);
+        assert(adapter_type::TGetWrite(nc::data) == 0);
+        v1.data(0) = v2.data(0);
+        assert(adapter_type::TGetRead(nc::data) == 1);
+        assert(adapter_type::TGetWrite(nc::data) == 1);
+    }
+
+    {
+        adapter_type::ResetThread();
+
+        value_type v;
+        assert(adapter_type::TGetRead(nc::data) == 0);
+        assert(adapter_type::TGetWrite(nc::data) == 0);
+        printf("TEST\n");
+        double x = v.data(0);
+        std::cout << adapter_type::TGetRead(nc::data) << ", " << adapter_type::TGetWrite(nc::data) << std::endl;
+        assert(adapter_type::TGetRead(nc::data) == 1);
+        assert(adapter_type::TGetWrite(nc::data) == 0);
+    }
+
+    printf("Test pass: CounterTest\n");
 }
 
 template <bool Ordered>
@@ -61,6 +93,8 @@ void Tester<Ordered>::ResplittingTest() {
     assert(v2.split_of(nc::data + 1) == 0);
     assert(v2.split_of(nc::label) == 1);
     assert(v2.split_of(nc::flagged) == 1);
+
+    printf("Test pass: ResplittingTest\n");
 }
 
 int main() {
