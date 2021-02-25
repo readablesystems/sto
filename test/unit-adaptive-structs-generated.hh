@@ -88,21 +88,25 @@ struct accessor {
 
     explicit operator type() {
         ADAPTER_OF(index_value)::CountWrite(Column + index_);
+        printf("ASDF4\n");
         return value_;
     }
 
     explicit operator const type() const {
         ADAPTER_OF(index_value)::CountRead(Column + index_);
+        printf("ASDF5\n");
         return value_;
     }
 
     explicit operator type&() {
         ADAPTER_OF(index_value)::CountWrite(Column + index_);
+        printf("ASDF6\n");
         return value_;
     }
 
     explicit operator const type&() const {
         ADAPTER_OF(index_value)::CountRead(Column + index_);
+        printf("ASDF7\n");
         return value_;
     }
 

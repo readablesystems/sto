@@ -72,6 +72,9 @@ void Tester<Ordered>::CounterTest() {
         std::cout << adapter_type::TGetRead(nc::data) << ", " << adapter_type::TGetWrite(nc::data) << std::endl;
         assert(adapter_type::TGetRead(nc::data) == 1);
         assert(adapter_type::TGetWrite(nc::data) == 0);
+        v.data(0) = x;
+        assert(adapter_type::TGetRead(nc::data) == 1);
+        assert(adapter_type::TGetWrite(nc::data) == 1);
     }
 
     printf("Test pass: CounterTest\n");
