@@ -125,6 +125,23 @@ public:
         }
     }
 
+    static inline void CountReads(const Index start, const Index end) {
+        CountReads(start, end, 1);
+    }
+
+    static inline void CountReads(
+            const Index start, const Index end, const counter_type count) {
+        assert(start < end);
+        assert(end <= Index::COLCOUNT);
+        if (AdapterConfig::Enabled) {
+            for (auto index = start; index < end; index++) {
+                auto numindex =
+                    static_cast<std::underlying_type_t<Index>>(index);
+                thread_counters[TThread::id()].read_counters[numindex] += count;
+            }
+        }
+    }
+
     static inline void CountWrite(const Index index) {
         CountWrite(index, 1);
     }
@@ -134,6 +151,23 @@ public:
         if (AdapterConfig::Enabled) {
             auto numindex = static_cast<std::underlying_type_t<Index>>(index);
             thread_counters[TThread::id()].write_counters[numindex] += count;
+        }
+    }
+
+    static inline void CountWrites(const Index start, const Index end) {
+        CountWrites(start, end, 1);
+    }
+
+    static inline void CountWrites(
+            const Index start, const Index end, const counter_type count) {
+        assert(start < end);
+        assert(end <= Index::COLCOUNT);
+        if (AdapterConfig::Enabled) {
+            for (auto index = start; index < end; index++) {
+                auto numindex =
+                    static_cast<std::underlying_type_t<Index>>(index);
+                thread_counters[TThread::id()].write_counters[numindex] += count;
+            }
         }
     }
 

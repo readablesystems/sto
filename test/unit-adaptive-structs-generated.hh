@@ -66,253 +66,111 @@ struct accessor_info;
 template <>
 struct accessor_info<NamedColumn::data> {
     using type = double;
+    using value_type = std::array<double, 2>;
+    static constexpr bool is_array = true;
 };
 
 template <>
 struct accessor_info<NamedColumn::label> {
     using type = std::string;
+    using value_type = std::string;
+    static constexpr bool is_array = false;
 };
 
 template <>
 struct accessor_info<NamedColumn::flagged> {
     using type = bool;
+    using value_type = bool;
+    static constexpr bool is_array = false;
 };
 
 template <NamedColumn Column>
 struct accessor {
+    using adapter_type = ADAPTER_OF(index_value);
     using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
     accessor(type& value) : value_(value) {}
     accessor(const type& value) : value_(const_cast<type&>(value)) {}
 
-    operator type() {
-        ADAPTER_OF(index_value)::CountWrite(Column + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(index_value)::CountRead(Column + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(index_value)::CountWrite(Column + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(index_value)::CountRead(Column + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(index_value)::CountWrite(Column + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<Column>& other) {
-        ADAPTER_OF(index_value)::CountWrite(Column + index_);
+    value_type operator =(const accessor<Column>& other) noexcept {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(index_value)::CountWrite(Column + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(index_value)::CountRead(Column + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(index_value)::CountWrite(Column + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(index_value)::CountRead(Column + index_);
-        return &value_;
-    }
-
-    std::underlying_type_t<NamedColumn> index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(1)> {
-    explicit split_value() {
-        data[0].index_ = 0;
-    }
-    std::array<accessor<NamedColumn::data>, 1> data;
-};
-template <>
-struct split_value<NamedColumn(1), NamedColumn(4)> {
-    explicit split_value() {
-        data[0].index_ = 1;
-    }
-    std::array<accessor<NamedColumn::data>, 1> data;
-    accessor<NamedColumn::label> label;
-    accessor<NamedColumn::flagged> flagged;
-};
-template <>
-struct unified_value<NamedColumn(1)> {
-    auto& data(size_t index) {
-        if (index < 1) {
-            return split_0.data[index];
-        }
-        return split_1.data[index - 1];
-    }
-    const auto& data(size_t index) const {
-        if (index < 1) {
-            return split_0.data[index];
-        }
-        return split_1.data[index - 1];
-    }
-    auto& label() {
-        return split_1.label;
-    }
-    const auto& label() const {
-        return split_1.label;
-    }
-    auto& flagged() {
-        return split_1.flagged;
-    }
-    const auto& flagged() const {
-        return split_1.flagged;
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(1) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(1)> split_0;
-    split_value<NamedColumn(1), NamedColumn(4)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(2)> {
-    explicit split_value() {
-        data[0].index_ = 0;
-        data[1].index_ = 1;
-    }
-    std::array<accessor<NamedColumn::data>, 2> data;
-};
-template <>
-struct split_value<NamedColumn(2), NamedColumn(4)> {
-    explicit split_value() = default;
-    accessor<NamedColumn::label> label;
-    accessor<NamedColumn::flagged> flagged;
-};
-template <>
-struct unified_value<NamedColumn(2)> {
-    auto& data(size_t index) {
-        return split_0.data[index];
-    }
-    const auto& data(size_t index) const {
-        return split_0.data[index];
-    }
-    auto& label() {
-        return split_1.label;
-    }
-    const auto& label() const {
-        return split_1.label;
-    }
-    auto& flagged() {
-        return split_1.flagged;
-    }
-    const auto& flagged() const {
-        return split_1.flagged;
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(2) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(2)> split_0;
-    split_value<NamedColumn(2), NamedColumn(4)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(3)> {
-    explicit split_value() {
-        data[0].index_ = 0;
-        data[1].index_ = 1;
-    }
-    std::array<accessor<NamedColumn::data>, 2> data;
-    accessor<NamedColumn::label> label;
-};
-template <>
-struct split_value<NamedColumn(3), NamedColumn(4)> {
-    explicit split_value() = default;
-    accessor<NamedColumn::flagged> flagged;
-};
-template <>
-struct unified_value<NamedColumn(3)> {
-    auto& data(size_t index) {
-        return split_0.data[index];
-    }
-    const auto& data(size_t index) const {
-        return split_0.data[index];
-    }
-    auto& label() {
-        return split_0.label;
-    }
-    const auto& label() const {
-        return split_0.label;
-    }
-    auto& flagged() {
-        return split_1.flagged;
-    }
-    const auto& flagged() const {
-        return split_1.flagged;
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(3) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(3)> split_0;
-    split_value<NamedColumn(3), NamedColumn(4)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(4)> {
-    explicit split_value() {
-        data[0].index_ = 0;
-        data[1].index_ = 1;
-    }
-    std::array<accessor<NamedColumn::data>, 2> data;
-    accessor<NamedColumn::label> label;
-    accessor<NamedColumn::flagged> flagged;
-};
-template <>
-struct unified_value<NamedColumn(4)> {
-    auto& data(size_t index) {
-        return split_0.data[index];
-    }
-    const auto& data(size_t index) const {
-        return split_0.data[index];
-    }
-    auto& label() {
-        return split_0.label;
-    }
-    const auto& label() const {
-        return split_0.label;
-    }
-    auto& flagged() {
-        return split_0.flagged;
-    }
-    const auto& flagged() const {
-        return split_0.flagged;
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(4) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(4)> split_0;
+    value_type value_;
 };
 
 struct index_value {
@@ -325,9 +183,6 @@ struct index_value {
             index_value& newvalue, const index_value& oldvalue, NamedColumn index);
 
     template <NamedColumn Column>
-    static inline void set_unified(index_value& value, NamedColumn index);
-
-    template <NamedColumn Column>
     static inline void copy_data(index_value& newvalue, const index_value& oldvalue);
 
     template <NamedColumn Column>
@@ -336,58 +191,19 @@ struct index_value {
     template <NamedColumn Column>
     inline const accessor<RoundedNamedColumn<Column>()>& get() const;
 
-    auto& data(size_t index) {
-        return std::visit([this, index] (auto&& val) -> auto& {
-                return val.data(index);
-            }, value);
-    }
-    const auto& data(size_t index) const {
-        return std::visit([this, index] (auto&& val) -> const auto& {
-                return val.data(index);
-            }, value);
-    }
-    auto& label() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.label();
-            }, value);
-    }
-    const auto& label() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.label();
-            }, value);
-    }
-    auto& flagged() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.flagged();
-            }, value);
-    }
-    const auto& flagged() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.flagged();
-            }, value);
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return std::visit([this, index] (auto&& val) -> const auto {
-                return val.split_of(index);
-            }, value);
-    }
-
-    std::variant<
-        unified_value<NamedColumn(4)>,
-        unified_value<NamedColumn(3)>,
-        unified_value<NamedColumn(2)>,
-        unified_value<NamedColumn(1)>
-        > value;
+    accessor<NamedColumn(0)> data;
+    accessor<NamedColumn(2)> label;
+    accessor<NamedColumn(3)> flagged;
 };
 
 inline void index_value::resplit(
         index_value& newvalue, const index_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    set_unified<NamedColumn(1)>(newvalue, index);
+//    set_unified<NamedColumn(1)>(newvalue, index);
     copy_data<NamedColumn(0)>(newvalue, oldvalue);
 }
 
+/*
 template <NamedColumn Column>
 inline void index_value::set_unified(index_value& value, NamedColumn index) {
     static_assert(Column <= NamedColumn::COLCOUNT);
@@ -399,6 +215,7 @@ inline void index_value::set_unified(index_value& value, NamedColumn index) {
         set_unified<Column + 1>(value, index);
     }
 }
+*/
 
 template <NamedColumn Column>
 inline void index_value::copy_data(index_value& newvalue, const index_value& oldvalue) {
@@ -411,42 +228,42 @@ inline void index_value::copy_data(index_value& newvalue, const index_value& old
 
 template <>
 inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& index_value::get<NamedColumn(0)>() {
-    return data(0);
+    return data;
 }
 
 template <>
 inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& index_value::get<NamedColumn(0)>() const {
-    return data(0);
+    return data;
 }
 
 template <>
 inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& index_value::get<NamedColumn(1)>() {
-    return data(1);
+    return data;
 }
 
 template <>
 inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& index_value::get<NamedColumn(1)>() const {
-    return data(1);
+    return data;
 }
 
 template <>
 inline accessor<RoundedNamedColumn<NamedColumn(2)>()>& index_value::get<NamedColumn(2)>() {
-    return label();
+    return label;
 }
 
 template <>
 inline const accessor<RoundedNamedColumn<NamedColumn(2)>()>& index_value::get<NamedColumn(2)>() const {
-    return label();
+    return label;
 }
 
 template <>
 inline accessor<RoundedNamedColumn<NamedColumn(3)>()>& index_value::get<NamedColumn(3)>() {
-    return flagged();
+    return flagged;
 }
 
 template <>
 inline const accessor<RoundedNamedColumn<NamedColumn(3)>()>& index_value::get<NamedColumn(3)>() const {
-    return flagged();
+    return flagged;
 }
 
 };  // namespace index_value_datatypes
