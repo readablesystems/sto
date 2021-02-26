@@ -99,9 +99,8 @@ void Tester<Ordered>::CounterTest() {
 
 template <bool Ordered>
 void Tester<Ordered>::ResplittingTest() {
-    /*
     value_type v;
-    v.data = 1.2;
+    v.data = {1.2};
     v.label = "5.6";
     v.flagged = true;
     assert(v.split_of(nc::COLCOUNT + (-1)) == 0);
@@ -113,7 +112,6 @@ void Tester<Ordered>::ResplittingTest() {
     assert(v2.split_of(nc::data + 1) == 0);
     assert(v2.split_of(nc::label) == 1);
     assert(v2.split_of(nc::flagged) == 1);
-    */
 
     printf("Test pass: ResplittingTest\n");
 }

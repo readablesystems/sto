@@ -105,25 +105,12 @@ class Output:
 template <NamedColumn Column>
 struct {accessorstruct};
 
-template <NamedColumn StartIndex, NamedColumn EndIndex>
-struct {splitstruct};
-
-template <NamedColumn SplitIndex>
-struct {unifiedstruct};
-
 struct {struct};
 
 DEFINE_ADAPTER({struct}, NamedColumn);
 ''')
 
         self.convert_column_accessors()
-
-#        for splitindex in range(self.colcount):
-#            self.convert_split_variant(0, splitindex + 1)
-#            if splitindex + 1 < self.colcount:
-#                self.convert_split_variant(splitindex + 1, self.colcount)
-#            self.convert_unified_variant(splitindex + 1)
-#            self.writelns();
 
         self.writeln('struct {struct} {lbrace}')
 
@@ -148,20 +135,7 @@ template <NamedColumn Column>
 inline const accessor<RoundedNamedColumn<Column>()>& get() const;
 ''')
 
-#        self.convert_accessors()
-#
-#        self.writeln('std::variant<')
-#
-#        self.indent()
-#
-#        for splitindex in range(self.colcount, 0, -1):
-#            self.writei('{unifiedstruct}<NamedColumn({index})>', index=splitindex)
-#            if splitindex > 1:
-#                self.write(',')
-#            self.writeln()
-#        self.writeln('> value;')
-#
-#        self.unindent(2)
+        self.convert_accessors()
 
         self.convert_members()
 
@@ -227,6 +201,15 @@ NamedColumn& operator++(NamedColumn& nc) {lbrace}
 
 NamedColumn& operator++(NamedColumn& nc, int) {lbrace}
 {indent}return nc += 1;
+{rbrace}
+
+constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {lbrace}
+{indent}return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+{rbrace}
+
+NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {lbrace}
+{indent}nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+{indent}return nc;
 {rbrace}
 
 std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {lbrace}
@@ -299,8 +282,8 @@ using type = typename {infostruct}<Column>::type;
 using value_type = typename {infostruct}<Column>::value_type;
 
 {accessorstruct}() = default;
-{accessorstruct}(type& value) : value_(value) {lbrace}{rbrace}
-{accessorstruct}(const type& value) : value_(const_cast<type&>(value)) {lbrace}{rbrace}
+template <typename... Args>
+explicit {accessorstruct}(Args&&... args) : value_(std::forward<Args>(args)...) {lbrace}{rbrace}
 
 operator const value_type() const {lbrace}
 {indent}if constexpr ({infostruct}<Column>::is_array) {lbrace}
@@ -320,7 +303,7 @@ value_type operator =(const value_type& other) {lbrace}
 {indent}return value_ = other;
 {rbrace}
 
-value_type operator =(const {accessorstruct}<Column>& other) noexcept {lbrace}
+value_type operator =({accessorstruct}<Column>& other) {lbrace}
 {indent}if constexpr ({infostruct}<Column>::is_array) {lbrace}
 {indent}{indent}adapter_type::CountReads(Column, Column + other.value_.size());
 {indent}{indent}adapter_type::CountWrites(Column, Column + value_.size());
@@ -386,180 +369,24 @@ value_type value_;\
         self.writeln('{rbrace};')
         self.writeln()
 
-    def convert_split_variant(self, startindex, endindex):
-        '''Output a single split variant of a struct.
-
-        The split includes columns at [startindex, endindex).
-        '''
-        self.writeln('template <>')
-        self.writeln(
-                'struct {splitstruct}<NamedColumn({start}), NamedColumn({end})> {lbrace}',
-                start=startindex, end=endindex)
-
-        self.indent()
-
-        has_array = False
-        index = 0
-        for member in self.sdata:
-            member, nesting, count = Output.extract_member_type(member)
-            if startindex < index + count != index < endindex:
-                if count > 1:
-                    has_array = True
-                    break
-            index += count
-
-        if has_array:
-            self.writeln('explicit {splitstruct}() {lbrace}')
-
-            self.indent()
-            index = 0
-            for member in self.sdata:
-                member, nesting, count = Output.extract_member_type(member)
-                if startindex < index + count != index < endindex:
-                    if count > 1:
-                        for arrindex in range(index, index + count):
-                            if startindex <= arrindex < endindex:
-                                self.writeln('{member}[{arrindex}].index_ = {index};',
-                                        member=member,
-                                        arrindex=arrindex - max(index, startindex),
-                                        index=arrindex - index)
-                index += count
-            self.unindent()
-
-            self.writeln('{rbrace}')
-        else:
-            self.writeln('explicit {splitstruct}() = default;')
-
-        index = 0
-        for member in self.sdata:
-            member, nesting, count = Output.extract_member_type(member)
-            if startindex < index + count != index < endindex:
-                if count == 1:
-                    self.writeln(
-                            '{accessorstruct}<NamedColumn::{member}> {member};',
-                            member=member)
-                else:
-                    size = min(index + count, endindex) - max(startindex, index)
-                    self.writeln(
-                            'std::array<{accessorstruct}<NamedColumn::{member}>, {count}> {member};',
-                            count=size, member=member)
-            index += count
-
-        self.unindent()
-
-        self.writeln('{rbrace};')
-
-    def convert_unified_variant(self, splitindex):
-        '''Output the unified variant of the given split.'''
-        self.writeln('template <>')
-        self.writeln(
-                'struct {unifiedstruct}<NamedColumn({splitindex})> {lbrace}',
-                splitindex=splitindex)
-
-        self.indent()
-
-        index = 0
-        for member in self.sdata:
-            member, nesting, count = Output.extract_member_type(member)
-            rettype = '{accessorstruct}<{index}>'
-            for const in (False, True):
-                if count == 1:
-                    fmtstring = '''\
-{const}auto& {member}() {const}{lbrace}
-{indent}return split_{variant}.{member};
-{rbrace}\
-'''
-                elif ((index < splitindex) == (index + count <= splitindex)):
-                    fmtstring = '''\
-{const}auto& {member}(size_t index) {const}{lbrace}
-{indent}return split_{variant}.{member}[index];
-{rbrace}\
-'''
-                else:
-                    fmtstring = '''\
-{const}auto& {member}(size_t index) {const}{lbrace}
-{indent}if (index < {splitindex}) {lbrace}
-{indent}{indent}return split_0.{member}[index];
-{indent}{rbrace}
-{indent}return split_1.{member}[index - {indexdiff}];
-{rbrace}\
-'''
-                self.writelns(
-                        fmtstring,
-                        const='const ' if const else '',
-                        index=index,
-                        splitindex=splitindex,
-                        member=member,
-                        variant=0 if index < splitindex else 1,
-                        indexdiff=splitindex - index,
-                        )
-            index += count
-
-        self.writelns('''
-const auto split_of(NamedColumn index) const {lbrace}
-{indent}return index < NamedColumn({splitindex}) ? 0 : 1;
-{rbrace}
-''', splitindex=splitindex)
-
-        self.writeln(
-                '{splitstruct}<NamedColumn(0), NamedColumn({splitindex})> split_0;',
-                splitindex=splitindex)
-        if splitindex < self.colcount:
-            self.writeln(
-                    '{splitstruct}<NamedColumn({splitindex}), NamedColumn({colcount})> split_1;',
-                    splitindex=splitindex)
-
-        self.unindent()
-
-        self.writeln('{rbrace};')
-
     def convert_accessors(self):
         '''Output the accessors.'''
 
-        index = 0
-        for member in self.sdata:
-            member, nesting, count = Output.extract_member_type(member)
-            for const in (False, True):
-                if count == 1:
-                    fmtstring = '''\
-{const}auto& {member}() {const}{lbrace}
-{indent}return std::visit([this] (auto&& val) -> {const}auto& {lbrace}
-{indent}{indent}{indent}return val.{member}();
-{indent}{indent}{rbrace}, value);
-{rbrace}\
-'''
-                else:
-                    fmtstring = '''\
-{const}auto& {member}(size_t index) {const}{lbrace}
-{indent}return std::visit([this, index] (auto&& val) -> {const}auto& {lbrace}
-{indent}{indent}{indent}return val.{member}(index);
-{indent}{indent}{rbrace}, value);
-{rbrace}\
-'''
-                self.writelns(
-                        fmtstring,
-                        const='const ' if const else '',
-                        index=index,
-                        member=member)
-            index += count
         self.writelns('''
 const auto split_of(NamedColumn index) const {lbrace}
-{indent}return std::visit([this, index] (auto&& val) -> const auto {lbrace}
-{indent}{indent}{indent}return 1;
-{indent}{indent}{rbrace}, value);
+{indent}return index < splitindex_ ? 0 : 1;
 {rbrace}
 ''')
 
     def convert_members(self):
         '''Output the member variables.'''
 
-        index = 0
+        self.writeln('NamedColumn splitindex_ = NamedColumn::COLCOUNT;');
+
         for member in self.sdata:
             member, _, count = Output.extract_member_type(member)
             self.writeln(
-                    'accessor<NamedColumn({index})> {member};',
-                    index=index, member=member)
-            index += count
+                    'accessor<NamedColumn::{member}> {member};', member=member)
 
     def convert_resplitter(self):
         '''Output the resplitting functionality.'''
@@ -568,23 +395,9 @@ const auto split_of(NamedColumn index) const {lbrace}
 inline void {struct}::resplit(
 {indent}{indent}{struct}& newvalue, const {struct}& oldvalue, NamedColumn index) {lbrace}
 {indent}assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-//{indent}set_unified<NamedColumn(1)>(newvalue, index);
 {indent}copy_data<NamedColumn(0)>(newvalue, oldvalue);
+{indent}newvalue.splitindex_ = index;
 {rbrace}
-
-/*
-template <NamedColumn Column>
-inline void {struct}::set_unified({struct}& value, NamedColumn index) {lbrace}
-{indent}static_assert(Column <= NamedColumn::COLCOUNT);
-{indent}if (Column == index) {lbrace}
-{indent}{indent}value.value.emplace<{unifiedstruct}<Column>>();
-{indent}{indent}return;
-{indent}{rbrace}
-{indent}if constexpr (Column < NamedColumn::COLCOUNT) {lbrace}
-{indent}{indent}set_unified<Column + 1>(value, index);
-{indent}{rbrace}
-{rbrace}
-*/
 
 template <NamedColumn Column>
 inline void {struct}::copy_data({struct}& newvalue, const {struct}& oldvalue) {lbrace}
@@ -601,7 +414,7 @@ inline void {struct}::copy_data({struct}& newvalue, const {struct}& oldvalue) {l
 
         fmtstring = '''
 template <>
-inline {const}accessor<RoundedNamedColumn<NamedColumn({index})>()>& {struct}::get<NamedColumn({realindex})>() {const}{lbrace}
+inline {const}accessor<NamedColumn::{member}>& {struct}::get<NamedColumn::{member}{offindex}>() {const}{lbrace}
 {indent}return {member};
 {rbrace}\
 '''
@@ -616,59 +429,10 @@ inline {const}accessor<RoundedNamedColumn<NamedColumn({index})>()>& {struct}::ge
                             const='const ' if const else '',
                             index=index,
                             realindex=realindex,
+                            offindex='' if count == 1 else ' + {}'.format(realindex - index),
                             member=member,
                             arrindex='' if count == 1 else realindex - index)
             index += count
-
-    def convert_version_selectors(self):
-        '''Output the version selector implementations.'''
-        self.writeln('''\
-namespace ver_sel {lbrace}
-
-template <typename VersImpl>
-class VerSel<{qns}::{struct}, VersImpl> : public VerSelBase<VerSel<{qns}::{struct}, VersImpl>, VersImpl> {lbrace}
-public:
-    typedef VersImpl version_type;
-    static constexpr size_t num_versions = 2;
-
-    explicit VerSel(type v) : vers_() {lbrace}
-        new (&vers_[0]) version_type(v);
-    {rbrace}
-    
-    VerSel(type v, bool insert) : vers_() {lbrace}
-        new (&vers_[0]) version_type(v, insert);
-    {rbrace}
-
-    constexpr static int map_impl(int col_n) {lbrace}
-        typedef {qns}::{struct}::NamedColumn nc;
-        auto col_name = static_cast<nc>(col_n);
-        if (col_name == nc::odd_columns)
-            return 0;
-        else
-            return 1;
-    {rbrace}
-
-    version_type& version_at_impl(int cell) {lbrace}
-        return vers_[cell];
-    {rbrace}
-
-    void install_by_cell_impl(ycsb::ycsb_value *dst, const ycsb::ycsb_value *src, int cell) {lbrace}
-        if (cell != 1 && cell != 0) {lbrace}
-            always_assert(false, "Invalid cell id.");
-        {rbrace}
-        if (cell == 0) {lbrace}
-            dst->odd_columns = src->odd_columns;
-        {rbrace} else {lbrace}
-            dst->even_columns = src->even_columns;
-        {rbrace}
-    {rbrace}
-
-private:
-    version_type vers_[num_versions];
-{rbrace};
-''')
-
-        self.writeln('{rbrace};  // namespace ver_sel')
 
 if '__main__' == __name__:
     parser = argparse.ArgumentParser(description='STO struct generator')

@@ -30,6 +30,15 @@ NamedColumn& operator++(NamedColumn& nc, int) {
     return nc += 1;
 }
 
+constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
 std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
     out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
     return out;
@@ -49,12 +58,6 @@ constexpr NamedColumn RoundedNamedColumn() {
 
 template <NamedColumn Column>
 struct accessor;
-
-template <NamedColumn StartIndex, NamedColumn EndIndex>
-struct split_value;
-
-template <NamedColumn SplitIndex>
-struct unified_value;
 
 struct index_value;
 
@@ -91,8 +94,8 @@ struct accessor {
     using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
     operator const value_type() const {
         if constexpr (accessor_info<Column>::is_array) {
@@ -112,7 +115,7 @@ struct accessor {
         return value_ = other;
     }
 
-    value_type operator =(const accessor<Column>& other) noexcept {
+    value_type operator =(accessor<Column>& other) {
         if constexpr (accessor_info<Column>::is_array) {
             adapter_type::CountReads(Column, Column + other.value_.size());
             adapter_type::CountWrites(Column, Column + value_.size());
@@ -191,31 +194,23 @@ struct index_value {
     template <NamedColumn Column>
     inline const accessor<RoundedNamedColumn<Column>()>& get() const;
 
-    accessor<NamedColumn(0)> data;
-    accessor<NamedColumn(2)> label;
-    accessor<NamedColumn(3)> flagged;
+
+    const auto split_of(NamedColumn index) const {
+        return index < splitindex_ ? 0 : 1;
+    }
+
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::data> data;
+    accessor<NamedColumn::label> label;
+    accessor<NamedColumn::flagged> flagged;
 };
 
 inline void index_value::resplit(
         index_value& newvalue, const index_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-//    set_unified<NamedColumn(1)>(newvalue, index);
     copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
 }
-
-/*
-template <NamedColumn Column>
-inline void index_value::set_unified(index_value& value, NamedColumn index) {
-    static_assert(Column <= NamedColumn::COLCOUNT);
-    if (Column == index) {
-        value.value.emplace<unified_value<Column>>();
-        return;
-    }
-    if constexpr (Column < NamedColumn::COLCOUNT) {
-        set_unified<Column + 1>(value, index);
-    }
-}
-*/
 
 template <NamedColumn Column>
 inline void index_value::copy_data(index_value& newvalue, const index_value& oldvalue) {
@@ -227,42 +222,42 @@ inline void index_value::copy_data(index_value& newvalue, const index_value& old
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& index_value::get<NamedColumn(0)>() {
+inline accessor<NamedColumn::data>& index_value::get<NamedColumn::data + 0>() {
     return data;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& index_value::get<NamedColumn(0)>() const {
+inline const accessor<NamedColumn::data>& index_value::get<NamedColumn::data + 0>() const {
     return data;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& index_value::get<NamedColumn(1)>() {
+inline accessor<NamedColumn::data>& index_value::get<NamedColumn::data + 1>() {
     return data;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& index_value::get<NamedColumn(1)>() const {
+inline const accessor<NamedColumn::data>& index_value::get<NamedColumn::data + 1>() const {
     return data;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(2)>()>& index_value::get<NamedColumn(2)>() {
+inline accessor<NamedColumn::label>& index_value::get<NamedColumn::label>() {
     return label;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(2)>()>& index_value::get<NamedColumn(2)>() const {
+inline const accessor<NamedColumn::label>& index_value::get<NamedColumn::label>() const {
     return label;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(3)>()>& index_value::get<NamedColumn(3)>() {
+inline accessor<NamedColumn::flagged>& index_value::get<NamedColumn::flagged>() {
     return flagged;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(3)>()>& index_value::get<NamedColumn(3)>() const {
+inline const accessor<NamedColumn::flagged>& index_value::get<NamedColumn::flagged>() const {
     return flagged;
 }
 
