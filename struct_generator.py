@@ -89,9 +89,10 @@ class Output:
         self.writelns('''\
 #pragma once
 
+#include <type_traits>
+
 #include "Adapter.hh"
 #include "Sto.hh"
-#include "VersionSelector.hh"
 ''')
 
         for ns in self._namespaces:

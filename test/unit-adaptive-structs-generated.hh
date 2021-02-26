@@ -1,8 +1,9 @@
 #pragma once
 
+#include <type_traits>
+
 #include "Adapter.hh"
 #include "Sto.hh"
-#include "VersionSelector.hh"
 
 namespace index_value_datatypes {
 
