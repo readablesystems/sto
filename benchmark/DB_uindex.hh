@@ -14,7 +14,7 @@ public:
     using typename C::sel_return_type;
     using typename C::ins_return_type;
     using typename C::del_return_type;
-    typedef std::tuple<bool, bool, uintptr_t, UniRecordAccessor<V>> sel_split_return_type;
+    //typedef std::tuple<bool, bool, uintptr_t, UniRecordAccessor<V>> sel_split_return_type;
 
     using typename C::version_type;
     using typename C::value_container_type;
@@ -163,6 +163,7 @@ public:
         }
     }
 
+    /*
     sel_split_return_type
     select_split_row(const key_type& k, std::initializer_list<column_access_t> accesses) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
@@ -179,6 +180,7 @@ public:
             return { true, false, 0, UniRecordAccessor<V>(nullptr) };
         }
     }
+    */
 
 #if 0
     sel_return_type
@@ -264,6 +266,7 @@ public:
         return { true, true, rid, e->row_container.read_row };
     }
 
+    /*
     sel_split_return_type
     select_split_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
         auto e = reinterpret_cast<internal_elem*>(rid);
@@ -299,6 +302,7 @@ public:
 
         return { true, true, rid, UniRecordAccessor<V>(&(e->row_container.row)) };
     }
+    */
 
     void update_row(uintptr_t rid, value_type *new_row) {
         auto e = reinterpret_cast<internal_elem*>(rid);
@@ -645,7 +649,7 @@ private:
     static void copy_row(internal_elem *table_row, const value_type *value) {
         if (value == nullptr)
             return;
-        *table_row->row_container.read_row = *value;
+        *table_row->row_container.read_row = *const_cast<value_type*>(value);
     }
 };
 

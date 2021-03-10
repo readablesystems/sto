@@ -200,14 +200,7 @@ public:
     }
 
     void install(RowType* new_row) {
-        // Resplit
-        if (new_row->value.index() != read_row->value.index()) {
-            auto write_row = write_ptr();
-            write_row->value.swap(new_row->value);
-            read_row = write_row;
-        } else {
-            read_row->value.swap(new_row->value);
-        }
+        *read_row = *new_row;
     }
 
     void install_cell(const comm_type& comm) {

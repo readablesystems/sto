@@ -420,6 +420,7 @@ int main(int argc, const char *const *argv) {
             ret_code = ycsb_access<db_tictoc_params>::execute(argc, argv);
         }
         break;
+    /*
     case db_params_id::MVCC:
         if (node_tracking && enable_commute) {
             ret_code = ycsb_access<db_mvcc_commute_node_params>::execute(argc, argv);
@@ -431,6 +432,7 @@ int main(int argc, const char *const *argv) {
             ret_code = ycsb_access<db_mvcc_params>::execute(argc, argv);
         }
         break;
+    */
     default:
         std::cerr << "unknown db config parameter id" << std::endl;
         ret_code = 1;

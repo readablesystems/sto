@@ -154,8 +154,15 @@ struct accessor {
     }
 
     template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, const type&>
+    std::enable_if_t<is_array, type>
     operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
         adapter_type::CountRead(Column + index);
         return value_[index];
     }
@@ -209,7 +216,8 @@ struct index_value {
 inline void index_value::resplit(
         index_value& newvalue, const index_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
     newvalue.splitindex_ = index;
 }
 

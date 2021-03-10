@@ -1,8 +1,9 @@
 #pragma once
 
+#include <type_traits>
+
 #include "Adapter.hh"
 #include "Sto.hh"
-#include "VersionSelector.hh"
 
 namespace ycsb {
 
@@ -31,6 +32,15 @@ NamedColumn& operator++(NamedColumn& nc, int) {
     return nc += 1;
 }
 
+constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
 std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
     out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
     return out;
@@ -48,12 +58,6 @@ constexpr NamedColumn RoundedNamedColumn() {
 template <NamedColumn Column>
 struct accessor;
 
-template <NamedColumn StartIndex, NamedColumn EndIndex>
-struct split_value;
-
-template <NamedColumn SplitIndex>
-struct unified_value;
-
 struct ycsb_value;
 
 DEFINE_ADAPTER(ycsb_value, NamedColumn);
@@ -64,573 +68,111 @@ struct accessor_info;
 template <>
 struct accessor_info<NamedColumn::even_columns> {
     using type = ::bench::fix_string<COL_WIDTH>;
+    using value_type = std::array<::bench::fix_string<COL_WIDTH>, 5>;
+    static constexpr bool is_array = true;
 };
 
 template <>
 struct accessor_info<NamedColumn::odd_columns> {
     using type = ::bench::fix_string<COL_WIDTH>;
+    using value_type = std::array<::bench::fix_string<COL_WIDTH>, 5>;
+    static constexpr bool is_array = true;
 };
 
 template <NamedColumn Column>
 struct accessor {
+    using adapter_type = ADAPTER_OF(ycsb_value);
     using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
-    operator type() {
-        ADAPTER_OF(ycsb_value)::CountWrite(Column + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(ycsb_value)::CountRead(Column + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(ycsb_value)::CountWrite(Column + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(ycsb_value)::CountRead(Column + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(ycsb_value)::CountWrite(Column + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<Column>& other) {
-        ADAPTER_OF(ycsb_value)::CountWrite(Column + index_);
+    value_type operator =(accessor<Column>& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(ycsb_value)::CountWrite(Column + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(ycsb_value)::CountRead(Column + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(ycsb_value)::CountWrite(Column + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(ycsb_value)::CountRead(Column + index_);
-        return &value_;
-    }
-
-    std::underlying_type_t<NamedColumn> index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(1)> {
-    explicit split_value() {
-        even_columns[0].index_ = 0;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 1> even_columns;
-};
-template <>
-struct split_value<NamedColumn(1), NamedColumn(10)> {
-    explicit split_value() {
-        even_columns[0].index_ = 1;
-        even_columns[1].index_ = 2;
-        even_columns[2].index_ = 3;
-        even_columns[3].index_ = 4;
-        odd_columns[0].index_ = 0;
-        odd_columns[1].index_ = 1;
-        odd_columns[2].index_ = 2;
-        odd_columns[3].index_ = 3;
-        odd_columns[4].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 4> even_columns;
-    std::array<accessor<NamedColumn::odd_columns>, 5> odd_columns;
-};
-template <>
-struct unified_value<NamedColumn(1)> {
-    auto& even_columns(size_t index) {
-        if (index < 1) {
-            return split_0.even_columns[index];
-        }
-        return split_1.even_columns[index - 1];
-    }
-    const auto& even_columns(size_t index) const {
-        if (index < 1) {
-            return split_0.even_columns[index];
-        }
-        return split_1.even_columns[index - 1];
-    }
-    auto& odd_columns(size_t index) {
-        return split_1.odd_columns[index];
-    }
-    const auto& odd_columns(size_t index) const {
-        return split_1.odd_columns[index];
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(1) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(1)> split_0;
-    split_value<NamedColumn(1), NamedColumn(10)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(2)> {
-    explicit split_value() {
-        even_columns[0].index_ = 0;
-        even_columns[1].index_ = 1;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 2> even_columns;
-};
-template <>
-struct split_value<NamedColumn(2), NamedColumn(10)> {
-    explicit split_value() {
-        even_columns[0].index_ = 2;
-        even_columns[1].index_ = 3;
-        even_columns[2].index_ = 4;
-        odd_columns[0].index_ = 0;
-        odd_columns[1].index_ = 1;
-        odd_columns[2].index_ = 2;
-        odd_columns[3].index_ = 3;
-        odd_columns[4].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 3> even_columns;
-    std::array<accessor<NamedColumn::odd_columns>, 5> odd_columns;
-};
-template <>
-struct unified_value<NamedColumn(2)> {
-    auto& even_columns(size_t index) {
-        if (index < 2) {
-            return split_0.even_columns[index];
-        }
-        return split_1.even_columns[index - 2];
-    }
-    const auto& even_columns(size_t index) const {
-        if (index < 2) {
-            return split_0.even_columns[index];
-        }
-        return split_1.even_columns[index - 2];
-    }
-    auto& odd_columns(size_t index) {
-        return split_1.odd_columns[index];
-    }
-    const auto& odd_columns(size_t index) const {
-        return split_1.odd_columns[index];
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(2) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(2)> split_0;
-    split_value<NamedColumn(2), NamedColumn(10)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(3)> {
-    explicit split_value() {
-        even_columns[0].index_ = 0;
-        even_columns[1].index_ = 1;
-        even_columns[2].index_ = 2;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 3> even_columns;
-};
-template <>
-struct split_value<NamedColumn(3), NamedColumn(10)> {
-    explicit split_value() {
-        even_columns[0].index_ = 3;
-        even_columns[1].index_ = 4;
-        odd_columns[0].index_ = 0;
-        odd_columns[1].index_ = 1;
-        odd_columns[2].index_ = 2;
-        odd_columns[3].index_ = 3;
-        odd_columns[4].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 2> even_columns;
-    std::array<accessor<NamedColumn::odd_columns>, 5> odd_columns;
-};
-template <>
-struct unified_value<NamedColumn(3)> {
-    auto& even_columns(size_t index) {
-        if (index < 3) {
-            return split_0.even_columns[index];
-        }
-        return split_1.even_columns[index - 3];
-    }
-    const auto& even_columns(size_t index) const {
-        if (index < 3) {
-            return split_0.even_columns[index];
-        }
-        return split_1.even_columns[index - 3];
-    }
-    auto& odd_columns(size_t index) {
-        return split_1.odd_columns[index];
-    }
-    const auto& odd_columns(size_t index) const {
-        return split_1.odd_columns[index];
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(3) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(3)> split_0;
-    split_value<NamedColumn(3), NamedColumn(10)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(4)> {
-    explicit split_value() {
-        even_columns[0].index_ = 0;
-        even_columns[1].index_ = 1;
-        even_columns[2].index_ = 2;
-        even_columns[3].index_ = 3;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 4> even_columns;
-};
-template <>
-struct split_value<NamedColumn(4), NamedColumn(10)> {
-    explicit split_value() {
-        even_columns[0].index_ = 4;
-        odd_columns[0].index_ = 0;
-        odd_columns[1].index_ = 1;
-        odd_columns[2].index_ = 2;
-        odd_columns[3].index_ = 3;
-        odd_columns[4].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 1> even_columns;
-    std::array<accessor<NamedColumn::odd_columns>, 5> odd_columns;
-};
-template <>
-struct unified_value<NamedColumn(4)> {
-    auto& even_columns(size_t index) {
-        if (index < 4) {
-            return split_0.even_columns[index];
-        }
-        return split_1.even_columns[index - 4];
-    }
-    const auto& even_columns(size_t index) const {
-        if (index < 4) {
-            return split_0.even_columns[index];
-        }
-        return split_1.even_columns[index - 4];
-    }
-    auto& odd_columns(size_t index) {
-        return split_1.odd_columns[index];
-    }
-    const auto& odd_columns(size_t index) const {
-        return split_1.odd_columns[index];
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(4) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(4)> split_0;
-    split_value<NamedColumn(4), NamedColumn(10)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(5)> {
-    explicit split_value() {
-        even_columns[0].index_ = 0;
-        even_columns[1].index_ = 1;
-        even_columns[2].index_ = 2;
-        even_columns[3].index_ = 3;
-        even_columns[4].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 5> even_columns;
-};
-template <>
-struct split_value<NamedColumn(5), NamedColumn(10)> {
-    explicit split_value() {
-        odd_columns[0].index_ = 0;
-        odd_columns[1].index_ = 1;
-        odd_columns[2].index_ = 2;
-        odd_columns[3].index_ = 3;
-        odd_columns[4].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::odd_columns>, 5> odd_columns;
-};
-template <>
-struct unified_value<NamedColumn(5)> {
-    auto& even_columns(size_t index) {
-        return split_0.even_columns[index];
-    }
-    const auto& even_columns(size_t index) const {
-        return split_0.even_columns[index];
-    }
-    auto& odd_columns(size_t index) {
-        return split_1.odd_columns[index];
-    }
-    const auto& odd_columns(size_t index) const {
-        return split_1.odd_columns[index];
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(5) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(5)> split_0;
-    split_value<NamedColumn(5), NamedColumn(10)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(6)> {
-    explicit split_value() {
-        even_columns[0].index_ = 0;
-        even_columns[1].index_ = 1;
-        even_columns[2].index_ = 2;
-        even_columns[3].index_ = 3;
-        even_columns[4].index_ = 4;
-        odd_columns[0].index_ = 0;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 5> even_columns;
-    std::array<accessor<NamedColumn::odd_columns>, 1> odd_columns;
-};
-template <>
-struct split_value<NamedColumn(6), NamedColumn(10)> {
-    explicit split_value() {
-        odd_columns[0].index_ = 1;
-        odd_columns[1].index_ = 2;
-        odd_columns[2].index_ = 3;
-        odd_columns[3].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::odd_columns>, 4> odd_columns;
-};
-template <>
-struct unified_value<NamedColumn(6)> {
-    auto& even_columns(size_t index) {
-        return split_0.even_columns[index];
-    }
-    const auto& even_columns(size_t index) const {
-        return split_0.even_columns[index];
-    }
-    auto& odd_columns(size_t index) {
-        if (index < 6) {
-            return split_0.odd_columns[index];
-        }
-        return split_1.odd_columns[index - 1];
-    }
-    const auto& odd_columns(size_t index) const {
-        if (index < 6) {
-            return split_0.odd_columns[index];
-        }
-        return split_1.odd_columns[index - 1];
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(6) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(6)> split_0;
-    split_value<NamedColumn(6), NamedColumn(10)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(7)> {
-    explicit split_value() {
-        even_columns[0].index_ = 0;
-        even_columns[1].index_ = 1;
-        even_columns[2].index_ = 2;
-        even_columns[3].index_ = 3;
-        even_columns[4].index_ = 4;
-        odd_columns[0].index_ = 0;
-        odd_columns[1].index_ = 1;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 5> even_columns;
-    std::array<accessor<NamedColumn::odd_columns>, 2> odd_columns;
-};
-template <>
-struct split_value<NamedColumn(7), NamedColumn(10)> {
-    explicit split_value() {
-        odd_columns[0].index_ = 2;
-        odd_columns[1].index_ = 3;
-        odd_columns[2].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::odd_columns>, 3> odd_columns;
-};
-template <>
-struct unified_value<NamedColumn(7)> {
-    auto& even_columns(size_t index) {
-        return split_0.even_columns[index];
-    }
-    const auto& even_columns(size_t index) const {
-        return split_0.even_columns[index];
-    }
-    auto& odd_columns(size_t index) {
-        if (index < 7) {
-            return split_0.odd_columns[index];
-        }
-        return split_1.odd_columns[index - 2];
-    }
-    const auto& odd_columns(size_t index) const {
-        if (index < 7) {
-            return split_0.odd_columns[index];
-        }
-        return split_1.odd_columns[index - 2];
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(7) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(7)> split_0;
-    split_value<NamedColumn(7), NamedColumn(10)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(8)> {
-    explicit split_value() {
-        even_columns[0].index_ = 0;
-        even_columns[1].index_ = 1;
-        even_columns[2].index_ = 2;
-        even_columns[3].index_ = 3;
-        even_columns[4].index_ = 4;
-        odd_columns[0].index_ = 0;
-        odd_columns[1].index_ = 1;
-        odd_columns[2].index_ = 2;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 5> even_columns;
-    std::array<accessor<NamedColumn::odd_columns>, 3> odd_columns;
-};
-template <>
-struct split_value<NamedColumn(8), NamedColumn(10)> {
-    explicit split_value() {
-        odd_columns[0].index_ = 3;
-        odd_columns[1].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::odd_columns>, 2> odd_columns;
-};
-template <>
-struct unified_value<NamedColumn(8)> {
-    auto& even_columns(size_t index) {
-        return split_0.even_columns[index];
-    }
-    const auto& even_columns(size_t index) const {
-        return split_0.even_columns[index];
-    }
-    auto& odd_columns(size_t index) {
-        if (index < 8) {
-            return split_0.odd_columns[index];
-        }
-        return split_1.odd_columns[index - 3];
-    }
-    const auto& odd_columns(size_t index) const {
-        if (index < 8) {
-            return split_0.odd_columns[index];
-        }
-        return split_1.odd_columns[index - 3];
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(8) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(8)> split_0;
-    split_value<NamedColumn(8), NamedColumn(10)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(9)> {
-    explicit split_value() {
-        even_columns[0].index_ = 0;
-        even_columns[1].index_ = 1;
-        even_columns[2].index_ = 2;
-        even_columns[3].index_ = 3;
-        even_columns[4].index_ = 4;
-        odd_columns[0].index_ = 0;
-        odd_columns[1].index_ = 1;
-        odd_columns[2].index_ = 2;
-        odd_columns[3].index_ = 3;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 5> even_columns;
-    std::array<accessor<NamedColumn::odd_columns>, 4> odd_columns;
-};
-template <>
-struct split_value<NamedColumn(9), NamedColumn(10)> {
-    explicit split_value() {
-        odd_columns[0].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::odd_columns>, 1> odd_columns;
-};
-template <>
-struct unified_value<NamedColumn(9)> {
-    auto& even_columns(size_t index) {
-        return split_0.even_columns[index];
-    }
-    const auto& even_columns(size_t index) const {
-        return split_0.even_columns[index];
-    }
-    auto& odd_columns(size_t index) {
-        if (index < 9) {
-            return split_0.odd_columns[index];
-        }
-        return split_1.odd_columns[index - 4];
-    }
-    const auto& odd_columns(size_t index) const {
-        if (index < 9) {
-            return split_0.odd_columns[index];
-        }
-        return split_1.odd_columns[index - 4];
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(9) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(9)> split_0;
-    split_value<NamedColumn(9), NamedColumn(10)> split_1;
-};
-
-template <>
-struct split_value<NamedColumn(0), NamedColumn(10)> {
-    explicit split_value() {
-        even_columns[0].index_ = 0;
-        even_columns[1].index_ = 1;
-        even_columns[2].index_ = 2;
-        even_columns[3].index_ = 3;
-        even_columns[4].index_ = 4;
-        odd_columns[0].index_ = 0;
-        odd_columns[1].index_ = 1;
-        odd_columns[2].index_ = 2;
-        odd_columns[3].index_ = 3;
-        odd_columns[4].index_ = 4;
-    }
-    std::array<accessor<NamedColumn::even_columns>, 5> even_columns;
-    std::array<accessor<NamedColumn::odd_columns>, 5> odd_columns;
-};
-template <>
-struct unified_value<NamedColumn(10)> {
-    auto& even_columns(size_t index) {
-        return split_0.even_columns[index];
-    }
-    const auto& even_columns(size_t index) const {
-        return split_0.even_columns[index];
-    }
-    auto& odd_columns(size_t index) {
-        return split_0.odd_columns[index];
-    }
-    const auto& odd_columns(size_t index) const {
-        return split_0.odd_columns[index];
-    }
-
-    const auto split_of(NamedColumn index) const {
-        return index < NamedColumn(10) ? 0 : 1;
-    }
-
-    split_value<NamedColumn(0), NamedColumn(10)> split_0;
+    value_type value_;
 };
 
 struct ycsb_value {
@@ -643,9 +185,6 @@ struct ycsb_value {
             ycsb_value& newvalue, const ycsb_value& oldvalue, NamedColumn index);
 
     template <NamedColumn Column>
-    static inline void set_unified(ycsb_value& value, NamedColumn index);
-
-    template <NamedColumn Column>
     static inline void copy_data(ycsb_value& newvalue, const ycsb_value& oldvalue);
 
     template <NamedColumn Column>
@@ -654,64 +193,22 @@ struct ycsb_value {
     template <NamedColumn Column>
     inline const accessor<RoundedNamedColumn<Column>()>& get() const;
 
-    auto& even_columns(size_t index) {
-        return std::visit([this, index] (auto&& val) -> auto& {
-                return val.even_columns(index);
-            }, value);
-    }
-    const auto& even_columns(size_t index) const {
-        return std::visit([this, index] (auto&& val) -> const auto& {
-                return val.even_columns(index);
-            }, value);
-    }
-    auto& odd_columns(size_t index) {
-        return std::visit([this, index] (auto&& val) -> auto& {
-                return val.odd_columns(index);
-            }, value);
-    }
-    const auto& odd_columns(size_t index) const {
-        return std::visit([this, index] (auto&& val) -> const auto& {
-                return val.odd_columns(index);
-            }, value);
-    }
 
     const auto split_of(NamedColumn index) const {
-        return std::visit([this, index] (auto&& val) -> const auto {
-                return val.split_of(index);
-            }, value);
+        return index < splitindex_ ? 0 : 1;
     }
 
-    std::variant<
-        unified_value<NamedColumn(10)>,
-        unified_value<NamedColumn(9)>,
-        unified_value<NamedColumn(8)>,
-        unified_value<NamedColumn(7)>,
-        unified_value<NamedColumn(6)>,
-        unified_value<NamedColumn(5)>,
-        unified_value<NamedColumn(4)>,
-        unified_value<NamedColumn(3)>,
-        unified_value<NamedColumn(2)>,
-        unified_value<NamedColumn(1)>
-        > value;
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::even_columns> even_columns;
+    accessor<NamedColumn::odd_columns> odd_columns;
 };
 
 inline void ycsb_value::resplit(
         ycsb_value& newvalue, const ycsb_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    set_unified<NamedColumn(1)>(newvalue, index);
-    copy_data<NamedColumn(0)>(newvalue, oldvalue);
-}
-
-template <NamedColumn Column>
-inline void ycsb_value::set_unified(ycsb_value& value, NamedColumn index) {
-    static_assert(Column <= NamedColumn::COLCOUNT);
-    if (Column == index) {
-        value.value.emplace<unified_value<Column>>();
-        return;
-    }
-    if constexpr (Column < NamedColumn::COLCOUNT) {
-        set_unified<Column + 1>(value, index);
-    }
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
 }
 
 template <NamedColumn Column>
@@ -724,103 +221,103 @@ inline void ycsb_value::copy_data(ycsb_value& newvalue, const ycsb_value& oldval
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(0)>() {
-    return even_columns(0);
+inline accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 0>() {
+    return even_columns;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(0)>() const {
-    return even_columns(0);
+inline const accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 0>() const {
+    return even_columns;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(1)>() {
-    return even_columns(1);
+inline accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 1>() {
+    return even_columns;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(1)>() const {
-    return even_columns(1);
+inline const accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 1>() const {
+    return even_columns;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(2)>() {
-    return even_columns(2);
+inline accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 2>() {
+    return even_columns;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(2)>() const {
-    return even_columns(2);
+inline const accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 2>() const {
+    return even_columns;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(3)>() {
-    return even_columns(3);
+inline accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 3>() {
+    return even_columns;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(3)>() const {
-    return even_columns(3);
+inline const accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 3>() const {
+    return even_columns;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(4)>() {
-    return even_columns(4);
+inline accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 4>() {
+    return even_columns;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(0)>()>& ycsb_value::get<NamedColumn(4)>() const {
-    return even_columns(4);
+inline const accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 4>() const {
+    return even_columns;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(5)>() {
-    return odd_columns(0);
+inline accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 0>() {
+    return odd_columns;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(5)>() const {
-    return odd_columns(0);
+inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 0>() const {
+    return odd_columns;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(6)>() {
-    return odd_columns(1);
+inline accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 1>() {
+    return odd_columns;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(6)>() const {
-    return odd_columns(1);
+inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 1>() const {
+    return odd_columns;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(7)>() {
-    return odd_columns(2);
+inline accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 2>() {
+    return odd_columns;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(7)>() const {
-    return odd_columns(2);
+inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 2>() const {
+    return odd_columns;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(8)>() {
-    return odd_columns(3);
+inline accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 3>() {
+    return odd_columns;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(8)>() const {
-    return odd_columns(3);
+inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 3>() const {
+    return odd_columns;
 }
 
 template <>
-inline accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(9)>() {
-    return odd_columns(4);
+inline accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 4>() {
+    return odd_columns;
 }
 
 template <>
-inline const accessor<RoundedNamedColumn<NamedColumn(5)>()>& ycsb_value::get<NamedColumn(9)>() const {
-    return odd_columns(4);
+inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 4>() const {
+    return odd_columns;
 }
 
 };  // namespace ycsb_value_datatypes

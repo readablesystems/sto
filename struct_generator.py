@@ -342,8 +342,15 @@ operator ()(const std::underlying_type_t<NamedColumn>& index) {lbrace}
 {rbrace}
 
 template <bool is_array = {infostruct}<Column>::is_array>
-std::enable_if_t<is_array, const type&>
+std::enable_if_t<is_array, type>
 operator [](const std::underlying_type_t<NamedColumn>& index) {lbrace}
+{indent}adapter_type::CountRead(Column + index);
+{indent}return value_[index];
+{rbrace}
+
+template <bool is_array = {infostruct}<Column>::is_array>
+std::enable_if_t<is_array, const type&>
+operator [](const std::underlying_type_t<NamedColumn>& index) const {lbrace}
 {indent}adapter_type::CountRead(Column + index);
 {indent}return value_[index];
 {rbrace}
@@ -396,7 +403,8 @@ const auto split_of(NamedColumn index) const {lbrace}
 inline void {struct}::resplit(
 {indent}{indent}{struct}& newvalue, const {struct}& oldvalue, NamedColumn index) {lbrace}
 {indent}assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-{indent}copy_data<NamedColumn(0)>(newvalue, oldvalue);
+{indent}memcpy(&newvalue, &oldvalue, sizeof newvalue);
+{indent}//copy_data<NamedColumn(0)>(newvalue, oldvalue);
 {indent}newvalue.splitindex_ = index;
 {rbrace}
 

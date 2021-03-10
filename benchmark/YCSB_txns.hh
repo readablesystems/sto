@@ -148,9 +148,9 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                 assert(result);
 
                 if (col_parity) {
-                    output = value->odd_columns(col_index);
+                    output = value->odd_columns[col_index];
                 } else {
-                    output = value->even_columns(col_index);
+                    output = value->even_columns[col_index];
                 }
             }
             } else {

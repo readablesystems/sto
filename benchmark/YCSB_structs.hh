@@ -45,9 +45,6 @@ struct ycsb_key {
 
 typedef fix_string<COL_WIDTH> col_type;
 
-using ycsb_even_half_value = ycsb_value_datatypes::split_value<ycsb_value::NamedColumn::even_columns, ycsb_value::NamedColumn::odd_columns>;
-using ycsb_odd_half_value = ycsb_value_datatypes::split_value<ycsb_value::NamedColumn::odd_columns, ycsb_value::NamedColumn::COLCOUNT>;
-
 class ycsb_input_generator {
 public:
     ycsb_input_generator(int thread_id)
