@@ -361,6 +361,7 @@ void MVCCIndexTester<Ordered>::DeleteTest() {
     // Serialized observation should observe delete
     {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         auto[success, result, row, accessor]
             = idx.select_split_row(key,
                                    {{nc::value_1,access_t::read},
@@ -391,6 +392,7 @@ void MVCCIndexTester<Ordered>::CommuteTest() {
 
     for (int64_t i = 0; i < 10; i++) {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         auto[success, result, row, accessor]
             = idx.select_split_row(key,
                                    {{nc::value_1,access_t::write},
@@ -409,6 +411,7 @@ void MVCCIndexTester<Ordered>::CommuteTest() {
 
     {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         auto[success, result, row, accessor]
             = idx.select_split_row(key,
                                    {{nc::value_1,access_t::read},
@@ -474,6 +477,90 @@ void MVCCIndexTester<Ordered>::ScanTest() {
             assert(t.try_commit());
         }
 
+        // Insert-scan concurrency
+        {
+            key_type start_key{2, 0};
+            key_type end_key{2, 100};
+            key_type new_key{2, 21};
+            index_value new_value{94, 3, 21};
+            key_type another_key{3, 21};
+            index_value another_value{9, 9, 4};
+
+            idx.nontrans_put(another_key, another_value);
+
+            {
+                TestTransaction t(0);
+                t.get_tx().mvcc_rw_upgrade();
+                auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                        {nc::value_1, access_t::read},
+                        {nc::value_2a, access_t::read},
+                        {nc::value_2b, access_t::read}
+                        });
+                (void)row;
+                (void)accessor;
+                assert(success);
+                assert(!found);
+                assert(t.try_commit());
+            }
+
+            TestTransaction t1(1);
+            t1.get_tx().mvcc_rw_upgrade();
+
+            std::cout << t1.get_tx().read_tid() << std::endl;
+
+            idx.insert_row(new_key, &new_value);
+
+            TestTransaction t2(2);
+            t2.get_tx().mvcc_rw_upgrade();
+
+            std::cout << t2.get_tx().read_tid() << std::endl;
+
+            {
+                bool found = false;
+                auto scan_callback = [&found] (const key_type& key, const auto&) -> bool {
+                    std::cout << "Scanned key: " << key.key_2 << std::endl;
+                    found |= true;
+                    return true;
+                };
+                bool success = idx.template range_scan<decltype(scan_callback), false>(
+                        start_key, end_key, scan_callback, {
+                        {nc::value_1, access_t::read},
+                        {nc::value_2a, access_t::read},
+                        {nc::value_2b, access_t::read}
+                        });
+                assert(success);
+                assert(!found);
+            }
+
+            t1.use();
+
+            {
+                index_value val{9, 9, 14};
+                auto [success, found] = idx.insert_row(another_key, &val, true);
+                assert(success);
+                assert(found);
+            }
+
+            assert(t1.try_commit());
+
+            t2.use();
+
+            {
+                index_value val{9, 9, 24};
+                auto [success, found] = idx.insert_row(another_key, &val, true);
+                assert(success);
+                assert(found);
+            }
+
+            t2.try_commit();
+
+            {
+                index_value val;
+                idx.nontrans_get(another_key, &val);
+                assert(val.value_2b == 14);
+            }
+        }
+
         printf("Test pass: ScanTest\n");
     }
 }
@@ -485,6 +572,7 @@ void MVCCIndexTester<Ordered>::InsertTest() {
 
     {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         index_value val{4, 5, 6};
 
@@ -496,6 +584,7 @@ void MVCCIndexTester<Ordered>::InsertTest() {
 
     {
         TestTransaction t(1);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::read},
                                                                           {nc::value_2a, access_t::read},
@@ -518,6 +607,7 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
 
     for (int itr = 0; itr < 16; itr++) {
         TestTransaction t1(0);
+        t1.get_tx().mvcc_rw_upgrade();
         key_type key1{1, 1};
         index_value val1{10 * itr + 1, 10 * itr + 2, 10 * itr + 3};
         {
@@ -528,6 +618,7 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
         assert(t1.try_commit());
 
         TestTransaction t2(1);
+        t2.get_tx().mvcc_rw_upgrade();
         key_type key2{1, 1};
         {
             auto[success, result, row, accessor] = idx.select_split_row(key2, {{nc::value_1, access_t::read},
@@ -543,6 +634,7 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
         assert(t2.try_commit());
 
         TestTransaction t3(2);
+        t3.get_tx().mvcc_rw_upgrade();
         key_type key3{1, 1};
         {
             auto [success, found] = idx.delete_row(key2);
@@ -552,6 +644,7 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
         assert(t3.try_commit());
 
         TestTransaction t4(3);
+        t4.get_tx().mvcc_rw_upgrade();
         key_type key4{1, 1};
         {
             auto[success, result, row, accessor] = idx.select_split_row(key4, {{nc::value_1, access_t::read},
@@ -585,7 +678,7 @@ void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
         }
 
         TestTransaction t2(1);
-        t1.get_tx().mvcc_rw_upgrade();
+        t2.get_tx().mvcc_rw_upgrade();
         key_type key2{1, 1};
         index_value val2{14, 15, 16};
         {
@@ -601,6 +694,7 @@ void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
 
     {
         TestTransaction t(2);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{1, 1};
         auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::read},
                                                                           {nc::value_2a, access_t::read},
@@ -625,6 +719,7 @@ void MVCCIndexTester<Ordered>::InsertSerialTest() {
 
     {
         TestTransaction t1(0);
+        t1.get_tx().mvcc_rw_upgrade();
         key_type key1{1, 1};
         index_value val1{11, 12, 13};
         {
@@ -635,6 +730,7 @@ void MVCCIndexTester<Ordered>::InsertSerialTest() {
         assert(t1.try_commit());
 
         TestTransaction t2(1);
+        t2.get_tx().mvcc_rw_upgrade();
         key_type key2{1, 1};
         {
             auto [success, found] = idx.delete_row(key2);
@@ -644,6 +740,7 @@ void MVCCIndexTester<Ordered>::InsertSerialTest() {
         assert(t2.try_commit());
 
         TestTransaction t3(3);
+        t3.get_tx().mvcc_rw_upgrade();
         key_type key3{1, 1};
         index_value val3{14, 15, 16};
         {
@@ -654,6 +751,7 @@ void MVCCIndexTester<Ordered>::InsertSerialTest() {
         assert(t3.try_commit());
 
         TestTransaction t4(1);
+        t4.get_tx().mvcc_rw_upgrade();
         key_type key4{1, 1};
         {
             auto[success, result, row, accessor] = idx.select_split_row(key4, {{nc::value_1, access_t::read},
@@ -715,6 +813,7 @@ void MVCCIndexTester<Ordered>::UpdateTest() {
 
     {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         index_value val{4, 5, 6};
 
@@ -726,6 +825,7 @@ void MVCCIndexTester<Ordered>::UpdateTest() {
 
     {
         TestTransaction t(1);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         index_value new_val{7, 0, 0};
         auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::update},
@@ -744,6 +844,7 @@ void MVCCIndexTester<Ordered>::UpdateTest() {
 
     {
         TestTransaction t(0);
+        t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         auto[success, result, row, accessor] = idx.select_split_row(key,
             {{nc::value_1, access_t::read},
