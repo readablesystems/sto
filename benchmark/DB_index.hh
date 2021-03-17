@@ -315,6 +315,7 @@ public:
 
         auto h = mvobj->find(Sto::read_tid());
 
+        /*
         if (I == 0) {
             // skip invalid (inserted but yet committed) and/or deleted values, but do not abort
             if (h->status_is(DELETED)) {
@@ -322,6 +323,7 @@ public:
                 return;
             }
         }
+        */
 
         TransProxy row_item =
             IndexType::index_read_my_write
@@ -329,7 +331,11 @@ public:
                 : Sto::fresh_item(tobj, item_key_t(e, I));
 
         if (I == 0) {
-            if (IndexType::index_read_my_write) {
+            if (h->status_is(DELETED)) {
+                MvAccess::template read<First>(row_item, h);
+                count = false;
+                return;
+            } else if (IndexType::index_read_my_write) {
                 if (IndexType::has_delete(row_item)) {
                     count = false;
                     return;
