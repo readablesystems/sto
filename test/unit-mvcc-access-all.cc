@@ -506,19 +506,14 @@ void MVCCIndexTester<Ordered>::ScanTest() {
             TestTransaction t1(1);
             t1.get_tx().mvcc_rw_upgrade();
 
-            std::cout << t1.get_tx().read_tid() << std::endl;
-
             idx.insert_row(new_key, &new_value);
 
             TestTransaction t2(2);
             t2.get_tx().mvcc_rw_upgrade();
 
-            std::cout << t2.get_tx().read_tid() << std::endl;
-
             {
                 bool found = false;
-                auto scan_callback = [&found] (const key_type& key, const auto&) -> bool {
-                    std::cout << "Scanned key: " << key.key_2 << std::endl;
+                auto scan_callback = [&found] (const key_type&, const auto&) -> bool {
                     found |= true;
                     return true;
                 };
@@ -552,7 +547,7 @@ void MVCCIndexTester<Ordered>::ScanTest() {
                 assert(found);
             }
 
-            t2.try_commit();
+            assert(!t2.try_commit());
 
             {
                 index_value val;
@@ -597,6 +592,81 @@ void MVCCIndexTester<Ordered>::InsertTest() {
         assert(accessor.value_2a() == 5);
         assert(accessor.value_2b() == 6);
         assert(t.try_commit());
+    }
+
+    // Insert-get concurrency
+    {
+        key_type start_key{2, 0};
+        key_type end_key{2, 100};
+        key_type new_key{2, 21};
+        index_value new_value{94, 3, 21};
+        key_type another_key{3, 21};
+        index_value another_value{9, 9, 4};
+
+        idx.nontrans_put(another_key, another_value);
+
+        {
+            TestTransaction t(0);
+            t.get_tx().mvcc_rw_upgrade();
+            auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                    {nc::value_1, access_t::read},
+                    {nc::value_2a, access_t::read},
+                    {nc::value_2b, access_t::read}
+                    });
+            (void)row;
+            (void)accessor;
+            assert(success);
+            assert(!found);
+            assert(t.try_commit());
+        }
+
+        TestTransaction t1(1);
+        t1.get_tx().mvcc_rw_upgrade();
+
+        idx.insert_row(new_key, &new_value);
+
+        TestTransaction t2(2);
+        t2.get_tx().mvcc_rw_upgrade();
+
+        {
+            auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                    {nc::value_1, access_t::read},
+                    {nc::value_2a, access_t::read},
+                    {nc::value_2b, access_t::read}
+                    });
+            (void)row;
+            (void)accessor;
+            assert(success);
+            assert(!found);
+        }
+
+        t1.use();
+
+        {
+            index_value val{9, 9, 14};
+            auto [success, found] = idx.insert_row(another_key, &val, true);
+            assert(success);
+            assert(found);
+        }
+
+        assert(t1.try_commit());
+
+        t2.use();
+
+        {
+            index_value val{9, 9, 24};
+            auto [success, found] = idx.insert_row(another_key, &val, true);
+            assert(success);
+            assert(found);
+        }
+
+        assert(!t2.try_commit());
+
+        {
+            index_value val;
+            idx.nontrans_get(another_key, &val);
+            assert(val.value_2b == 14);
+        }
     }
 }
 

@@ -282,6 +282,7 @@ public:
             if ((cell_accesses[I] & access_t::read) != access_t::none) {
                 auto h = mvobj->find(Sto::read_tid());
                 if (h->status_is(COMMITTED_DELETED)) {
+                    MvAccess::template read<First>(item, h);
                     return false;
                 } else if (!IndexType::template is_phantom<First>(h, item)) {
                     // XXX No read-my-write stuff for now.
