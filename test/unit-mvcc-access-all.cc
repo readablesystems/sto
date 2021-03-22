@@ -269,6 +269,7 @@ private:
     void InsertSameKeyTest();
     void InsertSerialTest();
     void InsertUnreadableTest();
+    void DeleteReinsertTest();
     void UpdateTest();
 };
 
@@ -288,6 +289,7 @@ void MVCCIndexTester<Ordered>::RunTests() {
     InsertSerialTest();
     InsertUnreadableTest();
     UpdateTest();
+    DeleteReinsertTest();
     if constexpr (Ordered) {
         ScanTest();
     }
@@ -932,6 +934,150 @@ void MVCCIndexTester<Ordered>::UpdateTest() {
     }
 
     printf("Test pass: UpdateTest\n");
+}
+
+template <bool Ordered>
+void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
+    using accessor_t = bench::SplitRecordAccessor<index_value>;
+    index_type idx(index_init_size);
+    idx.thread_init();
+
+    // Insert-scan concurrency
+    {
+        key_type start_key{2, 0};
+        key_type end_key{2, 100};
+        key_type new_key{2, 21};
+        index_value new_value{121, 13, 222};
+        index_value newer_value{76, 19, 131};
+        key_type another_key{3, 21};
+        index_value another_value{9, 9, 4};
+
+        idx.nontrans_put(new_key, new_value);
+        idx.nontrans_put(another_key, another_value);
+
+        if constexpr (Ordered) {
+            TestTransaction t(0);
+            t.get_tx().mvcc_rw_upgrade();
+
+            bool found = false;
+            auto scan_callback = [&found] (const key_type&, const auto& split_values) -> bool {
+                found |= true;
+                accessor_t accessor(split_values);
+                assert(accessor.value_1() == 121);
+                assert(accessor.value_2a() == 13);
+                assert(accessor.value_2b() == 222);
+                return true;
+            };
+            bool success = idx.template range_scan<decltype(scan_callback), false>(
+                    start_key, end_key, scan_callback, {
+                    {nc::value_1, access_t::read},
+                    {nc::value_2a, access_t::read},
+                    {nc::value_2b, access_t::read}
+                    });
+            assert(success);
+            assert(found);
+            assert(t.try_commit());
+        }
+
+        {
+            TestTransaction t(0);
+            t.get_tx().mvcc_rw_upgrade();
+            auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                    {nc::value_1, access_t::read},
+                    {nc::value_2a, access_t::read},
+                    {nc::value_2b, access_t::read}
+                    });
+            (void)row;
+            assert(success);
+            assert(found);
+            assert(accessor.value_1() == 121);
+            assert(accessor.value_2a() == 13);
+            assert(accessor.value_2b() == 222);
+            assert(t.try_commit());
+        }
+
+        {
+            TestTransaction t(1);
+            t.get_tx().mvcc_rw_upgrade();
+
+            auto [success, found] = idx.delete_row(new_key);
+
+            assert(success);
+            assert(found);
+
+            assert(t.try_commit());
+        }
+
+        if constexpr (Ordered) {
+            TestTransaction t(0);
+            t.get_tx().mvcc_rw_upgrade();
+
+            bool found = false;
+            auto scan_callback = [&found] (const key_type&, const auto&) -> bool {
+                found |= true;
+                return true;
+            };
+            bool success = idx.template range_scan<decltype(scan_callback), false>(
+                    start_key, end_key, scan_callback, {
+                    {nc::value_1, access_t::read},
+                    {nc::value_2a, access_t::read},
+                    {nc::value_2b, access_t::read}
+                    });
+            assert(success);
+            assert(!found);
+            assert(t.try_commit());
+        }
+
+        {
+            TestTransaction t(0);
+            t.get_tx().mvcc_rw_upgrade();
+            auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                    {nc::value_1, access_t::read},
+                    {nc::value_2a, access_t::read},
+                    {nc::value_2b, access_t::read}
+                    });
+            (void)row;
+            (void)accessor;
+            assert(success);
+            assert(!found);
+            assert(t.try_commit());
+        }
+
+        {
+            TestTransaction t(1);
+            t.get_tx().mvcc_rw_upgrade();
+
+            {
+                auto [success, found] = idx.insert_row(new_key, &newer_value, false);
+
+                assert(success);
+                assert(!found);
+            }
+
+            {
+                index_value val{9, 9, 14};
+                auto [success, found] = idx.insert_row(another_key, &val, true);
+                assert(success);
+                assert(found);
+            }
+
+            assert(t.try_commit());
+        }
+
+        {
+            index_value val;
+            idx.nontrans_get(new_key, &val);
+            assert(val.value_1 == 76);
+        }
+
+        {
+            index_value val;
+            idx.nontrans_get(another_key, &val);
+            assert(val.value_2b == 14);
+        }
+    }
+
+    printf("Test pass: DeleteReinsertTest\n");
 }
 
 int main() {
