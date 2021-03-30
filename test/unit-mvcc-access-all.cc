@@ -260,6 +260,22 @@ private:
                                                           mvcc_unordered_index<key_type, index_value, db_params::db_mvcc_params>>::type;
     typedef index_value::NamedColumn nc;
 
+    void PostTest() {
+        for (auto& t : Transaction::tinfo) {
+            t.write_snapshot_epoch = 0;
+            t.epoch = 0;
+        }
+
+        Transaction::global_epoch_advance_once();
+        Transaction::global_epoch_advance_once();
+        Transaction::global_epoch_advance_once();
+        Transaction::global_epoch_advance_once();
+
+        for (auto& t : Transaction::tinfo) {
+            t.rcu_set.clean_until(Transaction::global_epochs.active_epoch);
+        }
+    }
+
     void SelectSplitTest();
     void DeleteTest();
     void CommuteTest();
@@ -281,17 +297,28 @@ void MVCCIndexTester<Ordered>::RunTests() {
         printf("Testing Unordered Index (MVCC TS):\n");
     }
     SelectSplitTest();
+    PostTest();
     DeleteTest();
+    PostTest();
     CommuteTest();
+    PostTest();
     InsertTest();
+    PostTest();
     InsertDeleteTest();
+    PostTest();
     InsertSameKeyTest();
+    PostTest();
     InsertSerialTest();
+    PostTest();
     InsertUnreadableTest();
+    PostTest();
     UpdateTest();
+    PostTest();
     DeleteReinsertTest();
+    PostTest();
     if constexpr (Ordered) {
         ScanTest();
+        PostTest();
     }
 }
 
@@ -942,7 +969,6 @@ void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
     index_type idx(index_init_size);
     idx.thread_init();
 
-    // Insert-scan concurrency
     {
         key_type start_key{2, 0};
         key_type end_key{2, 100};
@@ -996,8 +1022,35 @@ void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
             assert(t.try_commit());
         }
 
+        for (auto& t : Transaction::tinfo) {
+            t.write_snapshot_epoch = 0;
+            t.epoch = 0;
+        }
+
+        Transaction::global_epoch_advance_once();
+        Transaction::global_epoch_advance_once();
+
+        // t2 is a long-running transaction that observes a soon-to-be-deleted
+        // object. The object is deleted and reinserted as a completely
+        // different object.
+        TestTransaction t2(2);
         {
-            TestTransaction t(1);
+            t2.get_tx().mvcc_rw_upgrade();
+            auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                    {nc::value_1, access_t::read},
+                    {nc::value_2a, access_t::read},
+                    {nc::value_2b, access_t::read}
+                    });
+            (void)row;
+            assert(success);
+            assert(found);
+            assert(accessor.value_1() == 121);
+            assert(accessor.value_2a() == 13);
+            assert(accessor.value_2b() == 222);
+        }
+
+        {
+            TestTransaction t(0);
             t.get_tx().mvcc_rw_upgrade();
 
             auto [success, found] = idx.delete_row(new_key);
@@ -1007,6 +1060,9 @@ void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
 
             assert(t.try_commit());
         }
+
+        Transaction::global_epoch_advance_once();
+        Transaction::global_epoch_advance_once();
 
         if constexpr (Ordered) {
             TestTransaction t(0);
@@ -1041,6 +1097,69 @@ void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
             assert(success);
             assert(!found);
             assert(t.try_commit());
+        }
+
+        Transaction::global_epoch_advance_once();
+        Transaction::global_epoch_advance_once();
+
+        // Check that MT delete hasn't happened yet
+        if constexpr (Ordered) {
+            {
+                TestTransaction t(0);
+                t.try_commit();
+            }
+            {
+                TestTransaction t(2);
+                t.try_commit();
+            }
+
+            typename index_type::unlocked_cursor_type lp(idx.table_, new_key);
+            bool found = lp.find_unlocked(*idx.ti);
+            assert(found);
+        }
+
+        {
+            t2.use();
+
+            {
+                index_value val{9, 9, 16};
+                auto [success, found] = idx.insert_row(new_key, &val, true);
+                assert(success);
+                assert(found);
+            }
+
+            {
+                index_value val{9, 9, 16};
+                auto [success, found] = idx.insert_row(another_key, &val, true);
+                assert(success);
+                assert(found);
+            }
+
+            assert(!t2.try_commit());
+        }
+
+        for (auto& t : Transaction::tinfo) {
+            t.write_snapshot_epoch = 0;
+            t.epoch = 0;
+        }
+
+        Transaction::global_epoch_advance_once();
+        Transaction::global_epoch_advance_once();
+
+        // Check that MT delete has now happened
+        if constexpr (Ordered) {
+            {
+                TestTransaction t(0);
+                t.try_commit();
+            }
+            {
+                TestTransaction t(2);
+                t.try_commit();
+            }
+
+            typename index_type::unlocked_cursor_type lp(idx.table_, new_key);
+            bool found = lp.find_unlocked(*idx.ti);
+            assert(!found);
         }
 
         {

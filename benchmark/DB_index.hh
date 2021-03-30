@@ -424,8 +424,10 @@ public:
     template <int C, int I, typename First, typename... Rest>
     static void mvcc_install_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx, void (*dcb)(void*)) {
         if (cell_id == I) {
-            auto e = item.key<item_key_t>().internal_elem_ptr();
-            idx->install_impl_per_chain(item, txn, e->template chain_at<I>(), dcb);
+            auto key = item.key<item_key_t>();
+            auto e = key.internal_elem_ptr();
+            idx->install_impl_per_chain(item, txn, e->template chain_at<I>(),
+                    key.is_row_item() ? dcb : nullptr);
             return;
         }
         mvcc_install_loop<C, I+1, Rest...>(cell_id, txn, item, idx, dcb);
@@ -680,8 +682,17 @@ public:
             return &std::get<I>(split_row);
         }
 
+        static intptr_t row_chain_offset() {
+            void* base = nullptr;
+            const auto base_address = reinterpret_cast<intptr_t>(base);
+            const auto chain_address = reinterpret_cast<intptr_t>(
+                    reinterpret_cast<MvInternalElement*>(base)->chain_at<0>());
+            return chain_address - base_address;
+        }
+
         static MvInternalElement* from_chain(std::tuple_element_t<0, split_layout_type>* chain) {
-            return reinterpret_cast<MvInternalElement*>(chain);
+            return reinterpret_cast<MvInternalElement*>(
+                    reinterpret_cast<intptr_t>(chain) - row_chain_offset());
         }
     };
 };

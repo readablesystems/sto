@@ -559,6 +559,7 @@ public:
 
     static void* epoch_advancer(void*);
     static void epoch_advance_once();
+    static void global_epoch_advance_once();
     template <typename T>
     static void rcu_delete(T* x) {
         auto& thr = this_thread();

@@ -70,32 +70,37 @@ void* Transaction::epoch_advancer(void*) {
     // don't bother epoch'ing til things have picked up
     usleep(us_per_epoch);
     while (global_epochs.run) {
-        epoch_type ge = global_epochs.global_epoch.load();
-        epoch_type re = global_epochs.global_epoch.load();
-        epoch_type ae = global_epochs.read_epoch.load();
-        for (auto& t : tinfo) {
-            auto twepoch = t.write_snapshot_epoch.load();
-            auto trepoch = t.epoch.load();
-            if (twepoch != 0 && signed_epoch_type(twepoch - re) < 0) {
-                re = twepoch;
-            }
-            if (trepoch != 0 && signed_epoch_type(trepoch - ae) < 0) {
-                ae = trepoch;
-            }
-        }
-        global_epochs.global_epoch = std::max(ge + 1, epoch_type(1));
-        global_epochs.read_epoch = re;
-        global_epochs.active_epoch = ae;
-        global_epochs.recent_tid = _TID.load(std::memory_order_relaxed);
-
-        if (epoch_advance_callback)
-            epoch_advance_callback(global_epochs.global_epoch);
-
+        global_epoch_advance_once();
         usleep(us_per_epoch);
     }
 
     fetch_and_add(&num_epoch_advancers, -1);
     return NULL;
+}
+
+void Transaction::global_epoch_advance_once() {
+    epoch_type ge = global_epochs.global_epoch.load();
+    epoch_type re = global_epochs.global_epoch.load();
+    epoch_type ae = global_epochs.read_epoch.load();
+    int i = 0;
+    for (auto& t : tinfo) {
+        auto twepoch = t.write_snapshot_epoch.load();
+        auto trepoch = t.epoch.load();
+        if (twepoch != 0 && signed_epoch_type(twepoch - re) < 0) {
+            re = twepoch;
+        }
+        if (trepoch != 0 && signed_epoch_type(trepoch - ae) < 0) {
+            ae = trepoch;
+        }
+        i++;
+    }
+    global_epochs.global_epoch = std::max(ge + 1, epoch_type(1));
+    global_epochs.read_epoch = re;
+    global_epochs.active_epoch = ae;
+    global_epochs.recent_tid = _TID.load(std::memory_order_relaxed);
+
+    if (epoch_advance_callback)
+        epoch_advance_callback(global_epochs.global_epoch);
 }
 
 void Transaction::epoch_advance_once() {
@@ -653,8 +658,8 @@ void Transaction::rcu_release_all(std::thread& epoch_advancer, int num_work_thre
         epoch_advancer.join();
     }
 
-    auto wse = Transaction::tinfo[0].write_snapshot_epoch.load(std::memory_order_relaxed) + 1;
-    for (int i = 1; i < num_work_threads; ++i) {
+    auto wse = global_epochs.global_epoch.load(std::memory_order_relaxed);
+    for (int i = 0; i < num_work_threads; ++i) {
         wse = std::max(wse, Transaction::tinfo[i].write_snapshot_epoch.load(std::memory_order_relaxed));
     }
     assert(wse > global_epochs.active_epoch.load());
