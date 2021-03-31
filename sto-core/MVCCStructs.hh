@@ -21,6 +21,7 @@ enum MvStatus {
     ABORTED_TXNV            = 0b0100'0010'0000,
     ABORTED_POISON          = 0b0101'0010'0000,
     DELTA                   = 0b0000'0000'1000,  // Commutative update delta
+    POISONED                = 0b1000'0000'0000,  // Standalone poison bit
     DELETED                 = 0b0000'0000'0001,  // Not a valid state on its own, but defined as a flag
     PENDING                 = 0b0000'0000'0010,
     COMMITTED               = 0b0000'0000'0100,
@@ -188,6 +189,22 @@ public:
         int s = status();
         assert(!(s & ABORTED));
         status(DELETED | s);
+    }
+
+    // Sets the poisoned flag
+    // NOT THREADSAFE
+    inline void status_poisoned() {
+        int s = status();
+        assert((s & COMMITTED_DELETED) == COMMITTED_DELETED);
+        status(POISONED | s);
+    }
+
+    // Unsets the poisoned flag
+    // NOT THREADSAFE
+    inline void status_unpoisoned() {
+        int s = status();
+        assert(s & POISONED);
+        status(~POISONED & s);
     }
 
     // Returns true if all the given flag(s) are set
@@ -429,10 +446,6 @@ public:
         return find(tid)->v();
     }
 
-    void set_poison(bool p) {
-        nonpoison_.store(!p, std::memory_order_release);
-    }
-
     // "Lock" step: pending version installation & version consistency check;
     //              returns true if successful, false if aborted
     template <bool may_commute = true>
@@ -474,7 +487,8 @@ public:
         }
 
         // Write version consistency check for concurrent reads + CU enabling
-        for (history_type* h = hw->prev(); h; h = h->prev()) {
+        history_type* h = nullptr;
+        for (h = hw->prev(); h; h = h->prev()) {
             if ((may_commute && !h->can_precede(hw))
                 || (h->status_is(COMMITTED) && h->rtid() > tid)) {
                 hw->status_abort(ABORTED_WV2);
@@ -485,7 +499,7 @@ public:
             }
         }
 
-        if (nonpoison_.load(std::memory_order_acquire)) {
+        if (!h->status_is(POISONED)) {
             return true;
         } else {
             hw->status_abort(ABORTED_POISON);
@@ -506,7 +520,7 @@ public:
             }
         }
 
-        return nonpoison_.load(std::memory_order_acquire);
+        return !hr->status_is(POISONED);
     }
 
     // "Install" step: set status to committed
@@ -684,7 +698,6 @@ protected:
 
     std::atomic<MvHistoryBase*> h_;
     std::atomic<int> cuctr_ = 0;  // For gc-time flattening
-    std::atomic<bool> nonpoison_ = true;
     std::atomic<tid_type> flattenv_;
 
 #if MVCC_INLINING

@@ -1078,13 +1078,13 @@ private:
                 pprev = &(*pprev)->next;
             }
             assert(*pprev == el);
-            obj->set_poison(true);
+            hp->status_poisoned();
             if (obj->find_latest(true) == hp) {
                 *pprev = el->next;
                 buck.version.unlock_exclusive();
                 Transaction::rcu_call(gc_internal_elem, el);
             } else {
-                obj->set_poison(false);
+                hp->status_unpoisoned();
                 buck.version.unlock_exclusive();
             }
         }

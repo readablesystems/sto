@@ -1505,12 +1505,12 @@ public:
             auto table = reinterpret_cast<mvcc_ordered_index<K, V, DBParams>*>(el->table);
             cursor_type lp(table->table_, el->key);
             if (lp.find_locked(*table->ti) && lp.value() == el) {
-                obj->set_poison(true);
+                hp->status_poisoned();
                 if (obj->find_latest(true) == hp) {
                     lp.finish(-1, *table->ti);
                     Transaction::rcu_call(gc_internal_elem, el);
                 } else {
-                    obj->set_poison(false);
+                    hp->status_unpoisoned();
                     lp.finish(0, *table->ti);
                 }
             } else {
