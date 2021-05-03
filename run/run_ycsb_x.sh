@@ -240,8 +240,8 @@ compile "${ALL_BINARIES[@]}"
 
 rm -rf results
 mkdir results
-RFILE=results/ycsb_c_results.txt
-DFILE=results/ycsb_c_delivery_results.txt
+RFILE=results/ycsb_x_results.txt
+DFILE=results/ycsb_x_delivery_results.txt
 TEMPDIR=$(mktemp -d /tmp/sto-XXXXXX)
 TEMPERR="$TEMPDIR/err"
 TEMPOUT="$TEMPDIR/out"
