@@ -15,12 +15,12 @@ void ycsb_runner<DBParams>::gen_workload(int txn_size) {
     bool is_write = false;
     for (uint64_t i = 0; i < (collapse ? 10 : max_txns); ++i) {
         ycsb_txn_t txn {};
-        txn.ops.reserve(txn_size);
         std::set<uint32_t> key_set;
         if (collapse) {
             is_write = ud->sample() < write_threshold;
-            txn_size = is_write ? 1 : 512;
+            txn_size = is_write ? 1 : 2048;
         }
+        txn.ops.reserve(txn_size);
         for (int j = 0; j < txn_size; ++j) {
             uint32_t key;
             do {
