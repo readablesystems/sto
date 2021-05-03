@@ -11,10 +11,16 @@ static constexpr uint64_t max_txns = 200000;
 template <typename DBParams>
 void ycsb_runner<DBParams>::gen_workload(int txn_size) {
     dist_init();
-    for (uint64_t i = 0; i < max_txns; ++i) {
+    bool collapse = txn_size < 0;
+    bool is_write = false;
+    for (uint64_t i = 0; i < (collapse ? 10 : max_txns); ++i) {
         ycsb_txn_t txn {};
         txn.ops.reserve(txn_size);
         std::set<uint32_t> key_set;
+        if (collapse) {
+            is_write = ud->sample() < write_threshold;
+            txn_size = is_write ? 1 : 512;
+        }
         for (int j = 0; j < txn_size; ++j) {
             uint32_t key;
             do {
@@ -24,7 +30,9 @@ void ycsb_runner<DBParams>::gen_workload(int txn_size) {
         }
         bool any_write = false;
         for (auto it = key_set.begin(); it != key_set.end(); ++it) {
-            bool is_write = ud->sample() < write_threshold;
+            if (!collapse) {
+                is_write = ud->sample() < write_threshold;
+            }
             ycsb_op_t op {};
             op.is_write = is_write;
             op.key = *it;

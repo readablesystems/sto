@@ -123,7 +123,12 @@ public:
 
     static void workload_generation(std::vector<ycsb_runner<DBParams>>& runners, mode_id mode) {
         std::vector<std::thread> thrs;
-        int tsize = (mode == mode_id::ReadOnly) ? 2 : 16;
+        int tsize = 16;
+        if (mode == mode_id::ReadOnly) {
+            tsize = 2;
+        } else if (mode == mode_id::OCCCollapse) {
+            tsize = -1;
+        }
         for (auto& r : runners) {
             thrs.emplace_back(&ycsb_runner<DBParams>::gen_workload, &r, tsize);
         }
@@ -182,6 +187,9 @@ public:
                     break;
                 case 'C':
                     mode = mode_id::ReadOnly;
+                    break;
+                case 'X':
+                    mode = mode_id::OCCCollapse;
                     break;
                 default:
                     print_usage(argv[0]);
