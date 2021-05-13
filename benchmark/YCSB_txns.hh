@@ -18,14 +18,14 @@ void ycsb_runner<DBParams>::gen_workload(int txn_size) {
         std::set<uint32_t> key_set;
         if (collapse) {
             is_write = ud->sample() < write_threshold;
-            txn_size = 128;
+            txn_size = 16;
         }
         txn.ops.reserve(txn_size);
         if (collapse) {
-            uint32_t key = dd->sample() % (txn_size * 64);
-            for (int j = 0; j < (is_write ? txn_size : txn_size * 64); ++j) {
+            uint32_t key = dd->sample() % (txn_size * 16);
+            for (int j = 0; j < (is_write ? txn_size : txn_size * 16); ++j) {
                 key_set.insert(key);
-                key = (key + 1) % (txn_size * 64);
+                key = (key + 1) % (txn_size * 16);
             }
         } else {
             for (int j = 0; j < txn_size; ++j) {
