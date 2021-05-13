@@ -11,26 +11,36 @@ static constexpr uint64_t max_txns = 200000;
 template <typename DBParams>
 void ycsb_runner<DBParams>::gen_workload(int txn_size) {
     dist_init();
-    bool collapse = txn_size < 0;
+    const bool collapse = txn_size < 0;
     bool is_write = false;
-    for (uint64_t i = 0; i < (collapse ? 10 : max_txns); ++i) {
+    for (uint64_t i = 0; i < (collapse ? 20 : max_txns); ++i) {
         ycsb_txn_t txn {};
         std::set<uint32_t> key_set;
         if (collapse) {
             is_write = ud->sample() < write_threshold;
-            txn_size = is_write ? 1 : 2048;
+            txn_size = 128;
         }
         txn.ops.reserve(txn_size);
-        for (int j = 0; j < txn_size; ++j) {
-            uint32_t key;
-            do {
-                key = dd->sample();
-            } while (key_set.find(key) != key_set.end());
-            key_set.insert(key);
+        if (collapse) {
+            uint32_t key = dd->sample() % (txn_size * 64);
+            for (int j = 0; j < (is_write ? txn_size : txn_size * 64); ++j) {
+                key_set.insert(key);
+                key = (key + 1) % (txn_size * 64);
+            }
+        } else {
+            for (int j = 0; j < txn_size; ++j) {
+                uint32_t key;
+                do {
+                    key = dd->sample();
+                } while (key_set.find(key) != key_set.end());
+                key_set.insert(key);
+            }
         }
         bool any_write = false;
         for (auto it = key_set.begin(); it != key_set.end(); ++it) {
-            if (!collapse) {
+            if (collapse) {
+                is_write = is_write || it == key_set.begin();
+            } else {
                 is_write = ud->sample() < write_threshold;
             }
             ycsb_op_t op {};

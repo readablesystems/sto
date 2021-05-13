@@ -101,8 +101,8 @@ public:
                 write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/2);
                 break;
             case mode_id::OCCCollapse:
-                dd = new sampling::StoZipfDistribution<>(ig.generator(), 0, ycsb_table_size - 1, 0.99);
-                write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/2);
+                dd = new sampling::StoZipfDistribution<>(ig.generator(), 0, ycsb_table_size - 1, 0.8);
+                write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/20);
                 break;
             default:
                 break;
