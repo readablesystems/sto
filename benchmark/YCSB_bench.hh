@@ -71,9 +71,10 @@ struct ycsb_op_t {
 };
 
 struct ycsb_txn_t {
-    ycsb_txn_t() : rw_txn(false), ops() {}
+    ycsb_txn_t() : rw_txn(false), collapse_type(0), ops() {}
 
     bool rw_txn;
+    uint8_t collapse_type;
     std::vector<ycsb_op_t> ops;
 };
 
@@ -100,7 +101,9 @@ public:
                 dd = new sampling::StoZipfDistribution<>(ig.generator(), 0, ycsb_table_size - 1, 0.99);
                 write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/2);
                 break;
-            case mode_id::OCCCollapse:
+            case mode_id::WriteCollapse:
+            case mode_id::RWCollapse:
+            case mode_id::ReadCollapse:
                 dd = new sampling::StoZipfDistribution<>(ig.generator(), 0, ycsb_table_size - 1, 0.8);
                 write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/20);
                 break;
@@ -109,7 +112,7 @@ public:
         }
     }
 
-    inline void gen_workload(int txn_size);
+    inline void gen_workload(uint64_t threadid, int txn_size);
 
     int id() const {
         return runner_id;

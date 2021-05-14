@@ -93,8 +93,17 @@ void ycsb_db<DBParams>::prepopulate() {
 template <typename DBParams>
 class ycsb_access {
 public:
-    static void ycsb_runner_thread(ycsb_db<DBParams>& db, db_profiler& prof, ycsb_runner<DBParams>& runner, double time_limit, uint64_t& txn_cnt) {
+    struct results {
+        results() : count(0), collapse1_count(0), collapse2_count(0) {}
+
+        uint64_t count;
+        uint64_t collapse1_count;
+        uint64_t collapse2_count;
+    };
+
+    static void ycsb_runner_thread(ycsb_db<DBParams>& db, db_profiler& prof, ycsb_runner<DBParams>& runner, double time_limit, results& txn_result) {
         uint64_t local_cnt = 0;
+        uint64_t collapse_cnt[2] = {0, 0};
         db.table_thread_init();
 
         ::TThread::set_id(runner.id());
@@ -111,6 +120,9 @@ public:
                 break;
 
             runner.run_txn(*it);
+            if (it->collapse_type) {
+                ++collapse_cnt[it->collapse_type - 1];
+            }
             ++it;
             if (it == runner.workload.end())
                 it = runner.workload.begin();
@@ -118,7 +130,9 @@ public:
             ++local_cnt;
         }
 
-        txn_cnt = local_cnt;
+        txn_result.count = local_cnt;
+        txn_result.collapse1_count = collapse_cnt[0];
+        txn_result.collapse2_count = collapse_cnt[1];
     }
 
     static void workload_generation(std::vector<ycsb_runner<DBParams>>& runners, mode_id mode) {
@@ -126,22 +140,29 @@ public:
         int tsize = 16;
         if (mode == mode_id::ReadOnly) {
             tsize = 2;
-        } else if (mode == mode_id::OCCCollapse) {
+        } else if (mode == mode_id::WriteCollapse) {
             tsize = -1;
+        } else if (mode == mode_id::RWCollapse) {
+            tsize = -2;
+        } else if (mode == mode_id::ReadCollapse) {
+            tsize = -3;
         }
-        for (auto& r : runners) {
-            thrs.emplace_back(&ycsb_runner<DBParams>::gen_workload, &r, tsize);
+        for (uint64_t i = 0; i < runners.size(); ++i) {
+            thrs.emplace_back(
+                    &ycsb_runner<DBParams>::gen_workload, std::ref(runners[i]), i, tsize);
         }
         for (auto& t : thrs)
             t.join();
     }
 
-    static uint64_t run_benchmark(ycsb_db<DBParams>& db, db_profiler& prof, std::vector<ycsb_runner<DBParams>>& runners, double time_limit) {
+    static results run_benchmark(ycsb_db<DBParams>& db, db_profiler& prof, std::vector<ycsb_runner<DBParams>>& runners, double time_limit) {
         int num_runners = runners.size();
         std::vector<std::thread> runner_thrs;
-        std::vector<uint64_t> txn_cnts(size_t(num_runners), 0);
+        std::vector<results> txn_cnts;
+        txn_cnts.resize(num_runners);
 
         for (int i = 0; i < num_runners; ++i) {
+            txn_cnts.emplace_back();
             runner_thrs.emplace_back(ycsb_runner_thread, std::ref(db), std::ref(prof),
                                      std::ref(runners[i]), time_limit, std::ref(txn_cnts[i]));
         }
@@ -149,9 +170,12 @@ public:
         for (auto &t : runner_thrs)
             t.join();
 
-        uint64_t total_txn_cnt = 0;
-        for (auto& cnt : txn_cnts)
-            total_txn_cnt += cnt;
+        results total_txn_cnt;
+        for (auto& cnt : txn_cnts) {
+            total_txn_cnt.count += cnt.count;
+            total_txn_cnt.collapse1_count += cnt.collapse1_count;
+            total_txn_cnt.collapse2_count += cnt.collapse2_count;
+        }
         return total_txn_cnt;
     }
 
@@ -189,7 +213,13 @@ public:
                     mode = mode_id::ReadOnly;
                     break;
                 case 'X':
-                    mode = mode_id::OCCCollapse;
+                    mode = mode_id::WriteCollapse;
+                    break;
+                case 'Y':
+                    mode = mode_id::RWCollapse;
+                    break;
+                case 'Z':
+                    mode = mode_id::ReadCollapse;
                     break;
                 default:
                     print_usage(argv[0]);
@@ -267,8 +297,12 @@ public:
         std::cout << std::endl << std::flush;
 
         prof.start(profiler_mode);
-        auto num_trans = run_benchmark(db, prof, runners, time_limit);
-        prof.finish(num_trans);
+        auto result = run_benchmark(db, prof, runners, time_limit);
+        auto elapsed_ms = prof.finish(result.count);
+        if (result.collapse1_count || result.collapse2_count) {
+            std::cout << "Collapse 1 throughput: " << (double)result.collapse1_count / (elapsed_ms / 1000) << " txns/sec" << std::endl;
+            std::cout << "Collapse 2 throughput: " << (double)result.collapse2_count / (elapsed_ms / 1000) << " txns/sec" << std::endl;
+        }
 
         Transaction::rcu_release_all(advancer, num_threads);
 

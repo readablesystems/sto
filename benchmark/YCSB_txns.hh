@@ -9,23 +9,40 @@ namespace ycsb {
 static constexpr uint64_t max_txns = 200000;
 
 template <typename DBParams>
-void ycsb_runner<DBParams>::gen_workload(int txn_size) {
+void ycsb_runner<DBParams>::gen_workload(uint64_t threadid, int txn_size) {
     dist_init();
-    const bool collapse = txn_size < 0;
-    bool is_write = false;
+    const int collapse = txn_size < 0 ? -txn_size : 0;
+    int tsz_factor = 1;  // For collapse experiments
+    bool write_first = false;  // For collapse experiments
     for (uint64_t i = 0; i < (collapse ? 20 : max_txns); ++i) {
         ycsb_txn_t txn {};
         std::set<uint32_t> key_set;
+        uint8_t collapse_type = 0;
         if (collapse) {
-            is_write = ud->sample() < write_threshold;
-            txn_size = 16;
+            // Type 1 is read-write, type 2 is write-only
+            if (collapse == 1) {
+                collapse_type = threadid ? 1 : 2;
+                txn_size = 16;
+                tsz_factor = 1;
+                write_first = false;
+            } else if (collapse == 2) {
+                collapse_type = threadid ? 1 : 2;
+                txn_size = 16;
+                tsz_factor = 1;
+                write_first = true;
+            } else if (collapse == 3) {
+                collapse_type = threadid ? 2 : 1;
+                txn_size = 16;
+                tsz_factor = collapse_type == 2 ? 64 : 1;
+                write_first = true;
+            }
         }
         txn.ops.reserve(txn_size);
         if (collapse) {
-            uint32_t key = dd->sample() % (txn_size * 16);
-            for (int j = 0; j < (is_write ? txn_size : txn_size * 16); ++j) {
+            uint32_t key = dd->sample() % (txn_size * tsz_factor);
+            for (int j = 0; j < txn_size; ++j) {
                 key_set.insert(key);
-                key = (key + 1) % (txn_size * 16);
+                key = (key + 1) % (txn_size * tsz_factor);
             }
         } else {
             for (int j = 0; j < txn_size; ++j) {
@@ -38,16 +55,16 @@ void ycsb_runner<DBParams>::gen_workload(int txn_size) {
         }
         bool any_write = false;
         for (auto it = key_set.begin(); it != key_set.end(); ++it) {
-            if (collapse) {
-                is_write = is_write || it == key_set.begin();
-            } else {
-                is_write = ud->sample() < write_threshold;
-            }
             ycsb_op_t op {};
-            op.is_write = is_write;
+            if (collapse) {
+                op.is_write = (collapse_type == 2) || (write_first && it == key_set.begin());
+                txn.collapse_type = collapse_type;
+            } else {
+                op.is_write = ud->sample() < write_threshold;
+            }
             op.key = *it;
             op.col_n = ud->sample() % (2*HALF_NUM_COLUMNS); /*column number*/
-            if (is_write) {
+            if (op.is_write) {
                 any_write = true;
                 ig.random_ycsb_col_value_inplace(&op.write_value);
             }

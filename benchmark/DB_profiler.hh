@@ -31,7 +31,7 @@ public:
         return start_tsc_;
     }
 
-    void finish(size_t num_txns) {
+    double finish(size_t num_txns) {
         end_tsc_ = read_tsc();
         if (spawn_perf_) {
             bool ok = Profiler::stop(perf_pid_);
@@ -46,6 +46,9 @@ public:
 
         // print STO stats
         Transaction::print_stats();
+
+        // return elapsed ms
+        return elapsed_time;
     }
 
 private:

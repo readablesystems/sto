@@ -9,7 +9,7 @@ DRY_RUN=0  # >0 means do a dry run
 
 . run_config.sh
 
-setup_ycsbx_semopts  # Change this accordingly!
+setup_ycsby_semopts  # Change this accordingly!
 
 printf "Experiment: $EXPERIMENT_NAME ($ITERS trials)\n"
 
@@ -236,8 +236,8 @@ compile "${ALL_BINARIES[@]}"
 
 rm -rf results
 mkdir results
-RFILE=results/ycsb_x_results.txt
-DFILE=results/ycsb_x_secondary_results.txt
+RFILE=results/ycsb_y_results.txt
+DFILE=results/ycsb_y_secondary_results.txt
 TEMPDIR=$(mktemp -d /tmp/sto-XXXXXX)
 TEMPERR="$TEMPDIR/err"
 TEMPOUT="$TEMPDIR/out"

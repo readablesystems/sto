@@ -14,7 +14,10 @@ using bench::fix_string;
 using bench::get_version;
 using bench::version_adapter;
 
-enum class mode_id : int { ReadOnly = 0, MediumContention, HighContention, OCCCollapse };
+enum class mode_id : int {
+    ReadOnly = 0, MediumContention, HighContention,
+    WriteCollapse, RWCollapse, ReadCollapse
+};
 
 struct ycsb_key {
     ycsb_key(uint64_t id) {

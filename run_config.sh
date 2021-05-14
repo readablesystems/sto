@@ -35,7 +35,9 @@
 # setup_ycsbb_semopts: YCSB-B semantic optimizations comparison
 # setup_ycsbc: YCSB-C
 # setup_ycsbc_semopts: YCSB-C semantic optimizations comparison
-# setup_ycsbx_semopts: YCSB OCC Collapse semantic optimizations comparison
+# setup_ycsbx_semopts: YCSB Collapse on Writers + R/O semantic optimizations comparison
+# setup_ycsby_semopts: YCSB Collapse on Writers + R/W semantic optimizations comparison
+# setup_ycsbz_semopts: YCSB Collapse on R/W + Writers semantic optimizations comparison
 
 setup_rubis() {
   EXPERIMENT_NAME="RUBiS"
@@ -1836,6 +1838,86 @@ setup_ycsbx_semopts() {
   YCSB_MVCC=(
     "MVCC + CU (X)" "-mX -imvcc -g -x"
     "MVCC (X)"      "-mX -imvcc -g"
+  )
+
+  YCSB_OCC_BINARIES=(
+    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
+  )
+  YCSB_MVCC_BINARIES=(
+    "ycsb_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
+  )
+  YCSB_BOTH_BINARIES=(
+    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+  )
+
+  OCC_LABELS=("${YCSB_OCC[@]}")
+  MVCC_LABELS=("${YCSB_MVCC[@]}")
+  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+  MVCC_BINARIES=("${YCSB_MVCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+
+  call_runs() {
+    default_call_runs
+  }
+
+  update_cmd() {
+    ``  # noop
+  }
+}
+
+setup_ycsby_semopts() {
+  EXPERIMENT_NAME="YCSB-Y Semantic optimizations, OCC vs TTCC vs MVCC"
+  TIMEOUT=60
+
+  YCSB_OCC=(
+    "OCC + CU (Y)"    "-mY -idefault -g -x"
+    "TicToc + CU (Y)" "-mY -itictoc -g -x"
+    "OCC (Y)"         "-mY -idefault -g"
+    "TicToc (Y)"      "-mY -itictoc -g"
+  )
+
+  YCSB_MVCC=(
+    "MVCC + CU (Y)" "-mY -imvcc -g -x"
+    "MVCC (Y)"      "-mY -imvcc -g"
+  )
+
+  YCSB_OCC_BINARIES=(
+    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
+  )
+  YCSB_MVCC_BINARIES=(
+    "ycsb_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
+  )
+  YCSB_BOTH_BINARIES=(
+    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+  )
+
+  OCC_LABELS=("${YCSB_OCC[@]}")
+  MVCC_LABELS=("${YCSB_MVCC[@]}")
+  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+  MVCC_BINARIES=("${YCSB_MVCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+
+  call_runs() {
+    default_call_runs
+  }
+
+  update_cmd() {
+    ``  # noop
+  }
+}
+
+setup_ycsbz_semopts() {
+  EXPERIMENT_NAME="YCSB-Z Semantic optimizations, OCC vs TTCC vs MVCC"
+  TIMEOUT=60
+
+  YCSB_OCC=(
+    "OCC + CU (Z)"    "-mZ -idefault -g -x"
+    "TicToc + CU (Z)" "-mZ -itictoc -g -x"
+    "OCC (Z)"         "-mZ -idefault -g"
+    "TicToc (Z)"      "-mZ -itictoc -g"
+  )
+
+  YCSB_MVCC=(
+    "MVCC + CU (Z)" "-mZ -imvcc -g -x"
+    "MVCC (Z)"      "-mZ -imvcc -g"
   )
 
   YCSB_OCC_BINARIES=(
