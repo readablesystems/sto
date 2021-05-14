@@ -17,7 +17,7 @@ ALL_BINARIES=("${OCC_BINARIES[@]}" "${MVCC_BINARIES[@]}")
 
 run_bench () {
   OUTFILE=$1
-  DELIVERY_OUTFILE=$2
+  SECONDARY_OUTFILE=$2
   shift 2
   BINARY=$1
   shift
@@ -168,14 +168,14 @@ run() {
     shift 4
 
     OUTFILE=$RFILE
-    DELIVERY_OUTFILE=$DFILE
+    SECONDARY_OUTFILE=$DFILE
     if [ -f $RFILE ]
     then
       OUTFILE=results/rtemp.txt
     fi
     if [ -f $DFILE ]
     then
-      DELIVERY_OUTFILE=results/dtemp.txt
+      SECONDARY_OUTFILE=results/dtemp.txt
     fi
     if [ $IS_MVCC -gt 0 ]
     then
