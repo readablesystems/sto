@@ -207,7 +207,7 @@ public:
         int status;
         char* tname = abi::__cxa_demangle(typeid(T).name(), 0, 0, &status);
         std::cout << tname << " stats:" << std::endl;
-        for (Index index = 0; index < NCOUNTERS; index++) {
+        for (Index index = (Index)0; index < Index::COLCOUNT; index++) {
             std::cout
                 << "Read [" << index << "] = " << GetRead(index) << "; "
                 << "Write [" << index << "] = " << GetWrite(index) << std::endl;

@@ -587,7 +587,7 @@ struct SplitParams {
         [](const RowType& in) -> RowType {return in;}
     );
     static constexpr auto split_merger = std::make_tuple(
-        [](RowType* out, const RowType* in) -> void {*out = *in;}
+        [](RowType* out, const RowType* in) -> void {*out = *const_cast<RowType*>(in);}
     );
     static constexpr auto map = [](int) -> int {return 0;};
 

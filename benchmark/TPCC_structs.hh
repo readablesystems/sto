@@ -105,8 +105,8 @@ struct warehouse_key {
     uint64_t w_id;
 };
 
-using warehouse_value_infreq = warehouse_value_datatypes::split_value<0, 7>;
-using warehouse_value_frequpd = warehouse_value_datatypes::split_value<7, 8>;
+//using warehouse_value_infreq = warehouse_value_datatypes::split_value<0, 7>;
+//using warehouse_value_frequpd = warehouse_value_datatypes::split_value<7, 8>;
 
 // DISTRICT
 
@@ -129,8 +129,8 @@ struct district_key {
     uint64_t d_id;
 };
 
-using district_value_infreq = district_value_datatypes::split_value<0, 7>;
-using district_value_frequpd = district_value_datatypes::split_value<7, 8>;
+//using district_value_infreq = district_value_datatypes::split_value<0, 7>;
+//using district_value_frequpd = district_value_datatypes::split_value<7, 8>;
 
 // CUSTOMER
 
@@ -199,8 +199,8 @@ struct customer_key {
     uint64_t c_id;
 };
 
-using customer_value_infreq = customer_value_datatypes::split_value<0, 13>;
-using customer_value_frequpd = customer_value_datatypes::split_value<13, 18>;
+//using customer_value_infreq = customer_value_datatypes::split_value<0, 13>;
+//using customer_value_frequpd = customer_value_datatypes::split_value<13, 18>;
 
 struct c_data_info {
     c_data_info() = default;
@@ -321,8 +321,8 @@ struct order_key {
     oid_type o_id;
 };
 
-using order_value_infreq = order_value_datatypes::split_value<0, 4>;
-using order_value_frequpd = order_value_datatypes::split_value<4, 5>;
+//using order_value_infreq = order_value_datatypes::split_value<0, 4>;
+//using order_value_frequpd = order_value_datatypes::split_value<4, 5>;
 
 // ORDER-LINE
 
@@ -355,8 +355,8 @@ struct orderline_key {
     uint64_t ol_number;
 };
 
-using orderline_value_infreq = orderline_value_datatypes::split_value<0, 5>;
-using orderline_value_frequpd = orderline_value_datatypes::split_value<5, 6>;
+//using orderline_value_infreq = orderline_value_datatypes::split_value<0, 5>;
+//using orderline_value_frequpd = orderline_value_datatypes::split_value<5, 6>;
 
 // ITEM
 
@@ -408,8 +408,8 @@ struct stock_key {
     uint64_t s_i_id;
 };
 
-using stock_value_infreq = stock_value_datatypes::split_value<0, 2>;
-using stock_value_frequpd = stock_value_datatypes::split_value<2, 6>;
+//using stock_value_infreq = stock_value_datatypes::split_value<0, 2>;
+//using stock_value_frequpd = stock_value_datatypes::split_value<2, 6>;
 
 }; // namespace tpcc
 

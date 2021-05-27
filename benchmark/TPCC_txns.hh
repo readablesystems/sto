@@ -35,6 +35,7 @@ inline void tpcc_adapters_treset() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
+if constexpr (!DBParams::MVCC) {
     typedef warehouse_value::NamedColumn wh_nc;
     typedef district_value::NamedColumn dt_nc;
     typedef customer_value::NamedColumn cu_nc;
@@ -99,19 +100,19 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     {
     warehouse_key wk(q_w_id);
-    auto [abort, result, row, value] = db.tbl_warehouses().select_split_row(wk,
-        {{wh_nc::w_tax, access_t::read}}
+    auto [abort, result, row, value] = db.tbl_warehouses().select_row(wk,
+        {{wh_nc::w_tax, AccessType::read}}
     );
     (void)row; (void)result;
     CHK(abort);
     assert(result);
-    wh_tax_rate = value.w_tax();
+    wh_tax_rate = value->w_tax;
     }
 
     {
     district_key dk(q_w_id, q_d_id);
-    auto [abort, result, row, value] = db.tbl_districts(q_w_id).select_split_row(dk,
-        {{dt_nc::d_tax, access_t::read}}
+    auto [abort, result, row, value] = db.tbl_districts(q_w_id).select_row(dk,
+        {{dt_nc::d_tax, AccessType::read}}
     );
     (void)row; (void)result;
     CHK(abort);
@@ -119,7 +120,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     TXP_INCREMENT(txp_tpcc_no_stage1);
 
-    dt_tax_rate = value.d_tax();
+    dt_tax_rate = value->d_tax;
     dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
     //dt_next_oid = new_dv->d_next_o_id ++;
     //db.tbl_districts(q_w_id).update_row(row, new_dv);
@@ -128,10 +129,10 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     int64_t cus_discount;
     {
     customer_key ck(q_w_id, q_d_id, q_c_id);
-    auto [abort, result, row, value] = db.tbl_customers(q_w_id).select_split_row(ck,
-        {{cu_nc::c_discount, access_t::read},
-         {cu_nc::c_last, access_t::read},
-         {cu_nc::c_credit, access_t::read}}
+    auto [abort, result, row, value] = db.tbl_customers(q_w_id).select_row(ck,
+        {{cu_nc::c_discount, AccessType::read},
+         {cu_nc::c_last, AccessType::read},
+         {cu_nc::c_credit, AccessType::read}}
     );
     (void)row; (void)result;
     CHK(abort);
@@ -139,20 +140,20 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     TXP_INCREMENT(txp_tpcc_no_stage2);
 
-    cus_discount = value.c_discount();
-    out_cus_last = value.c_last();
-    out_cus_credit = value.c_credit();
+    cus_discount = value->c_discount;
+    out_cus_last = value->c_last;
+    out_cus_credit = value->c_credit;
     }
 
     order_key ok(q_w_id, q_d_id, dt_next_oid);
     order_cidx_key ock(q_w_id, q_d_id, q_c_id, dt_next_oid);
     order_value* ov = Sto::tx_alloc<order_value>();
     new (ov) order_value();
-    ov->o_c_id() = q_c_id;
-    ov->o_carrier_id() = 0;
-    ov->o_all_local() = all_local ? 1 : 0;
-    ov->o_entry_d() = o_entry_d;
-    ov->o_ol_cnt() = num_items;
+    ov->o_c_id = q_c_id;
+    ov->o_carrier_id = 0;
+    ov->o_all_local = all_local ? 1 : 0;
+    ov->o_entry_d = o_entry_d;
+    ov->o_ol_cnt = num_items;
 
     {
     auto [abort, result] = db.tbl_orders(q_w_id).insert_row(ok, ov, false);
@@ -182,35 +183,35 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         uint32_t i_price;
 
         {
-        auto [abort, result, row, value] = db.tbl_items().select_split_row(item_key(iid),
-            {{it_nc::i_im_id, access_t::read},
-             {it_nc::i_price, access_t::read},
-             {it_nc::i_name, access_t::read},
-             {it_nc::i_data, access_t::read}});
+        auto [abort, result, row, value] = db.tbl_items().select_row(item_key(iid),
+            {{it_nc::i_im_id, AccessType::read},
+             {it_nc::i_price, AccessType::read},
+             {it_nc::i_name, AccessType::read},
+             {it_nc::i_data, AccessType::read}});
         (void)row; (void)result;
         CHK(abort);
         assert(result);
-        oid = value.i_im_id();
+        oid = value->i_im_id;
         CHK(oid != 0);
-        i_price = value.i_price();
-        out_item_names[i] = value.i_name();
+        i_price = value->i_price;
+        out_item_names[i] = value->i_name;
         //auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
         }
 
         {
-        auto [abort, result, row, value] = db.tbl_stocks(wid).select_split_row(stock_key(wid, iid),
-            {{st_nc::s_quantity, Commute ? access_t::write : access_t::update},
-             {st_nc::s_ytd, Commute ? access_t::write : access_t::update},
-             {st_nc::s_order_cnt, Commute ? access_t::write : access_t::update},
-             {st_nc::s_remote_cnt, Commute ? access_t::write : access_t::update},
-             {st_nc::s_dists, access_t::read },
-             {st_nc::s_data, access_t::read }}
+        auto [abort, result, row, value] = db.tbl_stocks(wid).select_row(stock_key(wid, iid),
+            {{st_nc::s_quantity, Commute ? AccessType::write : AccessType::update},
+             {st_nc::s_ytd, Commute ? AccessType::write : AccessType::update},
+             {st_nc::s_order_cnt, Commute ? AccessType::write : AccessType::update},
+             {st_nc::s_remote_cnt, Commute ? AccessType::write : AccessType::update},
+             {st_nc::s_dists, AccessType::read },
+             {st_nc::s_data, AccessType::read }}
         );
         (void)result;
         CHK(abort);
         assert(result);
-        int32_t s_quantity = value.s_quantity();
-        auto s_dist = value.s_dists()[q_d_id - 1];
+        int32_t s_quantity = value->s_quantity;
+        auto s_dist = value->s_dists[q_d_id - 1];
         //auto s_data = sv->s_data;
         //if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
         //    out_brand_generic[i] = 'B';
@@ -223,15 +224,15 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         } else {
             stock_value* new_sv = Sto::tx_alloc<stock_value>();
             new (new_sv) stock_value();
-            value.copy_into(new_sv);
+            memcpy(new_sv, value, sizeof *new_sv);
             if ((s_quantity - 10) >= (int32_t) qty)
-                new_sv->s_quantity() -= qty;
+                new_sv->s_quantity = new_sv->s_quantity - qty;
             else
-                new_sv->s_quantity() += (91 - (int32_t) qty);
-            new_sv->s_ytd() += qty;
-            new_sv->s_order_cnt() += 1;
+                new_sv->s_quantity = new_sv->s_quantity + (91 - (int32_t) qty);
+            new_sv->s_ytd = new_sv->s_ytd + qty;
+            new_sv->s_order_cnt = new_sv->s_order_cnt + 1;
             if (wid != q_w_id) {
-                new_sv->s_remote_cnt() += 1;
+                new_sv->s_remote_cnt = new_sv->s_remote_cnt + 1;
             }
             db.tbl_stocks(wid).update_row(row, new_sv);
         }
@@ -241,12 +242,12 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         orderline_key olk(q_w_id, q_d_id, dt_next_oid, i + 1);
         orderline_value *olv = Sto::tx_alloc<orderline_value>();
         new (olv) orderline_value();
-        olv->ol_i_id() = iid;
-        olv->ol_supply_w_id() = wid;
-        olv->ol_delivery_d() = 0;
-        olv->ol_quantity() = qty;
-        olv->ol_amount() = ol_amount;
-        olv->ol_dist_info() = s_dist;
+        olv->ol_i_id = iid;
+        olv->ol_supply_w_id = wid;
+        olv->ol_delivery_d = 0;
+        olv->ol_quantity = qty;
+        olv->ol_amount = ol_amount;
+        olv->ol_dist_info = s_dist;
 
         std::tie(abort, result) = db.tbl_orderlines(q_w_id).insert_row(olk, olv, false);
         (void)result;
@@ -267,9 +268,11 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     TXP_INCREMENT(txp_tpcc_no_commits);
     TXP_ACCOUNT(txp_tpcc_no_aborts, starts - 1);
 }
+}
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_payment() {
+if constexpr (!DBParams::MVCC) {
     typedef warehouse_value::NamedColumn wh_nc;
     typedef district_value::NamedColumn dt_nc;
     typedef customer_value::NamedColumn cu_nc;
@@ -341,24 +344,24 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // select warehouse row for update and retrieve warehouse info
     {
     warehouse_key wk(q_w_id);
-    auto [success, result, row, value] = db.tbl_warehouses().select_split_row(wk,
-        {{wh_nc::w_name, access_t::read},
-         {wh_nc::w_street_1, access_t::read},
-         {wh_nc::w_street_2, access_t::read},
-         {wh_nc::w_city, access_t::read},
-         {wh_nc::w_state, access_t::read},
-         {wh_nc::w_zip, access_t::read},
-         {wh_nc::w_ytd, Commute ? access_t::write : access_t::update}}
+    auto [success, result, row, value] = db.tbl_warehouses().select_row(wk,
+        {{wh_nc::w_name, AccessType::read},
+         {wh_nc::w_street_1, AccessType::read},
+         {wh_nc::w_street_2, AccessType::read},
+         {wh_nc::w_city, AccessType::read},
+         {wh_nc::w_state, AccessType::read},
+         {wh_nc::w_zip, AccessType::read},
+         {wh_nc::w_ytd, Commute ? AccessType::write : AccessType::update}}
     );
     (void)result;
     CHK(success);
     assert(result);
-    out_w_name = value.w_name();
-    out_w_street_1 = value.w_street_1();
-    out_w_street_2 = value.w_street_2();
-    out_w_city = value.w_city();
-    out_w_state = value.w_state();
-    out_w_zip = value.w_zip();
+    out_w_name = value->w_name;
+    out_w_street_1 = value->w_street_1;
+    out_w_street_2 = value->w_street_2;
+    out_w_city = value->w_city;
+    out_w_state = value->w_state;
+    out_w_zip = value->w_zip;
 
     // update warehouse ytd
     if constexpr (Commute) {
@@ -367,8 +370,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     } else {
         auto new_wv = Sto::tx_alloc<warehouse_value>();
         new (new_wv) warehouse_value();
-        value.copy_into(new_wv);
-        new_wv->w_ytd() += h_amount;
+        memcpy(new_wv, value, sizeof *value);
+        new_wv->w_ytd = new_wv->w_ytd + h_amount;
         db.tbl_warehouses().update_row(row, new_wv);
     }
     }
@@ -376,24 +379,24 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // select district row and retrieve district info
     {
     district_key dk(q_w_id, q_d_id);
-    auto [success, result, row, value] = db.tbl_districts(q_w_id).select_split_row(dk,
-        {{dt_nc::d_name, access_t::read},
-         {dt_nc::d_street_1, access_t::read},
-         {dt_nc::d_street_2, access_t::read},
-         {dt_nc::d_city, access_t::read},
-         {dt_nc::d_state, access_t::read},
-         {dt_nc::d_zip, access_t::read},
-         {dt_nc::d_ytd, Commute ? access_t::write : access_t::update}}
+    auto [success, result, row, value] = db.tbl_districts(q_w_id).select_row(dk,
+        {{dt_nc::d_name, AccessType::read},
+         {dt_nc::d_street_1, AccessType::read},
+         {dt_nc::d_street_2, AccessType::read},
+         {dt_nc::d_city, AccessType::read},
+         {dt_nc::d_state, AccessType::read},
+         {dt_nc::d_zip, AccessType::read},
+         {dt_nc::d_ytd, Commute ? AccessType::write : AccessType::update}}
     );
     (void)result;
     CHK(success);
     assert(result);
-    out_d_name = value.d_name();
-    out_d_street_1 = value.d_street_1();
-    out_d_street_2 = value.d_street_2();
-    out_d_city = value.d_city();
-    out_d_state = value.d_state();
-    out_d_zip = value.d_zip();
+    out_d_name = value->d_name;
+    out_d_street_1 = value->d_street_1;
+    out_d_street_2 = value->d_street_2;
+    out_d_city = value->d_city;
+    out_d_state = value->d_state;
+    out_d_zip = value->d_zip;
 
     TXP_INCREMENT(txp_tpcc_pm_stage1);
 
@@ -404,9 +407,9 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     } else {
         auto new_dv = Sto::tx_alloc<district_value>();
         new (new_dv) district_value();
-        value.copy_into(new_dv);
+        memcpy(new_dv, value, sizeof *new_dv);
         // update district ytd in-place
-        new_dv->d_ytd() += h_amount;
+        new_dv->d_ytd = new_dv->d_ytd + h_amount;
         db.tbl_districts(q_w_id).update_row(row, new_dv);
     }
 
@@ -416,12 +419,12 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // select and update customer
     if (by_name) {
         customer_idx_key ck(q_c_w_id, q_c_d_id, last_name);
-        auto [success, result, row, value] = db.tbl_customer_index(q_c_w_id).select_split_row(ck,
-            {{customer_idx_value::NamedColumn::c_ids, access_t::read}});
+        auto [success, result, row, value] = db.tbl_customer_index(q_c_w_id).select_row(ck,
+            {{customer_idx_value::NamedColumn::c_ids, AccessType::read}});
         (void)row; (void)result;
         CHK(success);
         assert(result);
-        auto& c_id_list = value.c_ids();
+        auto& c_id_list = value->c_ids.value_;
         uint64_t rows[100];
         int cnt = 0;
         for (auto it = c_id_list.begin(); cnt < 100 && it != c_id_list.end(); ++it, ++cnt) {
@@ -435,14 +438,14 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     TXP_INCREMENT(txp_tpcc_pm_stage3);
 
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
-    auto [success, result, row, value] = db.tbl_customers(q_c_w_id).select_split_row(ck,
-        {{cu_nc::c_since,    access_t::read},
-         {cu_nc::c_credit,   access_t::read},
-         {cu_nc::c_discount, access_t::read},
-         {cu_nc::c_balance, access_t::update},
-         {cu_nc::c_payment_cnt, Commute ? access_t::write : access_t::update},
-         {cu_nc::c_ytd_payment, Commute ? access_t::write : access_t::update},
-         {cu_nc::c_credit, Commute ? access_t::write : access_t::update}}
+    auto [success, result, row, value] = db.tbl_customers(q_c_w_id).select_row(ck,
+        {{cu_nc::c_since,    AccessType::read},
+         {cu_nc::c_credit,   AccessType::read},
+         {cu_nc::c_discount, AccessType::read},
+         {cu_nc::c_balance, AccessType::update},
+         {cu_nc::c_payment_cnt, Commute ? AccessType::write : AccessType::update},
+         {cu_nc::c_ytd_payment, Commute ? AccessType::write : AccessType::update},
+         {cu_nc::c_credit, Commute ? AccessType::write : AccessType::update}}
     );
     (void)result;
     CHK(success);
@@ -450,13 +453,13 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     TXP_INCREMENT(txp_tpcc_pm_stage4);
 
-    out_c_since = value.c_since();
-    out_c_credit_lim = value.c_credit_lim();
-    out_c_discount = value.c_discount();
-    out_c_balance = value.c_balance();
+    out_c_since = value->c_since;
+    out_c_credit_lim = value->c_credit_lim;
+    out_c_discount = value->c_discount;
+    out_c_balance = value->c_balance;
 
     if constexpr (Commute) {
-        if (value.c_credit() == "BC") {
+        if (value->c_credit.value_ == "BC") {
             commutators::Commutator<customer_value> commutator(-h_amount, h_amount, q_c_id, q_c_d_id, q_c_w_id,
                                                                       q_d_id, q_w_id, h_amount);
             db.tbl_customers(q_c_w_id).update_row(row, commutator);
@@ -467,13 +470,13 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     } else {
         auto new_cv = Sto::tx_alloc<customer_value>();
         new (new_cv) customer_value();
-        value.copy_into(new_cv);
-        new_cv->c_balance() -= h_amount;
-        new_cv->c_payment_cnt() += 1;
-        new_cv->c_ytd_payment() += h_amount;
-        if (value.c_credit() == "BC") {
+        memcpy(new_cv, value, sizeof *new_cv);
+        new_cv->c_balance = new_cv->c_balance - h_amount;
+        new_cv->c_payment_cnt = new_cv->c_payment_cnt + 1;
+        new_cv->c_ytd_payment = new_cv->c_ytd_payment + h_amount;
+        if (value->c_credit.value_ == "BC") {
             c_data_info info(q_c_id, q_c_d_id, q_c_w_id, q_d_id, q_w_id, h_amount);
-            new_cv->c_data()->insert_left(info.buf(), c_data_info::len);
+            new_cv->c_data->insert_left(info.buf(), c_data_info::len);
         }
         db.tbl_customers(q_c_w_id).update_row(row, new_cv);
     }
@@ -483,14 +486,14 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // insert to history table
     history_value *hv = Sto::tx_alloc<history_value>();
     new (hv) history_value();
-    hv->h_c_id() = q_c_id;
-    hv->h_c_d_id() = q_c_d_id;
-    hv->h_c_w_id() = q_c_w_id;
-    hv->h_d_id() = q_d_id;
-    hv->h_w_id() = q_w_id;
-    hv->h_date() = h_date;
-    hv->h_amount() = h_amount;
-    hv->h_data() = std::string(out_w_name.c_str()) + "    " + std::string(out_d_name.c_str());
+    hv->h_c_id = q_c_id;
+    hv->h_c_d_id = q_c_d_id;
+    hv->h_c_w_id = q_c_w_id;
+    hv->h_d_id = q_d_id;
+    hv->h_w_id = q_w_id;
+    hv->h_date = h_date;
+    hv->h_amount = h_amount;
+    hv->h_data = std::string(out_w_name.c_str()) + "    " + std::string(out_d_name.c_str());
 
 #if HISTORY_SEQ_INSERT
     history_key hk(db.tbl_histories(q_c_w_id).gen_key());
@@ -512,9 +515,11 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     TXP_INCREMENT(txp_tpcc_pm_commits);
     TXP_ACCOUNT(txp_tpcc_pm_aborts, starts - 1);
 }
+}
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_orderstatus() {
+if constexpr (!DBParams::MVCC) {
     typedef customer_value::NamedColumn cu_nc;
     typedef order_value::NamedColumn od_nc;
     typedef orderline_value::NamedColumn ol_nc;
@@ -559,12 +564,12 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     if (by_name) {
         customer_idx_key ck(q_w_id, q_d_id, last_name);
-        auto [success, result, row, value] = db.tbl_customer_index(q_w_id).select_split_row(ck,
-            {{customer_idx_value::NamedColumn::c_ids, access_t::read}});
+        auto [success, result, row, value] = db.tbl_customer_index(q_w_id).select_row(ck,
+            {{customer_idx_value::NamedColumn::c_ids, AccessType::read}});
         (void)row; (void)result;
         CHK(success);
         assert(result);
-        auto& c_id_list = value.c_ids();
+        auto& c_id_list = value->c_ids.value_;
         uint64_t rows[100];
         int cnt = 0;
         for (auto it = c_id_list.begin(); cnt < 100 && it != c_id_list.end(); ++it, ++cnt) {
@@ -576,21 +581,21 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     }
 
     customer_key ck(q_w_id, q_d_id, q_c_id);
-    auto [success, result, row, value] = db.tbl_customers(q_w_id).select_split_row(ck,
-        {{cu_nc::c_first, access_t::read},
-         {cu_nc::c_last, access_t::read},
-         {cu_nc::c_middle, access_t::read},
-         {cu_nc::c_balance, access_t::read}}
+    auto [success, result, row, value] = db.tbl_customers(q_w_id).select_row(ck,
+        {{cu_nc::c_first, AccessType::read},
+         {cu_nc::c_last, AccessType::read},
+         {cu_nc::c_middle, AccessType::read},
+         {cu_nc::c_balance, AccessType::read}}
     );
     (void)row; (void)result;
     CHK(success);
     assert(result);
 
     // simulate retrieving customer info
-    out_c_first = value.c_first();
-    out_c_last = value.c_last();
-    out_c_middle = value.c_middle();
-    out_c_balance = value.c_balance();
+    out_c_first = value->c_first;
+    out_c_last = value->c_last;
+    out_c_middle = value->c_middle;
+    out_c_balance = value->c_balance;
 
     // find the highest order placed by customer q_c_id
     uint64_t cus_o_id = 0;
@@ -608,23 +613,23 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     if (cus_o_id > 0) {
         order_key ok(q_w_id, q_d_id, cus_o_id);
-        auto [success, result, row, value] = db.tbl_orders(q_w_id).select_split_row(ok,
-            {{od_nc::o_entry_d, access_t::read},
-             {od_nc::o_carrier_id, access_t::read}});
+        auto [success, result, row, value] = db.tbl_orders(q_w_id).select_row(ok,
+            {{od_nc::o_entry_d, AccessType::read},
+             {od_nc::o_carrier_id, AccessType::read}});
         (void)row; (void)result;
         CHK(success);
         assert(result);
 
-        out_o_entry_date = value.o_entry_d();
-        out_o_carrier_id = value.o_carrier_id();
+        out_o_entry_date = value->o_entry_d;
+        out_o_carrier_id = value->o_carrier_id;
 
         auto ol_scan_callback = [&] (const orderline_key&, const auto& scan_value) -> bool {
-            auto olv = (typename std::remove_reference_t<decltype(db)>::ol_table_type::accessor_t)(scan_value);
-            out_ol_i_id = olv.ol_i_id();
-            out_ol_supply_w_id = olv.ol_supply_w_id();
-            out_ol_quantity = olv.ol_quantity();
-            out_ol_amount = olv.ol_amount();
-            out_ol_delivery_d = olv.ol_delivery_d();
+            auto olv = scan_value;
+            out_ol_i_id = olv->ol_i_id;
+            out_ol_supply_w_id = olv->ol_supply_w_id;
+            out_ol_quantity = olv->ol_quantity;
+            out_ol_amount = olv->ol_amount;
+            out_ol_delivery_d = olv->ol_delivery_d;
             return true;
         };
 
@@ -652,10 +657,15 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     TXP_INCREMENT(txp_tpcc_os_commits);
     TXP_ACCOUNT(txp_tpcc_os_aborts, starts - 1);
 }
+}
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
                                              std::array<uint64_t, NUM_DISTRICTS_PER_WAREHOUSE>& last_delivered) {
+if constexpr (DBParams::MVCC) {
+    (void) q_w_id;
+    (void) last_delivered;
+} else {
     typedef order_value::NamedColumn od_nc;
     typedef orderline_value::NamedColumn ol_nc;
     typedef customer_value::NamedColumn cu_nc;
@@ -713,10 +723,10 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
         uint64_t q_c_id = 0;
         uint32_t ol_cnt = 0;
         {
-        auto [success, result, row, value] = db.tbl_orders(q_w_id).select_split_row(ok,
-            {{od_nc::o_c_id, access_t::read},
-             {od_nc::o_ol_cnt, access_t::read},
-             {od_nc::o_carrier_id, Commute ? access_t::write : access_t::update}}
+        auto [success, result, row, value] = db.tbl_orders(q_w_id).select_row(ok,
+            {{od_nc::o_c_id, AccessType::read},
+             {od_nc::o_ol_cnt, AccessType::read},
+             {od_nc::o_carrier_id, Commute ? AccessType::write : AccessType::update}}
         );
         (void)result;
         CHK(success);
@@ -724,9 +734,9 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
 
         TXP_INCREMENT(txp_tpcc_dl_stage4);
 
-        q_c_id = value.o_c_id();
+        q_c_id = value->o_c_id;
         assert(q_c_id != 0);
-        ol_cnt = value.o_ol_cnt();
+        ol_cnt = value->o_ol_cnt;
 
         if constexpr (Commute) {
             commutators::Commutator<order_value> commutator(carrier_id);
@@ -734,8 +744,8 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
         } else {
             order_value* new_ov = Sto::tx_alloc<order_value>();
             new (new_ov) order_value();
-            value.copy_into(new_ov);
-            new_ov->o_carrier_id() = carrier_id;
+            memcpy(new_ov, value, sizeof *new_ov);
+            new_ov->o_carrier_id = carrier_id;
             db.tbl_orders(q_w_id).update_row(row, new_ov);
         }
         }
@@ -744,9 +754,9 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
         ol_amount_sum = 0;
         for (uint32_t ol_num = 1; ol_num <= ol_cnt; ++ol_num) {
             orderline_key olk(q_w_id, q_d_id, order_id, ol_num);
-            auto [success, result, row, value] = db.tbl_orderlines(q_w_id).select_split_row(olk,
-                {{ol_nc::ol_amount, access_t::read},
-                 {ol_nc::ol_delivery_d, Commute ? access_t::write : access_t::update}}
+            auto [success, result, row, value] = db.tbl_orderlines(q_w_id).select_row(olk,
+                {{ol_nc::ol_amount, AccessType::read},
+                 {ol_nc::ol_delivery_d, Commute ? AccessType::write : AccessType::update}}
             );
             (void)result;
             CHK(success);
@@ -754,7 +764,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
 
             TXP_INCREMENT(txp_tpcc_dl_stage3);
 
-            ol_amount_sum += value.ol_amount();
+            ol_amount_sum += value->ol_amount;
 
             if constexpr (Commute) {
                 commutators::Commutator<orderline_value> commutator(delivery_date);
@@ -762,8 +772,8 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
             } else {
                 orderline_value* new_olv = Sto::tx_alloc<orderline_value>();
                 new (new_olv) orderline_value();
-                value.copy_into(new_olv);
-                new_olv->ol_delivery_d() = delivery_date;
+                memcpy(new_olv, value, sizeof *new_olv);
+                new_olv->ol_delivery_d = delivery_date;
                 db.tbl_orderlines(q_w_id).update_row(row, new_olv);
             }
         }
@@ -771,9 +781,9 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
 
         {
         customer_key ck(q_w_id, q_d_id, q_c_id);
-        auto [success, result, row, value] = db.tbl_customers(q_w_id).select_split_row(ck,
-            {{cu_nc::c_balance, Commute ? access_t::write : access_t::update},
-             {cu_nc::c_delivery_cnt, Commute ? access_t::write : access_t::update}}
+        auto [success, result, row, value] = db.tbl_customers(q_w_id).select_row(ck,
+            {{cu_nc::c_balance, Commute ? AccessType::write : AccessType::update},
+             {cu_nc::c_delivery_cnt, Commute ? AccessType::write : AccessType::update}}
         );
         (void)result;
         CHK(success);
@@ -787,9 +797,9 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
         } else {
             auto new_cv = Sto::tx_alloc<customer_value>();
             new (new_cv) customer_value();
-            value.copy_into(new_cv);
-            new_cv->c_balance() += (int64_t)ol_amount_sum;
-            new_cv->c_delivery_cnt() += 1;
+            memcpy(new_cv, value, sizeof *new_cv);
+            new_cv->c_balance = new_cv->c_balance + (int64_t)ol_amount_sum;
+            new_cv->c_delivery_cnt = new_cv->c_delivery_cnt + 1;
             db.tbl_customers(q_w_id).update_row(row, new_cv);
         }
         }
@@ -803,9 +813,11 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
     TXP_INCREMENT(txp_tpcc_dl_commits);
     TXP_ACCOUNT(txp_tpcc_dl_aborts, starts - 1);
 }
+}
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_stocklevel(){
+if constexpr (!DBParams::MVCC) {
     typedef orderline_value::NamedColumn ol_nc;
     typedef stock_value::NamedColumn st_nc;
 
@@ -819,8 +831,8 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     (void)out_count;
 
     auto ol_scan_callback = [ &ol_iids] (const orderline_key&, const auto& scan_value) -> bool {
-        auto olv = (typename std::remove_reference_t<decltype(db)>::ol_table_type::accessor_t)(scan_value);
-        ol_iids.insert(olv.ol_i_id());
+        auto olv = scan_value;
+        ol_iids.insert(olv->ol_i_id);
         return true;
     };
 
@@ -848,13 +860,13 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 
     for (auto iid : ol_iids) {
         stock_key sk(q_w_id, iid);
-        auto [success, result, row, value] = db.tbl_stocks(q_w_id).select_split_row(sk,
-            {{st_nc::s_quantity, access_t::read}}
+        auto [success, result, row, value] = db.tbl_stocks(q_w_id).select_row(sk,
+            {{st_nc::s_quantity, AccessType::read}}
         );
         (void)row; (void)result;
         CHK(success);
         assert(result);
-        if(value.s_quantity() < threshold) {
+        if(value->s_quantity.value_ < threshold) {
             out_count += 1;
         }
     }
@@ -864,6 +876,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 
     TXP_INCREMENT(txp_tpcc_st_commits);
     TXP_ACCOUNT(txp_tpcc_st_aborts, starts - 1);
+}
 }
 
 }; // namespace tpcc

@@ -4,8 +4,9 @@
 
 namespace bench {
 template <typename K, typename V, typename DBParams>
-class ordered_index : public TObject {
+class ordered_index : public index_common<K, V, DBParams>, public TObject {
 public:
+    using C = index_common<K, V, DBParams>;
     typedef K key_type;
     typedef V value_type;
     typedef commutators::Commutator<value_type> comm_type;
@@ -13,7 +14,7 @@ public:
     //typedef typename get_occ_version<DBParams>::type occ_version_type;
     typedef typename get_version<DBParams>::type version_type;
 
-    using accessor_t = typename index_common<K, V, DBParams>::accessor_t;
+    //using accessor_t = typename index_common<K, V, DBParams>::accessor_t;
 
     static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
@@ -25,7 +26,9 @@ public:
     static constexpr uintptr_t ttnv_bit = 1 << 1u;
 
     typedef typename value_type::NamedColumn NamedColumn;
-    typedef IndexValueContainer<V, version_type> value_container_type;
+    using typename C::value_container_type;
+
+    using ColumnAccess = typename value_container_type::ColumnAccess;
 
     static constexpr bool value_is_small = is_small<V>::value;
 
@@ -77,6 +80,9 @@ public:
     template <typename T>
     static constexpr auto extract_item_list
         = split_version_helpers<ordered_index<K, V, DBParams>>::template extract_item_list<T>;
+    template <typename T>
+    static constexpr auto extract_items
+        = split_version_helpers<ordered_index<K, V, DBParams>>::template extract_items<T>;
 
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                               ins_return_type;
@@ -131,6 +137,22 @@ public:
     }
 #endif
 
+    sel_return_type
+    select_row(const key_type& key, std::initializer_list<ColumnAccess> accesses) {
+        unlocked_cursor_type lp(table_, key);
+        bool found = lp.find_unlocked(*ti);
+        internal_elem *e = lp.value();
+        if (found) {
+            return select_row(reinterpret_cast<uintptr_t>(e), accesses);
+        }
+        return {
+            register_internode_version(lp.node(), lp),
+            false,
+            0,
+            nullptr
+        };
+    }
+#if 0
     sel_split_return_type
     select_split_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
         unlocked_cursor_type lp(table_, key);
@@ -146,6 +168,7 @@ public:
             UniRecordAccessor<V>(nullptr)
         };
     }
+#endif
 
 #if 0
     sel_return_type
@@ -194,6 +217,49 @@ public:
     }
 #endif
 
+    sel_return_type
+    select_row(uintptr_t rid, std::initializer_list<ColumnAccess> accesses) {
+        auto e = reinterpret_cast<internal_elem*>(rid);
+        TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+
+        // Translate from column accesses to cell accesses
+        // all buffered writes are only stored in the wdata_ of the row item (to avoid redundant copies)
+        //auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
+        auto cell_accesses = e->row_container.split_accesses(accesses);
+
+        std::array<TransItem*, value_container_type::num_versions> cell_items {};
+        bool any_has_write;
+        bool ok;
+        std::tie(any_has_write, cell_items) = extract_items<value_container_type>(cell_accesses, this, e);
+
+        if (is_phantom(e, row_item))
+            goto abort;
+
+        if (index_read_my_write) {
+            if (has_delete(row_item)) {
+                return {true, false, 0, nullptr};
+            }
+            if (any_has_write || has_row_update(row_item)) {
+                value_type *vptr;
+                if (has_insert(row_item))
+                    vptr = &e->row_container.row;
+                else
+                    vptr = row_item.template raw_write_value<value_type *>();
+                return {true, true, rid, vptr};
+            }
+        }
+
+        ok = e->row_container.template access<item_key_t>(cell_accesses, cell_items, row_cell_bit);
+        if (!ok)
+            goto abort;
+
+        return {true, true, rid, e->row_container.read_row};
+
+    abort:
+        return {false, false, 0, nullptr};
+    }
+
+#if 0
     sel_split_return_type
     select_split_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
         auto e = reinterpret_cast<internal_elem*>(rid);
@@ -234,6 +300,7 @@ public:
     abort:
         return {false, false, 0, UniRecordAccessor<V>(nullptr)};
     }
+#endif
 
     void update_row(uintptr_t rid, value_type *new_row) {
         auto e = reinterpret_cast<internal_elem*>(rid);
@@ -540,7 +607,7 @@ public:
         if (found) {
             internal_elem *e = lp.value();
             if (value_is_small)
-                e->row_container.row = v;
+                e->row_container.row = const_cast<value_type&>(v);
             else
                copy_row(e, &v);
             lp.finish(0, *ti);
@@ -931,7 +998,7 @@ private:
     static void copy_row(internal_elem *e, const value_type *new_row) {
         if (new_row == nullptr)
             return;
-        e->row_container.row = *new_row;
+        e->row_container.row = *const_cast<value_type*>(new_row);
     }
 };
 
@@ -974,7 +1041,7 @@ public:
     typedef typename table_type::node_type node_type;
     typedef typename unlocked_cursor_type::nodeversion_value_type nodeversion_value_type;
 
-    using accessor_t = typename index_common<K, V, DBParams>::accessor_t;
+    //using accessor_t = typename index_common<K, V, DBParams>::accessor_t;
 
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                               ins_return_type;

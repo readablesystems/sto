@@ -664,7 +664,7 @@ public:
     using typename C::sel_return_type;
     using typename C::ins_return_type;
     using typename C::del_return_type;
-    using typename C::sel_split_return_type;
+    //using typename C::sel_split_return_type;
 
     using typename C::version_type;
     using typename C::value_container_type;
@@ -894,6 +894,7 @@ public:
     }
 
     // Split version select row
+    /*
     sel_split_return_type
     select_split_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
         bucket_entry& buck = map_[find_bucket_idx(key)];
@@ -923,6 +924,7 @@ public:
         auto result = MvSplitAccessAll::run_select(&found, cell_accesses, this, e);
         return {true, found, rid, SplitRecordAccessor<V>(result)};
     }
+    */
 
     void update_row(uintptr_t rid, value_type* new_row) {
         // Update entire row using overwrite.

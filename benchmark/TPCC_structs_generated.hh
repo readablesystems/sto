@@ -1,7293 +1,3305 @@
+#pragma once
+
+#include <type_traits>
+
+#include "Adapter.hh"
+#include "Sto.hh"
+
 namespace warehouse_value_datatypes {
 
 enum class NamedColumn : int {
     w_name = 0,
-    w_street_1 = 1,
-    w_street_2 = 2,
-    w_city = 3,
-    w_state = 4,
-    w_zip = 5,
-    w_tax = 6,
-    w_ytd = 7,
-    COLCOUNT = 8
+    w_street_1,
+    w_street_2,
+    w_city,
+    w_state,
+    w_zip,
+    w_tax,
+    w_ytd,
+    COLCOUNT
 };
 
-template <size_t ColIndex>
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+    return nc;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc) {
+    return nc += 1;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc, int) {
+    return nc += 1;
+}
+
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+    out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
+    return out;
+}
+
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    if constexpr (Column < NamedColumn::w_street_1) {
+        return NamedColumn::w_name;
+    }
+    if constexpr (Column < NamedColumn::w_street_2) {
+        return NamedColumn::w_street_1;
+    }
+    if constexpr (Column < NamedColumn::w_city) {
+        return NamedColumn::w_street_2;
+    }
+    if constexpr (Column < NamedColumn::w_state) {
+        return NamedColumn::w_city;
+    }
+    if constexpr (Column < NamedColumn::w_zip) {
+        return NamedColumn::w_state;
+    }
+    if constexpr (Column < NamedColumn::w_tax) {
+        return NamedColumn::w_zip;
+    }
+    if constexpr (Column < NamedColumn::w_ytd) {
+        return NamedColumn::w_tax;
+    }
+    return NamedColumn::w_ytd;
+}
+
+template <NamedColumn Column>
 struct accessor;
-
-template <size_t StartIndex, size_t EndIndex>
-struct split_value;
-
-template <size_t SplitIndex>
-struct unified_value;
 
 struct warehouse_value;
 
-DEFINE_ADAPTER(warehouse_value, 8);
+DEFINE_ADAPTER(warehouse_value, NamedColumn);
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor_info;
 
 template <>
-struct accessor_info<0> {
+struct accessor_info<NamedColumn::w_name> {
     using type = var_string<10>;
+    using value_type = var_string<10>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<1> {
+struct accessor_info<NamedColumn::w_street_1> {
     using type = var_string<20>;
+    using value_type = var_string<20>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<2> {
+struct accessor_info<NamedColumn::w_street_2> {
     using type = var_string<20>;
+    using value_type = var_string<20>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<3> {
+struct accessor_info<NamedColumn::w_city> {
     using type = var_string<20>;
+    using value_type = var_string<20>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<4> {
+struct accessor_info<NamedColumn::w_state> {
     using type = fix_string<2>;
+    using value_type = fix_string<2>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<5> {
+struct accessor_info<NamedColumn::w_zip> {
     using type = fix_string<9>;
+    using value_type = fix_string<9>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<6> {
+struct accessor_info<NamedColumn::w_tax> {
     using type = int64_t;
+    using value_type = int64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<7> {
+struct accessor_info<NamedColumn::w_ytd> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor {
-    using type = typename accessor_info<ColIndex>::type;
+    using adapter_type = ADAPTER_OF(warehouse_value);
+    using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
-    operator type() {
-        ADAPTER_OF(warehouse_value)::CountWrite(ColIndex + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(warehouse_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(warehouse_value)::CountWrite(ColIndex + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(warehouse_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(warehouse_value)::CountWrite(ColIndex + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<ColIndex>& other) {
-        ADAPTER_OF(warehouse_value)::CountWrite(ColIndex + index_);
+    value_type operator =(accessor<Column>& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(warehouse_value)::CountWrite(ColIndex + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(warehouse_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(warehouse_value)::CountWrite(ColIndex + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(warehouse_value)::CountRead(ColIndex + index_);
-        return &value_;
-    }
-
-    size_t index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<0, 1> {
-    explicit split_value() = default;
-    accessor<0> w_name;
-};
-template <>
-struct split_value<1, 8> {
-    explicit split_value() = default;
-    accessor<1> w_street_1;
-    accessor<2> w_street_2;
-    accessor<3> w_city;
-    accessor<4> w_state;
-    accessor<5> w_zip;
-    accessor<6> w_tax;
-    accessor<7> w_ytd;
-};
-template <>
-struct unified_value<1> {
-    auto& w_name() {
-        return split_0.w_name;
-    }
-    const auto& w_name() const {
-        return split_0.w_name;
-    }
-    auto& w_street_1() {
-        return split_1.w_street_1;
-    }
-    const auto& w_street_1() const {
-        return split_1.w_street_1;
-    }
-    auto& w_street_2() {
-        return split_1.w_street_2;
-    }
-    const auto& w_street_2() const {
-        return split_1.w_street_2;
-    }
-    auto& w_city() {
-        return split_1.w_city;
-    }
-    const auto& w_city() const {
-        return split_1.w_city;
-    }
-    auto& w_state() {
-        return split_1.w_state;
-    }
-    const auto& w_state() const {
-        return split_1.w_state;
-    }
-    auto& w_zip() {
-        return split_1.w_zip;
-    }
-    const auto& w_zip() const {
-        return split_1.w_zip;
-    }
-    auto& w_tax() {
-        return split_1.w_tax;
-    }
-    const auto& w_tax() const {
-        return split_1.w_tax;
-    }
-    auto& w_ytd() {
-        return split_1.w_ytd;
-    }
-    const auto& w_ytd() const {
-        return split_1.w_ytd;
-    }
-
-    split_value<0, 1> split_0;
-    split_value<1, 8> split_1;
-};
-
-template <>
-struct split_value<0, 2> {
-    explicit split_value() = default;
-    accessor<0> w_name;
-    accessor<1> w_street_1;
-};
-template <>
-struct split_value<2, 8> {
-    explicit split_value() = default;
-    accessor<2> w_street_2;
-    accessor<3> w_city;
-    accessor<4> w_state;
-    accessor<5> w_zip;
-    accessor<6> w_tax;
-    accessor<7> w_ytd;
-};
-template <>
-struct unified_value<2> {
-    auto& w_name() {
-        return split_0.w_name;
-    }
-    const auto& w_name() const {
-        return split_0.w_name;
-    }
-    auto& w_street_1() {
-        return split_0.w_street_1;
-    }
-    const auto& w_street_1() const {
-        return split_0.w_street_1;
-    }
-    auto& w_street_2() {
-        return split_1.w_street_2;
-    }
-    const auto& w_street_2() const {
-        return split_1.w_street_2;
-    }
-    auto& w_city() {
-        return split_1.w_city;
-    }
-    const auto& w_city() const {
-        return split_1.w_city;
-    }
-    auto& w_state() {
-        return split_1.w_state;
-    }
-    const auto& w_state() const {
-        return split_1.w_state;
-    }
-    auto& w_zip() {
-        return split_1.w_zip;
-    }
-    const auto& w_zip() const {
-        return split_1.w_zip;
-    }
-    auto& w_tax() {
-        return split_1.w_tax;
-    }
-    const auto& w_tax() const {
-        return split_1.w_tax;
-    }
-    auto& w_ytd() {
-        return split_1.w_ytd;
-    }
-    const auto& w_ytd() const {
-        return split_1.w_ytd;
-    }
-
-    split_value<0, 2> split_0;
-    split_value<2, 8> split_1;
-};
-
-template <>
-struct split_value<0, 3> {
-    explicit split_value() = default;
-    accessor<0> w_name;
-    accessor<1> w_street_1;
-    accessor<2> w_street_2;
-};
-template <>
-struct split_value<3, 8> {
-    explicit split_value() = default;
-    accessor<3> w_city;
-    accessor<4> w_state;
-    accessor<5> w_zip;
-    accessor<6> w_tax;
-    accessor<7> w_ytd;
-};
-template <>
-struct unified_value<3> {
-    auto& w_name() {
-        return split_0.w_name;
-    }
-    const auto& w_name() const {
-        return split_0.w_name;
-    }
-    auto& w_street_1() {
-        return split_0.w_street_1;
-    }
-    const auto& w_street_1() const {
-        return split_0.w_street_1;
-    }
-    auto& w_street_2() {
-        return split_0.w_street_2;
-    }
-    const auto& w_street_2() const {
-        return split_0.w_street_2;
-    }
-    auto& w_city() {
-        return split_1.w_city;
-    }
-    const auto& w_city() const {
-        return split_1.w_city;
-    }
-    auto& w_state() {
-        return split_1.w_state;
-    }
-    const auto& w_state() const {
-        return split_1.w_state;
-    }
-    auto& w_zip() {
-        return split_1.w_zip;
-    }
-    const auto& w_zip() const {
-        return split_1.w_zip;
-    }
-    auto& w_tax() {
-        return split_1.w_tax;
-    }
-    const auto& w_tax() const {
-        return split_1.w_tax;
-    }
-    auto& w_ytd() {
-        return split_1.w_ytd;
-    }
-    const auto& w_ytd() const {
-        return split_1.w_ytd;
-    }
-
-    split_value<0, 3> split_0;
-    split_value<3, 8> split_1;
-};
-
-template <>
-struct split_value<0, 4> {
-    explicit split_value() = default;
-    accessor<0> w_name;
-    accessor<1> w_street_1;
-    accessor<2> w_street_2;
-    accessor<3> w_city;
-};
-template <>
-struct split_value<4, 8> {
-    explicit split_value() = default;
-    accessor<4> w_state;
-    accessor<5> w_zip;
-    accessor<6> w_tax;
-    accessor<7> w_ytd;
-};
-template <>
-struct unified_value<4> {
-    auto& w_name() {
-        return split_0.w_name;
-    }
-    const auto& w_name() const {
-        return split_0.w_name;
-    }
-    auto& w_street_1() {
-        return split_0.w_street_1;
-    }
-    const auto& w_street_1() const {
-        return split_0.w_street_1;
-    }
-    auto& w_street_2() {
-        return split_0.w_street_2;
-    }
-    const auto& w_street_2() const {
-        return split_0.w_street_2;
-    }
-    auto& w_city() {
-        return split_0.w_city;
-    }
-    const auto& w_city() const {
-        return split_0.w_city;
-    }
-    auto& w_state() {
-        return split_1.w_state;
-    }
-    const auto& w_state() const {
-        return split_1.w_state;
-    }
-    auto& w_zip() {
-        return split_1.w_zip;
-    }
-    const auto& w_zip() const {
-        return split_1.w_zip;
-    }
-    auto& w_tax() {
-        return split_1.w_tax;
-    }
-    const auto& w_tax() const {
-        return split_1.w_tax;
-    }
-    auto& w_ytd() {
-        return split_1.w_ytd;
-    }
-    const auto& w_ytd() const {
-        return split_1.w_ytd;
-    }
-
-    split_value<0, 4> split_0;
-    split_value<4, 8> split_1;
-};
-
-template <>
-struct split_value<0, 5> {
-    explicit split_value() = default;
-    accessor<0> w_name;
-    accessor<1> w_street_1;
-    accessor<2> w_street_2;
-    accessor<3> w_city;
-    accessor<4> w_state;
-};
-template <>
-struct split_value<5, 8> {
-    explicit split_value() = default;
-    accessor<5> w_zip;
-    accessor<6> w_tax;
-    accessor<7> w_ytd;
-};
-template <>
-struct unified_value<5> {
-    auto& w_name() {
-        return split_0.w_name;
-    }
-    const auto& w_name() const {
-        return split_0.w_name;
-    }
-    auto& w_street_1() {
-        return split_0.w_street_1;
-    }
-    const auto& w_street_1() const {
-        return split_0.w_street_1;
-    }
-    auto& w_street_2() {
-        return split_0.w_street_2;
-    }
-    const auto& w_street_2() const {
-        return split_0.w_street_2;
-    }
-    auto& w_city() {
-        return split_0.w_city;
-    }
-    const auto& w_city() const {
-        return split_0.w_city;
-    }
-    auto& w_state() {
-        return split_0.w_state;
-    }
-    const auto& w_state() const {
-        return split_0.w_state;
-    }
-    auto& w_zip() {
-        return split_1.w_zip;
-    }
-    const auto& w_zip() const {
-        return split_1.w_zip;
-    }
-    auto& w_tax() {
-        return split_1.w_tax;
-    }
-    const auto& w_tax() const {
-        return split_1.w_tax;
-    }
-    auto& w_ytd() {
-        return split_1.w_ytd;
-    }
-    const auto& w_ytd() const {
-        return split_1.w_ytd;
-    }
-
-    split_value<0, 5> split_0;
-    split_value<5, 8> split_1;
-};
-
-template <>
-struct split_value<0, 6> {
-    explicit split_value() = default;
-    accessor<0> w_name;
-    accessor<1> w_street_1;
-    accessor<2> w_street_2;
-    accessor<3> w_city;
-    accessor<4> w_state;
-    accessor<5> w_zip;
-};
-template <>
-struct split_value<6, 8> {
-    explicit split_value() = default;
-    accessor<6> w_tax;
-    accessor<7> w_ytd;
-};
-template <>
-struct unified_value<6> {
-    auto& w_name() {
-        return split_0.w_name;
-    }
-    const auto& w_name() const {
-        return split_0.w_name;
-    }
-    auto& w_street_1() {
-        return split_0.w_street_1;
-    }
-    const auto& w_street_1() const {
-        return split_0.w_street_1;
-    }
-    auto& w_street_2() {
-        return split_0.w_street_2;
-    }
-    const auto& w_street_2() const {
-        return split_0.w_street_2;
-    }
-    auto& w_city() {
-        return split_0.w_city;
-    }
-    const auto& w_city() const {
-        return split_0.w_city;
-    }
-    auto& w_state() {
-        return split_0.w_state;
-    }
-    const auto& w_state() const {
-        return split_0.w_state;
-    }
-    auto& w_zip() {
-        return split_0.w_zip;
-    }
-    const auto& w_zip() const {
-        return split_0.w_zip;
-    }
-    auto& w_tax() {
-        return split_1.w_tax;
-    }
-    const auto& w_tax() const {
-        return split_1.w_tax;
-    }
-    auto& w_ytd() {
-        return split_1.w_ytd;
-    }
-    const auto& w_ytd() const {
-        return split_1.w_ytd;
-    }
-
-    split_value<0, 6> split_0;
-    split_value<6, 8> split_1;
-};
-
-template <>
-struct split_value<0, 7> {
-    explicit split_value() = default;
-    accessor<0> w_name;
-    accessor<1> w_street_1;
-    accessor<2> w_street_2;
-    accessor<3> w_city;
-    accessor<4> w_state;
-    accessor<5> w_zip;
-    accessor<6> w_tax;
-};
-template <>
-struct split_value<7, 8> {
-    explicit split_value() = default;
-    accessor<7> w_ytd;
-};
-template <>
-struct unified_value<7> {
-    auto& w_name() {
-        return split_0.w_name;
-    }
-    const auto& w_name() const {
-        return split_0.w_name;
-    }
-    auto& w_street_1() {
-        return split_0.w_street_1;
-    }
-    const auto& w_street_1() const {
-        return split_0.w_street_1;
-    }
-    auto& w_street_2() {
-        return split_0.w_street_2;
-    }
-    const auto& w_street_2() const {
-        return split_0.w_street_2;
-    }
-    auto& w_city() {
-        return split_0.w_city;
-    }
-    const auto& w_city() const {
-        return split_0.w_city;
-    }
-    auto& w_state() {
-        return split_0.w_state;
-    }
-    const auto& w_state() const {
-        return split_0.w_state;
-    }
-    auto& w_zip() {
-        return split_0.w_zip;
-    }
-    const auto& w_zip() const {
-        return split_0.w_zip;
-    }
-    auto& w_tax() {
-        return split_0.w_tax;
-    }
-    const auto& w_tax() const {
-        return split_0.w_tax;
-    }
-    auto& w_ytd() {
-        return split_1.w_ytd;
-    }
-    const auto& w_ytd() const {
-        return split_1.w_ytd;
-    }
-
-    split_value<0, 7> split_0;
-    split_value<7, 8> split_1;
-};
-
-template <>
-struct split_value<0, 8> {
-    explicit split_value() = default;
-    accessor<0> w_name;
-    accessor<1> w_street_1;
-    accessor<2> w_street_2;
-    accessor<3> w_city;
-    accessor<4> w_state;
-    accessor<5> w_zip;
-    accessor<6> w_tax;
-    accessor<7> w_ytd;
-};
-template <>
-struct unified_value<8> {
-    auto& w_name() {
-        return split_0.w_name;
-    }
-    const auto& w_name() const {
-        return split_0.w_name;
-    }
-    auto& w_street_1() {
-        return split_0.w_street_1;
-    }
-    const auto& w_street_1() const {
-        return split_0.w_street_1;
-    }
-    auto& w_street_2() {
-        return split_0.w_street_2;
-    }
-    const auto& w_street_2() const {
-        return split_0.w_street_2;
-    }
-    auto& w_city() {
-        return split_0.w_city;
-    }
-    const auto& w_city() const {
-        return split_0.w_city;
-    }
-    auto& w_state() {
-        return split_0.w_state;
-    }
-    const auto& w_state() const {
-        return split_0.w_state;
-    }
-    auto& w_zip() {
-        return split_0.w_zip;
-    }
-    const auto& w_zip() const {
-        return split_0.w_zip;
-    }
-    auto& w_tax() {
-        return split_0.w_tax;
-    }
-    const auto& w_tax() const {
-        return split_0.w_tax;
-    }
-    auto& w_ytd() {
-        return split_0.w_ytd;
-    }
-    const auto& w_ytd() const {
-        return split_0.w_ytd;
-    }
-
-    split_value<0, 8> split_0;
+    value_type value_;
 };
 
 struct warehouse_value {
+    using NamedColumn = warehouse_value_datatypes::NamedColumn;
+    static constexpr auto MAX_SPLITS = 2;
+
     explicit warehouse_value() = default;
 
-    using NamedColumn = warehouse_value_datatypes::NamedColumn;
+    static inline void resplit(
+            warehouse_value& newvalue, const warehouse_value& oldvalue, NamedColumn index);
 
-    auto& w_name() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.w_name();
-            }, value);
-    }
-    const auto& w_name() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.w_name();
-            }, value);
-    }
-    auto& w_street_1() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.w_street_1();
-            }, value);
-    }
-    const auto& w_street_1() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.w_street_1();
-            }, value);
-    }
-    auto& w_street_2() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.w_street_2();
-            }, value);
-    }
-    const auto& w_street_2() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.w_street_2();
-            }, value);
-    }
-    auto& w_city() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.w_city();
-            }, value);
-    }
-    const auto& w_city() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.w_city();
-            }, value);
-    }
-    auto& w_state() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.w_state();
-            }, value);
-    }
-    const auto& w_state() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.w_state();
-            }, value);
-    }
-    auto& w_zip() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.w_zip();
-            }, value);
-    }
-    const auto& w_zip() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.w_zip();
-            }, value);
-    }
-    auto& w_tax() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.w_tax();
-            }, value);
-    }
-    const auto& w_tax() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.w_tax();
-            }, value);
-    }
-    auto& w_ytd() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.w_ytd();
-            }, value);
-    }
-    const auto& w_ytd() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.w_ytd();
-            }, value);
+    template <NamedColumn Column>
+    static inline void copy_data(warehouse_value& newvalue, const warehouse_value& oldvalue);
+
+    template <NamedColumn Column>
+    inline accessor<RoundedNamedColumn<Column>()>& get();
+
+    template <NamedColumn Column>
+    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+
+
+    const auto split_of(NamedColumn index) const {
+        return index < splitindex_ ? 0 : 1;
     }
 
-    std::variant<
-        unified_value<8>,
-        unified_value<7>,
-        unified_value<6>,
-        unified_value<5>,
-        unified_value<4>,
-        unified_value<3>,
-        unified_value<2>,
-        unified_value<1>
-        > value;
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::w_name> w_name;
+    accessor<NamedColumn::w_street_1> w_street_1;
+    accessor<NamedColumn::w_street_2> w_street_2;
+    accessor<NamedColumn::w_city> w_city;
+    accessor<NamedColumn::w_state> w_state;
+    accessor<NamedColumn::w_zip> w_zip;
+    accessor<NamedColumn::w_tax> w_tax;
+    accessor<NamedColumn::w_ytd> w_ytd;
 };
+
+inline void warehouse_value::resplit(
+        warehouse_value& newvalue, const warehouse_value& oldvalue, NamedColumn index) {
+    assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
+}
+
+template <NamedColumn Column>
+inline void warehouse_value::copy_data(warehouse_value& newvalue, const warehouse_value& oldvalue) {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+    if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
+        copy_data<Column + 1>(newvalue, oldvalue);
+    }
+}
+
+template <>
+inline accessor<NamedColumn::w_name>& warehouse_value::get<NamedColumn::w_name>() {
+    return w_name;
+}
+
+template <>
+inline const accessor<NamedColumn::w_name>& warehouse_value::get<NamedColumn::w_name>() const {
+    return w_name;
+}
+
+template <>
+inline accessor<NamedColumn::w_street_1>& warehouse_value::get<NamedColumn::w_street_1>() {
+    return w_street_1;
+}
+
+template <>
+inline const accessor<NamedColumn::w_street_1>& warehouse_value::get<NamedColumn::w_street_1>() const {
+    return w_street_1;
+}
+
+template <>
+inline accessor<NamedColumn::w_street_2>& warehouse_value::get<NamedColumn::w_street_2>() {
+    return w_street_2;
+}
+
+template <>
+inline const accessor<NamedColumn::w_street_2>& warehouse_value::get<NamedColumn::w_street_2>() const {
+    return w_street_2;
+}
+
+template <>
+inline accessor<NamedColumn::w_city>& warehouse_value::get<NamedColumn::w_city>() {
+    return w_city;
+}
+
+template <>
+inline const accessor<NamedColumn::w_city>& warehouse_value::get<NamedColumn::w_city>() const {
+    return w_city;
+}
+
+template <>
+inline accessor<NamedColumn::w_state>& warehouse_value::get<NamedColumn::w_state>() {
+    return w_state;
+}
+
+template <>
+inline const accessor<NamedColumn::w_state>& warehouse_value::get<NamedColumn::w_state>() const {
+    return w_state;
+}
+
+template <>
+inline accessor<NamedColumn::w_zip>& warehouse_value::get<NamedColumn::w_zip>() {
+    return w_zip;
+}
+
+template <>
+inline const accessor<NamedColumn::w_zip>& warehouse_value::get<NamedColumn::w_zip>() const {
+    return w_zip;
+}
+
+template <>
+inline accessor<NamedColumn::w_tax>& warehouse_value::get<NamedColumn::w_tax>() {
+    return w_tax;
+}
+
+template <>
+inline const accessor<NamedColumn::w_tax>& warehouse_value::get<NamedColumn::w_tax>() const {
+    return w_tax;
+}
+
+template <>
+inline accessor<NamedColumn::w_ytd>& warehouse_value::get<NamedColumn::w_ytd>() {
+    return w_ytd;
+}
+
+template <>
+inline const accessor<NamedColumn::w_ytd>& warehouse_value::get<NamedColumn::w_ytd>() const {
+    return w_ytd;
+}
+
 };  // namespace warehouse_value_datatypes
 
 using warehouse_value = warehouse_value_datatypes::warehouse_value;
 using ADAPTER_OF(warehouse_value) = ADAPTER_OF(warehouse_value_datatypes::warehouse_value);
 
+#pragma once
+
+#include <type_traits>
+
+#include "Adapter.hh"
+#include "Sto.hh"
+
 namespace district_value_datatypes {
 
 enum class NamedColumn : int {
     d_name = 0,
-    d_street_1 = 1,
-    d_street_2 = 2,
-    d_city = 3,
-    d_state = 4,
-    d_zip = 5,
-    d_tax = 6,
-    d_ytd = 7,
-    COLCOUNT = 8
+    d_street_1,
+    d_street_2,
+    d_city,
+    d_state,
+    d_zip,
+    d_tax,
+    d_ytd,
+    COLCOUNT
 };
 
-template <size_t ColIndex>
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+    return nc;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc) {
+    return nc += 1;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc, int) {
+    return nc += 1;
+}
+
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+    out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
+    return out;
+}
+
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    if constexpr (Column < NamedColumn::d_street_1) {
+        return NamedColumn::d_name;
+    }
+    if constexpr (Column < NamedColumn::d_street_2) {
+        return NamedColumn::d_street_1;
+    }
+    if constexpr (Column < NamedColumn::d_city) {
+        return NamedColumn::d_street_2;
+    }
+    if constexpr (Column < NamedColumn::d_state) {
+        return NamedColumn::d_city;
+    }
+    if constexpr (Column < NamedColumn::d_zip) {
+        return NamedColumn::d_state;
+    }
+    if constexpr (Column < NamedColumn::d_tax) {
+        return NamedColumn::d_zip;
+    }
+    if constexpr (Column < NamedColumn::d_ytd) {
+        return NamedColumn::d_tax;
+    }
+    return NamedColumn::d_ytd;
+}
+
+template <NamedColumn Column>
 struct accessor;
-
-template <size_t StartIndex, size_t EndIndex>
-struct split_value;
-
-template <size_t SplitIndex>
-struct unified_value;
 
 struct district_value;
 
-DEFINE_ADAPTER(district_value, 8);
+DEFINE_ADAPTER(district_value, NamedColumn);
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor_info;
 
 template <>
-struct accessor_info<0> {
+struct accessor_info<NamedColumn::d_name> {
     using type = var_string<10>;
+    using value_type = var_string<10>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<1> {
+struct accessor_info<NamedColumn::d_street_1> {
     using type = var_string<20>;
+    using value_type = var_string<20>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<2> {
+struct accessor_info<NamedColumn::d_street_2> {
     using type = var_string<20>;
+    using value_type = var_string<20>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<3> {
+struct accessor_info<NamedColumn::d_city> {
     using type = var_string<20>;
+    using value_type = var_string<20>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<4> {
+struct accessor_info<NamedColumn::d_state> {
     using type = fix_string<2>;
+    using value_type = fix_string<2>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<5> {
+struct accessor_info<NamedColumn::d_zip> {
     using type = fix_string<9>;
+    using value_type = fix_string<9>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<6> {
+struct accessor_info<NamedColumn::d_tax> {
     using type = int64_t;
+    using value_type = int64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<7> {
+struct accessor_info<NamedColumn::d_ytd> {
     using type = int64_t;
+    using value_type = int64_t;
+    static constexpr bool is_array = false;
 };
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor {
-    using type = typename accessor_info<ColIndex>::type;
+    using adapter_type = ADAPTER_OF(district_value);
+    using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
-    operator type() {
-        ADAPTER_OF(district_value)::CountWrite(ColIndex + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(district_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(district_value)::CountWrite(ColIndex + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(district_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(district_value)::CountWrite(ColIndex + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<ColIndex>& other) {
-        ADAPTER_OF(district_value)::CountWrite(ColIndex + index_);
+    value_type operator =(accessor<Column>& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(district_value)::CountWrite(ColIndex + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(district_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(district_value)::CountWrite(ColIndex + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(district_value)::CountRead(ColIndex + index_);
-        return &value_;
-    }
-
-    size_t index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<0, 1> {
-    explicit split_value() = default;
-    accessor<0> d_name;
-};
-template <>
-struct split_value<1, 8> {
-    explicit split_value() = default;
-    accessor<1> d_street_1;
-    accessor<2> d_street_2;
-    accessor<3> d_city;
-    accessor<4> d_state;
-    accessor<5> d_zip;
-    accessor<6> d_tax;
-    accessor<7> d_ytd;
-};
-template <>
-struct unified_value<1> {
-    auto& d_name() {
-        return split_0.d_name;
-    }
-    const auto& d_name() const {
-        return split_0.d_name;
-    }
-    auto& d_street_1() {
-        return split_1.d_street_1;
-    }
-    const auto& d_street_1() const {
-        return split_1.d_street_1;
-    }
-    auto& d_street_2() {
-        return split_1.d_street_2;
-    }
-    const auto& d_street_2() const {
-        return split_1.d_street_2;
-    }
-    auto& d_city() {
-        return split_1.d_city;
-    }
-    const auto& d_city() const {
-        return split_1.d_city;
-    }
-    auto& d_state() {
-        return split_1.d_state;
-    }
-    const auto& d_state() const {
-        return split_1.d_state;
-    }
-    auto& d_zip() {
-        return split_1.d_zip;
-    }
-    const auto& d_zip() const {
-        return split_1.d_zip;
-    }
-    auto& d_tax() {
-        return split_1.d_tax;
-    }
-    const auto& d_tax() const {
-        return split_1.d_tax;
-    }
-    auto& d_ytd() {
-        return split_1.d_ytd;
-    }
-    const auto& d_ytd() const {
-        return split_1.d_ytd;
-    }
-
-    split_value<0, 1> split_0;
-    split_value<1, 8> split_1;
-};
-
-template <>
-struct split_value<0, 2> {
-    explicit split_value() = default;
-    accessor<0> d_name;
-    accessor<1> d_street_1;
-};
-template <>
-struct split_value<2, 8> {
-    explicit split_value() = default;
-    accessor<2> d_street_2;
-    accessor<3> d_city;
-    accessor<4> d_state;
-    accessor<5> d_zip;
-    accessor<6> d_tax;
-    accessor<7> d_ytd;
-};
-template <>
-struct unified_value<2> {
-    auto& d_name() {
-        return split_0.d_name;
-    }
-    const auto& d_name() const {
-        return split_0.d_name;
-    }
-    auto& d_street_1() {
-        return split_0.d_street_1;
-    }
-    const auto& d_street_1() const {
-        return split_0.d_street_1;
-    }
-    auto& d_street_2() {
-        return split_1.d_street_2;
-    }
-    const auto& d_street_2() const {
-        return split_1.d_street_2;
-    }
-    auto& d_city() {
-        return split_1.d_city;
-    }
-    const auto& d_city() const {
-        return split_1.d_city;
-    }
-    auto& d_state() {
-        return split_1.d_state;
-    }
-    const auto& d_state() const {
-        return split_1.d_state;
-    }
-    auto& d_zip() {
-        return split_1.d_zip;
-    }
-    const auto& d_zip() const {
-        return split_1.d_zip;
-    }
-    auto& d_tax() {
-        return split_1.d_tax;
-    }
-    const auto& d_tax() const {
-        return split_1.d_tax;
-    }
-    auto& d_ytd() {
-        return split_1.d_ytd;
-    }
-    const auto& d_ytd() const {
-        return split_1.d_ytd;
-    }
-
-    split_value<0, 2> split_0;
-    split_value<2, 8> split_1;
-};
-
-template <>
-struct split_value<0, 3> {
-    explicit split_value() = default;
-    accessor<0> d_name;
-    accessor<1> d_street_1;
-    accessor<2> d_street_2;
-};
-template <>
-struct split_value<3, 8> {
-    explicit split_value() = default;
-    accessor<3> d_city;
-    accessor<4> d_state;
-    accessor<5> d_zip;
-    accessor<6> d_tax;
-    accessor<7> d_ytd;
-};
-template <>
-struct unified_value<3> {
-    auto& d_name() {
-        return split_0.d_name;
-    }
-    const auto& d_name() const {
-        return split_0.d_name;
-    }
-    auto& d_street_1() {
-        return split_0.d_street_1;
-    }
-    const auto& d_street_1() const {
-        return split_0.d_street_1;
-    }
-    auto& d_street_2() {
-        return split_0.d_street_2;
-    }
-    const auto& d_street_2() const {
-        return split_0.d_street_2;
-    }
-    auto& d_city() {
-        return split_1.d_city;
-    }
-    const auto& d_city() const {
-        return split_1.d_city;
-    }
-    auto& d_state() {
-        return split_1.d_state;
-    }
-    const auto& d_state() const {
-        return split_1.d_state;
-    }
-    auto& d_zip() {
-        return split_1.d_zip;
-    }
-    const auto& d_zip() const {
-        return split_1.d_zip;
-    }
-    auto& d_tax() {
-        return split_1.d_tax;
-    }
-    const auto& d_tax() const {
-        return split_1.d_tax;
-    }
-    auto& d_ytd() {
-        return split_1.d_ytd;
-    }
-    const auto& d_ytd() const {
-        return split_1.d_ytd;
-    }
-
-    split_value<0, 3> split_0;
-    split_value<3, 8> split_1;
-};
-
-template <>
-struct split_value<0, 4> {
-    explicit split_value() = default;
-    accessor<0> d_name;
-    accessor<1> d_street_1;
-    accessor<2> d_street_2;
-    accessor<3> d_city;
-};
-template <>
-struct split_value<4, 8> {
-    explicit split_value() = default;
-    accessor<4> d_state;
-    accessor<5> d_zip;
-    accessor<6> d_tax;
-    accessor<7> d_ytd;
-};
-template <>
-struct unified_value<4> {
-    auto& d_name() {
-        return split_0.d_name;
-    }
-    const auto& d_name() const {
-        return split_0.d_name;
-    }
-    auto& d_street_1() {
-        return split_0.d_street_1;
-    }
-    const auto& d_street_1() const {
-        return split_0.d_street_1;
-    }
-    auto& d_street_2() {
-        return split_0.d_street_2;
-    }
-    const auto& d_street_2() const {
-        return split_0.d_street_2;
-    }
-    auto& d_city() {
-        return split_0.d_city;
-    }
-    const auto& d_city() const {
-        return split_0.d_city;
-    }
-    auto& d_state() {
-        return split_1.d_state;
-    }
-    const auto& d_state() const {
-        return split_1.d_state;
-    }
-    auto& d_zip() {
-        return split_1.d_zip;
-    }
-    const auto& d_zip() const {
-        return split_1.d_zip;
-    }
-    auto& d_tax() {
-        return split_1.d_tax;
-    }
-    const auto& d_tax() const {
-        return split_1.d_tax;
-    }
-    auto& d_ytd() {
-        return split_1.d_ytd;
-    }
-    const auto& d_ytd() const {
-        return split_1.d_ytd;
-    }
-
-    split_value<0, 4> split_0;
-    split_value<4, 8> split_1;
-};
-
-template <>
-struct split_value<0, 5> {
-    explicit split_value() = default;
-    accessor<0> d_name;
-    accessor<1> d_street_1;
-    accessor<2> d_street_2;
-    accessor<3> d_city;
-    accessor<4> d_state;
-};
-template <>
-struct split_value<5, 8> {
-    explicit split_value() = default;
-    accessor<5> d_zip;
-    accessor<6> d_tax;
-    accessor<7> d_ytd;
-};
-template <>
-struct unified_value<5> {
-    auto& d_name() {
-        return split_0.d_name;
-    }
-    const auto& d_name() const {
-        return split_0.d_name;
-    }
-    auto& d_street_1() {
-        return split_0.d_street_1;
-    }
-    const auto& d_street_1() const {
-        return split_0.d_street_1;
-    }
-    auto& d_street_2() {
-        return split_0.d_street_2;
-    }
-    const auto& d_street_2() const {
-        return split_0.d_street_2;
-    }
-    auto& d_city() {
-        return split_0.d_city;
-    }
-    const auto& d_city() const {
-        return split_0.d_city;
-    }
-    auto& d_state() {
-        return split_0.d_state;
-    }
-    const auto& d_state() const {
-        return split_0.d_state;
-    }
-    auto& d_zip() {
-        return split_1.d_zip;
-    }
-    const auto& d_zip() const {
-        return split_1.d_zip;
-    }
-    auto& d_tax() {
-        return split_1.d_tax;
-    }
-    const auto& d_tax() const {
-        return split_1.d_tax;
-    }
-    auto& d_ytd() {
-        return split_1.d_ytd;
-    }
-    const auto& d_ytd() const {
-        return split_1.d_ytd;
-    }
-
-    split_value<0, 5> split_0;
-    split_value<5, 8> split_1;
-};
-
-template <>
-struct split_value<0, 6> {
-    explicit split_value() = default;
-    accessor<0> d_name;
-    accessor<1> d_street_1;
-    accessor<2> d_street_2;
-    accessor<3> d_city;
-    accessor<4> d_state;
-    accessor<5> d_zip;
-};
-template <>
-struct split_value<6, 8> {
-    explicit split_value() = default;
-    accessor<6> d_tax;
-    accessor<7> d_ytd;
-};
-template <>
-struct unified_value<6> {
-    auto& d_name() {
-        return split_0.d_name;
-    }
-    const auto& d_name() const {
-        return split_0.d_name;
-    }
-    auto& d_street_1() {
-        return split_0.d_street_1;
-    }
-    const auto& d_street_1() const {
-        return split_0.d_street_1;
-    }
-    auto& d_street_2() {
-        return split_0.d_street_2;
-    }
-    const auto& d_street_2() const {
-        return split_0.d_street_2;
-    }
-    auto& d_city() {
-        return split_0.d_city;
-    }
-    const auto& d_city() const {
-        return split_0.d_city;
-    }
-    auto& d_state() {
-        return split_0.d_state;
-    }
-    const auto& d_state() const {
-        return split_0.d_state;
-    }
-    auto& d_zip() {
-        return split_0.d_zip;
-    }
-    const auto& d_zip() const {
-        return split_0.d_zip;
-    }
-    auto& d_tax() {
-        return split_1.d_tax;
-    }
-    const auto& d_tax() const {
-        return split_1.d_tax;
-    }
-    auto& d_ytd() {
-        return split_1.d_ytd;
-    }
-    const auto& d_ytd() const {
-        return split_1.d_ytd;
-    }
-
-    split_value<0, 6> split_0;
-    split_value<6, 8> split_1;
-};
-
-template <>
-struct split_value<0, 7> {
-    explicit split_value() = default;
-    accessor<0> d_name;
-    accessor<1> d_street_1;
-    accessor<2> d_street_2;
-    accessor<3> d_city;
-    accessor<4> d_state;
-    accessor<5> d_zip;
-    accessor<6> d_tax;
-};
-template <>
-struct split_value<7, 8> {
-    explicit split_value() = default;
-    accessor<7> d_ytd;
-};
-template <>
-struct unified_value<7> {
-    auto& d_name() {
-        return split_0.d_name;
-    }
-    const auto& d_name() const {
-        return split_0.d_name;
-    }
-    auto& d_street_1() {
-        return split_0.d_street_1;
-    }
-    const auto& d_street_1() const {
-        return split_0.d_street_1;
-    }
-    auto& d_street_2() {
-        return split_0.d_street_2;
-    }
-    const auto& d_street_2() const {
-        return split_0.d_street_2;
-    }
-    auto& d_city() {
-        return split_0.d_city;
-    }
-    const auto& d_city() const {
-        return split_0.d_city;
-    }
-    auto& d_state() {
-        return split_0.d_state;
-    }
-    const auto& d_state() const {
-        return split_0.d_state;
-    }
-    auto& d_zip() {
-        return split_0.d_zip;
-    }
-    const auto& d_zip() const {
-        return split_0.d_zip;
-    }
-    auto& d_tax() {
-        return split_0.d_tax;
-    }
-    const auto& d_tax() const {
-        return split_0.d_tax;
-    }
-    auto& d_ytd() {
-        return split_1.d_ytd;
-    }
-    const auto& d_ytd() const {
-        return split_1.d_ytd;
-    }
-
-    split_value<0, 7> split_0;
-    split_value<7, 8> split_1;
-};
-
-template <>
-struct split_value<0, 8> {
-    explicit split_value() = default;
-    accessor<0> d_name;
-    accessor<1> d_street_1;
-    accessor<2> d_street_2;
-    accessor<3> d_city;
-    accessor<4> d_state;
-    accessor<5> d_zip;
-    accessor<6> d_tax;
-    accessor<7> d_ytd;
-};
-template <>
-struct unified_value<8> {
-    auto& d_name() {
-        return split_0.d_name;
-    }
-    const auto& d_name() const {
-        return split_0.d_name;
-    }
-    auto& d_street_1() {
-        return split_0.d_street_1;
-    }
-    const auto& d_street_1() const {
-        return split_0.d_street_1;
-    }
-    auto& d_street_2() {
-        return split_0.d_street_2;
-    }
-    const auto& d_street_2() const {
-        return split_0.d_street_2;
-    }
-    auto& d_city() {
-        return split_0.d_city;
-    }
-    const auto& d_city() const {
-        return split_0.d_city;
-    }
-    auto& d_state() {
-        return split_0.d_state;
-    }
-    const auto& d_state() const {
-        return split_0.d_state;
-    }
-    auto& d_zip() {
-        return split_0.d_zip;
-    }
-    const auto& d_zip() const {
-        return split_0.d_zip;
-    }
-    auto& d_tax() {
-        return split_0.d_tax;
-    }
-    const auto& d_tax() const {
-        return split_0.d_tax;
-    }
-    auto& d_ytd() {
-        return split_0.d_ytd;
-    }
-    const auto& d_ytd() const {
-        return split_0.d_ytd;
-    }
-
-    split_value<0, 8> split_0;
+    value_type value_;
 };
 
 struct district_value {
+    using NamedColumn = district_value_datatypes::NamedColumn;
+    static constexpr auto MAX_SPLITS = 2;
+
     explicit district_value() = default;
 
-    using NamedColumn = district_value_datatypes::NamedColumn;
+    static inline void resplit(
+            district_value& newvalue, const district_value& oldvalue, NamedColumn index);
 
-    auto& d_name() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.d_name();
-            }, value);
-    }
-    const auto& d_name() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.d_name();
-            }, value);
-    }
-    auto& d_street_1() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.d_street_1();
-            }, value);
-    }
-    const auto& d_street_1() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.d_street_1();
-            }, value);
-    }
-    auto& d_street_2() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.d_street_2();
-            }, value);
-    }
-    const auto& d_street_2() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.d_street_2();
-            }, value);
-    }
-    auto& d_city() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.d_city();
-            }, value);
-    }
-    const auto& d_city() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.d_city();
-            }, value);
-    }
-    auto& d_state() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.d_state();
-            }, value);
-    }
-    const auto& d_state() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.d_state();
-            }, value);
-    }
-    auto& d_zip() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.d_zip();
-            }, value);
-    }
-    const auto& d_zip() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.d_zip();
-            }, value);
-    }
-    auto& d_tax() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.d_tax();
-            }, value);
-    }
-    const auto& d_tax() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.d_tax();
-            }, value);
-    }
-    auto& d_ytd() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.d_ytd();
-            }, value);
-    }
-    const auto& d_ytd() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.d_ytd();
-            }, value);
+    template <NamedColumn Column>
+    static inline void copy_data(district_value& newvalue, const district_value& oldvalue);
+
+    template <NamedColumn Column>
+    inline accessor<RoundedNamedColumn<Column>()>& get();
+
+    template <NamedColumn Column>
+    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+
+
+    const auto split_of(NamedColumn index) const {
+        return index < splitindex_ ? 0 : 1;
     }
 
-    std::variant<
-        unified_value<8>,
-        unified_value<7>,
-        unified_value<6>,
-        unified_value<5>,
-        unified_value<4>,
-        unified_value<3>,
-        unified_value<2>,
-        unified_value<1>
-        > value;
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::d_name> d_name;
+    accessor<NamedColumn::d_street_1> d_street_1;
+    accessor<NamedColumn::d_street_2> d_street_2;
+    accessor<NamedColumn::d_city> d_city;
+    accessor<NamedColumn::d_state> d_state;
+    accessor<NamedColumn::d_zip> d_zip;
+    accessor<NamedColumn::d_tax> d_tax;
+    accessor<NamedColumn::d_ytd> d_ytd;
 };
+
+inline void district_value::resplit(
+        district_value& newvalue, const district_value& oldvalue, NamedColumn index) {
+    assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
+}
+
+template <NamedColumn Column>
+inline void district_value::copy_data(district_value& newvalue, const district_value& oldvalue) {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+    if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
+        copy_data<Column + 1>(newvalue, oldvalue);
+    }
+}
+
+template <>
+inline accessor<NamedColumn::d_name>& district_value::get<NamedColumn::d_name>() {
+    return d_name;
+}
+
+template <>
+inline const accessor<NamedColumn::d_name>& district_value::get<NamedColumn::d_name>() const {
+    return d_name;
+}
+
+template <>
+inline accessor<NamedColumn::d_street_1>& district_value::get<NamedColumn::d_street_1>() {
+    return d_street_1;
+}
+
+template <>
+inline const accessor<NamedColumn::d_street_1>& district_value::get<NamedColumn::d_street_1>() const {
+    return d_street_1;
+}
+
+template <>
+inline accessor<NamedColumn::d_street_2>& district_value::get<NamedColumn::d_street_2>() {
+    return d_street_2;
+}
+
+template <>
+inline const accessor<NamedColumn::d_street_2>& district_value::get<NamedColumn::d_street_2>() const {
+    return d_street_2;
+}
+
+template <>
+inline accessor<NamedColumn::d_city>& district_value::get<NamedColumn::d_city>() {
+    return d_city;
+}
+
+template <>
+inline const accessor<NamedColumn::d_city>& district_value::get<NamedColumn::d_city>() const {
+    return d_city;
+}
+
+template <>
+inline accessor<NamedColumn::d_state>& district_value::get<NamedColumn::d_state>() {
+    return d_state;
+}
+
+template <>
+inline const accessor<NamedColumn::d_state>& district_value::get<NamedColumn::d_state>() const {
+    return d_state;
+}
+
+template <>
+inline accessor<NamedColumn::d_zip>& district_value::get<NamedColumn::d_zip>() {
+    return d_zip;
+}
+
+template <>
+inline const accessor<NamedColumn::d_zip>& district_value::get<NamedColumn::d_zip>() const {
+    return d_zip;
+}
+
+template <>
+inline accessor<NamedColumn::d_tax>& district_value::get<NamedColumn::d_tax>() {
+    return d_tax;
+}
+
+template <>
+inline const accessor<NamedColumn::d_tax>& district_value::get<NamedColumn::d_tax>() const {
+    return d_tax;
+}
+
+template <>
+inline accessor<NamedColumn::d_ytd>& district_value::get<NamedColumn::d_ytd>() {
+    return d_ytd;
+}
+
+template <>
+inline const accessor<NamedColumn::d_ytd>& district_value::get<NamedColumn::d_ytd>() const {
+    return d_ytd;
+}
+
 };  // namespace district_value_datatypes
 
 using district_value = district_value_datatypes::district_value;
 using ADAPTER_OF(district_value) = ADAPTER_OF(district_value_datatypes::district_value);
 
+#pragma once
+
+#include <type_traits>
+
+#include "Adapter.hh"
+#include "Sto.hh"
+
 namespace customer_idx_value_datatypes {
 
 enum class NamedColumn : int {
     c_ids = 0,
-    COLCOUNT = 1
+    COLCOUNT
 };
 
-template <size_t ColIndex>
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+    return nc;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc) {
+    return nc += 1;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc, int) {
+    return nc += 1;
+}
+
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+    out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
+    return out;
+}
+
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    return NamedColumn::c_ids;
+}
+
+template <NamedColumn Column>
 struct accessor;
-
-template <size_t StartIndex, size_t EndIndex>
-struct split_value;
-
-template <size_t SplitIndex>
-struct unified_value;
 
 struct customer_idx_value;
 
-DEFINE_ADAPTER(customer_idx_value, 1);
+DEFINE_ADAPTER(customer_idx_value, NamedColumn);
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor_info;
 
 template <>
-struct accessor_info<0> {
+struct accessor_info<NamedColumn::c_ids> {
     using type = std::list<uint64_t>;
+    using value_type = std::list<uint64_t>;
+    static constexpr bool is_array = false;
 };
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor {
-    using type = typename accessor_info<ColIndex>::type;
+    using adapter_type = ADAPTER_OF(customer_idx_value);
+    using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
-    operator type() {
-        ADAPTER_OF(customer_idx_value)::CountWrite(ColIndex + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(customer_idx_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(customer_idx_value)::CountWrite(ColIndex + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(customer_idx_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(customer_idx_value)::CountWrite(ColIndex + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<ColIndex>& other) {
-        ADAPTER_OF(customer_idx_value)::CountWrite(ColIndex + index_);
+    value_type operator =(accessor<Column>& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(customer_idx_value)::CountWrite(ColIndex + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(customer_idx_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(customer_idx_value)::CountWrite(ColIndex + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(customer_idx_value)::CountRead(ColIndex + index_);
-        return &value_;
-    }
-
-    size_t index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<0, 1> {
-    explicit split_value() = default;
-    accessor<0> c_ids;
-};
-template <>
-struct unified_value<1> {
-    auto& c_ids() {
-        return split_0.c_ids;
-    }
-    const auto& c_ids() const {
-        return split_0.c_ids;
-    }
-
-    split_value<0, 1> split_0;
+    value_type value_;
 };
 
 struct customer_idx_value {
+    using NamedColumn = customer_idx_value_datatypes::NamedColumn;
+    static constexpr auto MAX_SPLITS = 2;
+
     explicit customer_idx_value() = default;
 
-    using NamedColumn = customer_idx_value_datatypes::NamedColumn;
+    static inline void resplit(
+            customer_idx_value& newvalue, const customer_idx_value& oldvalue, NamedColumn index);
 
-    auto& c_ids() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_ids();
-            }, value);
-    }
-    const auto& c_ids() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_ids();
-            }, value);
+    template <NamedColumn Column>
+    static inline void copy_data(customer_idx_value& newvalue, const customer_idx_value& oldvalue);
+
+    template <NamedColumn Column>
+    inline accessor<RoundedNamedColumn<Column>()>& get();
+
+    template <NamedColumn Column>
+    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+
+
+    const auto split_of(NamedColumn index) const {
+        return index < splitindex_ ? 0 : 1;
     }
 
-    std::variant<
-        unified_value<1>
-        > value;
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::c_ids> c_ids;
 };
+
+inline void customer_idx_value::resplit(
+        customer_idx_value& newvalue, const customer_idx_value& oldvalue, NamedColumn index) {
+    assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
+}
+
+template <NamedColumn Column>
+inline void customer_idx_value::copy_data(customer_idx_value& newvalue, const customer_idx_value& oldvalue) {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+    if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
+        copy_data<Column + 1>(newvalue, oldvalue);
+    }
+}
+
+template <>
+inline accessor<NamedColumn::c_ids>& customer_idx_value::get<NamedColumn::c_ids>() {
+    return c_ids;
+}
+
+template <>
+inline const accessor<NamedColumn::c_ids>& customer_idx_value::get<NamedColumn::c_ids>() const {
+    return c_ids;
+}
+
 };  // namespace customer_idx_value_datatypes
 
 using customer_idx_value = customer_idx_value_datatypes::customer_idx_value;
 using ADAPTER_OF(customer_idx_value) = ADAPTER_OF(customer_idx_value_datatypes::customer_idx_value);
 
+#pragma once
+
+#include <type_traits>
+
+#include "Adapter.hh"
+#include "Sto.hh"
+
 namespace customer_value_datatypes {
 
 enum class NamedColumn : int {
     c_first = 0,
-    c_middle = 1,
-    c_last = 2,
-    c_street_1 = 3,
-    c_street_2 = 4,
-    c_city = 5,
-    c_state = 6,
-    c_zip = 7,
-    c_phone = 8,
-    c_since = 9,
-    c_credit = 10,
-    c_credit_lim = 11,
-    c_discount = 12,
-    c_balance = 13,
-    c_ytd_payment = 14,
-    c_payment_cnt = 15,
-    c_delivery_cnt = 16,
-    c_data = 17,
-    COLCOUNT = 18
+    c_middle,
+    c_last,
+    c_street_1,
+    c_street_2,
+    c_city,
+    c_state,
+    c_zip,
+    c_phone,
+    c_since,
+    c_credit,
+    c_credit_lim,
+    c_discount,
+    c_balance,
+    c_ytd_payment,
+    c_payment_cnt,
+    c_delivery_cnt,
+    c_data,
+    COLCOUNT
 };
 
-template <size_t ColIndex>
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+    return nc;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc) {
+    return nc += 1;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc, int) {
+    return nc += 1;
+}
+
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+    out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
+    return out;
+}
+
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    if constexpr (Column < NamedColumn::c_middle) {
+        return NamedColumn::c_first;
+    }
+    if constexpr (Column < NamedColumn::c_last) {
+        return NamedColumn::c_middle;
+    }
+    if constexpr (Column < NamedColumn::c_street_1) {
+        return NamedColumn::c_last;
+    }
+    if constexpr (Column < NamedColumn::c_street_2) {
+        return NamedColumn::c_street_1;
+    }
+    if constexpr (Column < NamedColumn::c_city) {
+        return NamedColumn::c_street_2;
+    }
+    if constexpr (Column < NamedColumn::c_state) {
+        return NamedColumn::c_city;
+    }
+    if constexpr (Column < NamedColumn::c_zip) {
+        return NamedColumn::c_state;
+    }
+    if constexpr (Column < NamedColumn::c_phone) {
+        return NamedColumn::c_zip;
+    }
+    if constexpr (Column < NamedColumn::c_since) {
+        return NamedColumn::c_phone;
+    }
+    if constexpr (Column < NamedColumn::c_credit) {
+        return NamedColumn::c_since;
+    }
+    if constexpr (Column < NamedColumn::c_credit_lim) {
+        return NamedColumn::c_credit;
+    }
+    if constexpr (Column < NamedColumn::c_discount) {
+        return NamedColumn::c_credit_lim;
+    }
+    if constexpr (Column < NamedColumn::c_balance) {
+        return NamedColumn::c_discount;
+    }
+    if constexpr (Column < NamedColumn::c_ytd_payment) {
+        return NamedColumn::c_balance;
+    }
+    if constexpr (Column < NamedColumn::c_payment_cnt) {
+        return NamedColumn::c_ytd_payment;
+    }
+    if constexpr (Column < NamedColumn::c_delivery_cnt) {
+        return NamedColumn::c_payment_cnt;
+    }
+    if constexpr (Column < NamedColumn::c_data) {
+        return NamedColumn::c_delivery_cnt;
+    }
+    return NamedColumn::c_data;
+}
+
+template <NamedColumn Column>
 struct accessor;
-
-template <size_t StartIndex, size_t EndIndex>
-struct split_value;
-
-template <size_t SplitIndex>
-struct unified_value;
 
 struct customer_value;
 
-DEFINE_ADAPTER(customer_value, 18);
+DEFINE_ADAPTER(customer_value, NamedColumn);
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor_info;
 
 template <>
-struct accessor_info<0> {
+struct accessor_info<NamedColumn::c_first> {
     using type = var_string<16>;
+    using value_type = var_string<16>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<1> {
+struct accessor_info<NamedColumn::c_middle> {
     using type = fix_string<2>;
+    using value_type = fix_string<2>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<2> {
+struct accessor_info<NamedColumn::c_last> {
     using type = var_string<16>;
+    using value_type = var_string<16>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<3> {
+struct accessor_info<NamedColumn::c_street_1> {
     using type = var_string<20>;
+    using value_type = var_string<20>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<4> {
+struct accessor_info<NamedColumn::c_street_2> {
     using type = var_string<20>;
+    using value_type = var_string<20>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<5> {
+struct accessor_info<NamedColumn::c_city> {
     using type = var_string<20>;
+    using value_type = var_string<20>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<6> {
+struct accessor_info<NamedColumn::c_state> {
     using type = fix_string<2>;
+    using value_type = fix_string<2>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<7> {
+struct accessor_info<NamedColumn::c_zip> {
     using type = fix_string<9>;
+    using value_type = fix_string<9>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<8> {
+struct accessor_info<NamedColumn::c_phone> {
     using type = fix_string<16>;
+    using value_type = fix_string<16>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<9> {
+struct accessor_info<NamedColumn::c_since> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<10> {
+struct accessor_info<NamedColumn::c_credit> {
     using type = fix_string<2>;
+    using value_type = fix_string<2>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<11> {
+struct accessor_info<NamedColumn::c_credit_lim> {
     using type = int64_t;
+    using value_type = int64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<12> {
+struct accessor_info<NamedColumn::c_discount> {
     using type = int64_t;
+    using value_type = int64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<13> {
+struct accessor_info<NamedColumn::c_balance> {
     using type = int64_t;
+    using value_type = int64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<14> {
+struct accessor_info<NamedColumn::c_ytd_payment> {
     using type = int64_t;
+    using value_type = int64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<15> {
+struct accessor_info<NamedColumn::c_payment_cnt> {
     using type = uint16_t;
+    using value_type = uint16_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<16> {
+struct accessor_info<NamedColumn::c_delivery_cnt> {
     using type = uint16_t;
+    using value_type = uint16_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<17> {
+struct accessor_info<NamedColumn::c_data> {
     using type = fix_string<500>;
+    using value_type = fix_string<500>;
+    static constexpr bool is_array = false;
 };
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor {
-    using type = typename accessor_info<ColIndex>::type;
+    using adapter_type = ADAPTER_OF(customer_value);
+    using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
-    operator type() {
-        ADAPTER_OF(customer_value)::CountWrite(ColIndex + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(customer_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(customer_value)::CountWrite(ColIndex + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(customer_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(customer_value)::CountWrite(ColIndex + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<ColIndex>& other) {
-        ADAPTER_OF(customer_value)::CountWrite(ColIndex + index_);
+    value_type operator =(accessor<Column>& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(customer_value)::CountWrite(ColIndex + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(customer_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(customer_value)::CountWrite(ColIndex + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(customer_value)::CountRead(ColIndex + index_);
-        return &value_;
-    }
-
-    size_t index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<0, 1> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-};
-template <>
-struct split_value<1, 18> {
-    explicit split_value() = default;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<1> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_1.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_1.c_middle;
-    }
-    auto& c_last() {
-        return split_1.c_last;
-    }
-    const auto& c_last() const {
-        return split_1.c_last;
-    }
-    auto& c_street_1() {
-        return split_1.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_1.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_1.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_1.c_street_2;
-    }
-    auto& c_city() {
-        return split_1.c_city;
-    }
-    const auto& c_city() const {
-        return split_1.c_city;
-    }
-    auto& c_state() {
-        return split_1.c_state;
-    }
-    const auto& c_state() const {
-        return split_1.c_state;
-    }
-    auto& c_zip() {
-        return split_1.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_1.c_zip;
-    }
-    auto& c_phone() {
-        return split_1.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_1.c_phone;
-    }
-    auto& c_since() {
-        return split_1.c_since;
-    }
-    const auto& c_since() const {
-        return split_1.c_since;
-    }
-    auto& c_credit() {
-        return split_1.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_1.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 1> split_0;
-    split_value<1, 18> split_1;
-};
-
-template <>
-struct split_value<0, 2> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-};
-template <>
-struct split_value<2, 18> {
-    explicit split_value() = default;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<2> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_1.c_last;
-    }
-    const auto& c_last() const {
-        return split_1.c_last;
-    }
-    auto& c_street_1() {
-        return split_1.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_1.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_1.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_1.c_street_2;
-    }
-    auto& c_city() {
-        return split_1.c_city;
-    }
-    const auto& c_city() const {
-        return split_1.c_city;
-    }
-    auto& c_state() {
-        return split_1.c_state;
-    }
-    const auto& c_state() const {
-        return split_1.c_state;
-    }
-    auto& c_zip() {
-        return split_1.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_1.c_zip;
-    }
-    auto& c_phone() {
-        return split_1.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_1.c_phone;
-    }
-    auto& c_since() {
-        return split_1.c_since;
-    }
-    const auto& c_since() const {
-        return split_1.c_since;
-    }
-    auto& c_credit() {
-        return split_1.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_1.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 2> split_0;
-    split_value<2, 18> split_1;
-};
-
-template <>
-struct split_value<0, 3> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-};
-template <>
-struct split_value<3, 18> {
-    explicit split_value() = default;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<3> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_1.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_1.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_1.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_1.c_street_2;
-    }
-    auto& c_city() {
-        return split_1.c_city;
-    }
-    const auto& c_city() const {
-        return split_1.c_city;
-    }
-    auto& c_state() {
-        return split_1.c_state;
-    }
-    const auto& c_state() const {
-        return split_1.c_state;
-    }
-    auto& c_zip() {
-        return split_1.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_1.c_zip;
-    }
-    auto& c_phone() {
-        return split_1.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_1.c_phone;
-    }
-    auto& c_since() {
-        return split_1.c_since;
-    }
-    const auto& c_since() const {
-        return split_1.c_since;
-    }
-    auto& c_credit() {
-        return split_1.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_1.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 3> split_0;
-    split_value<3, 18> split_1;
-};
-
-template <>
-struct split_value<0, 4> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-};
-template <>
-struct split_value<4, 18> {
-    explicit split_value() = default;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<4> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_1.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_1.c_street_2;
-    }
-    auto& c_city() {
-        return split_1.c_city;
-    }
-    const auto& c_city() const {
-        return split_1.c_city;
-    }
-    auto& c_state() {
-        return split_1.c_state;
-    }
-    const auto& c_state() const {
-        return split_1.c_state;
-    }
-    auto& c_zip() {
-        return split_1.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_1.c_zip;
-    }
-    auto& c_phone() {
-        return split_1.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_1.c_phone;
-    }
-    auto& c_since() {
-        return split_1.c_since;
-    }
-    const auto& c_since() const {
-        return split_1.c_since;
-    }
-    auto& c_credit() {
-        return split_1.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_1.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 4> split_0;
-    split_value<4, 18> split_1;
-};
-
-template <>
-struct split_value<0, 5> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-};
-template <>
-struct split_value<5, 18> {
-    explicit split_value() = default;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<5> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_1.c_city;
-    }
-    const auto& c_city() const {
-        return split_1.c_city;
-    }
-    auto& c_state() {
-        return split_1.c_state;
-    }
-    const auto& c_state() const {
-        return split_1.c_state;
-    }
-    auto& c_zip() {
-        return split_1.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_1.c_zip;
-    }
-    auto& c_phone() {
-        return split_1.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_1.c_phone;
-    }
-    auto& c_since() {
-        return split_1.c_since;
-    }
-    const auto& c_since() const {
-        return split_1.c_since;
-    }
-    auto& c_credit() {
-        return split_1.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_1.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 5> split_0;
-    split_value<5, 18> split_1;
-};
-
-template <>
-struct split_value<0, 6> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-};
-template <>
-struct split_value<6, 18> {
-    explicit split_value() = default;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<6> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_1.c_state;
-    }
-    const auto& c_state() const {
-        return split_1.c_state;
-    }
-    auto& c_zip() {
-        return split_1.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_1.c_zip;
-    }
-    auto& c_phone() {
-        return split_1.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_1.c_phone;
-    }
-    auto& c_since() {
-        return split_1.c_since;
-    }
-    const auto& c_since() const {
-        return split_1.c_since;
-    }
-    auto& c_credit() {
-        return split_1.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_1.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 6> split_0;
-    split_value<6, 18> split_1;
-};
-
-template <>
-struct split_value<0, 7> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-};
-template <>
-struct split_value<7, 18> {
-    explicit split_value() = default;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<7> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_1.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_1.c_zip;
-    }
-    auto& c_phone() {
-        return split_1.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_1.c_phone;
-    }
-    auto& c_since() {
-        return split_1.c_since;
-    }
-    const auto& c_since() const {
-        return split_1.c_since;
-    }
-    auto& c_credit() {
-        return split_1.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_1.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 7> split_0;
-    split_value<7, 18> split_1;
-};
-
-template <>
-struct split_value<0, 8> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-};
-template <>
-struct split_value<8, 18> {
-    explicit split_value() = default;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<8> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_1.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_1.c_phone;
-    }
-    auto& c_since() {
-        return split_1.c_since;
-    }
-    const auto& c_since() const {
-        return split_1.c_since;
-    }
-    auto& c_credit() {
-        return split_1.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_1.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 8> split_0;
-    split_value<8, 18> split_1;
-};
-
-template <>
-struct split_value<0, 9> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-};
-template <>
-struct split_value<9, 18> {
-    explicit split_value() = default;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<9> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_0.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_0.c_phone;
-    }
-    auto& c_since() {
-        return split_1.c_since;
-    }
-    const auto& c_since() const {
-        return split_1.c_since;
-    }
-    auto& c_credit() {
-        return split_1.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_1.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 9> split_0;
-    split_value<9, 18> split_1;
-};
-
-template <>
-struct split_value<0, 10> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-};
-template <>
-struct split_value<10, 18> {
-    explicit split_value() = default;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<10> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_0.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_0.c_phone;
-    }
-    auto& c_since() {
-        return split_0.c_since;
-    }
-    const auto& c_since() const {
-        return split_0.c_since;
-    }
-    auto& c_credit() {
-        return split_1.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_1.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 10> split_0;
-    split_value<10, 18> split_1;
-};
-
-template <>
-struct split_value<0, 11> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-};
-template <>
-struct split_value<11, 18> {
-    explicit split_value() = default;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<11> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_0.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_0.c_phone;
-    }
-    auto& c_since() {
-        return split_0.c_since;
-    }
-    const auto& c_since() const {
-        return split_0.c_since;
-    }
-    auto& c_credit() {
-        return split_0.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_0.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_1.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_1.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 11> split_0;
-    split_value<11, 18> split_1;
-};
-
-template <>
-struct split_value<0, 12> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-};
-template <>
-struct split_value<12, 18> {
-    explicit split_value() = default;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<12> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_0.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_0.c_phone;
-    }
-    auto& c_since() {
-        return split_0.c_since;
-    }
-    const auto& c_since() const {
-        return split_0.c_since;
-    }
-    auto& c_credit() {
-        return split_0.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_0.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_0.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_0.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_1.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_1.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 12> split_0;
-    split_value<12, 18> split_1;
-};
-
-template <>
-struct split_value<0, 13> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-};
-template <>
-struct split_value<13, 18> {
-    explicit split_value() = default;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<13> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_0.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_0.c_phone;
-    }
-    auto& c_since() {
-        return split_0.c_since;
-    }
-    const auto& c_since() const {
-        return split_0.c_since;
-    }
-    auto& c_credit() {
-        return split_0.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_0.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_0.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_0.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_0.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_0.c_discount;
-    }
-    auto& c_balance() {
-        return split_1.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_1.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 13> split_0;
-    split_value<13, 18> split_1;
-};
-
-template <>
-struct split_value<0, 14> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-};
-template <>
-struct split_value<14, 18> {
-    explicit split_value() = default;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<14> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_0.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_0.c_phone;
-    }
-    auto& c_since() {
-        return split_0.c_since;
-    }
-    const auto& c_since() const {
-        return split_0.c_since;
-    }
-    auto& c_credit() {
-        return split_0.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_0.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_0.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_0.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_0.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_0.c_discount;
-    }
-    auto& c_balance() {
-        return split_0.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_0.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_1.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_1.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 14> split_0;
-    split_value<14, 18> split_1;
-};
-
-template <>
-struct split_value<0, 15> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-};
-template <>
-struct split_value<15, 18> {
-    explicit split_value() = default;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<15> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_0.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_0.c_phone;
-    }
-    auto& c_since() {
-        return split_0.c_since;
-    }
-    const auto& c_since() const {
-        return split_0.c_since;
-    }
-    auto& c_credit() {
-        return split_0.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_0.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_0.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_0.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_0.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_0.c_discount;
-    }
-    auto& c_balance() {
-        return split_0.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_0.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_0.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_0.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_1.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_1.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 15> split_0;
-    split_value<15, 18> split_1;
-};
-
-template <>
-struct split_value<0, 16> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-};
-template <>
-struct split_value<16, 18> {
-    explicit split_value() = default;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<16> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_0.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_0.c_phone;
-    }
-    auto& c_since() {
-        return split_0.c_since;
-    }
-    const auto& c_since() const {
-        return split_0.c_since;
-    }
-    auto& c_credit() {
-        return split_0.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_0.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_0.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_0.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_0.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_0.c_discount;
-    }
-    auto& c_balance() {
-        return split_0.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_0.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_0.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_0.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_0.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_0.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_1.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_1.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 16> split_0;
-    split_value<16, 18> split_1;
-};
-
-template <>
-struct split_value<0, 17> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-};
-template <>
-struct split_value<17, 18> {
-    explicit split_value() = default;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<17> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_0.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_0.c_phone;
-    }
-    auto& c_since() {
-        return split_0.c_since;
-    }
-    const auto& c_since() const {
-        return split_0.c_since;
-    }
-    auto& c_credit() {
-        return split_0.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_0.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_0.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_0.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_0.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_0.c_discount;
-    }
-    auto& c_balance() {
-        return split_0.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_0.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_0.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_0.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_0.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_0.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_0.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_0.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_1.c_data;
-    }
-    const auto& c_data() const {
-        return split_1.c_data;
-    }
-
-    split_value<0, 17> split_0;
-    split_value<17, 18> split_1;
-};
-
-template <>
-struct split_value<0, 18> {
-    explicit split_value() = default;
-    accessor<0> c_first;
-    accessor<1> c_middle;
-    accessor<2> c_last;
-    accessor<3> c_street_1;
-    accessor<4> c_street_2;
-    accessor<5> c_city;
-    accessor<6> c_state;
-    accessor<7> c_zip;
-    accessor<8> c_phone;
-    accessor<9> c_since;
-    accessor<10> c_credit;
-    accessor<11> c_credit_lim;
-    accessor<12> c_discount;
-    accessor<13> c_balance;
-    accessor<14> c_ytd_payment;
-    accessor<15> c_payment_cnt;
-    accessor<16> c_delivery_cnt;
-    accessor<17> c_data;
-};
-template <>
-struct unified_value<18> {
-    auto& c_first() {
-        return split_0.c_first;
-    }
-    const auto& c_first() const {
-        return split_0.c_first;
-    }
-    auto& c_middle() {
-        return split_0.c_middle;
-    }
-    const auto& c_middle() const {
-        return split_0.c_middle;
-    }
-    auto& c_last() {
-        return split_0.c_last;
-    }
-    const auto& c_last() const {
-        return split_0.c_last;
-    }
-    auto& c_street_1() {
-        return split_0.c_street_1;
-    }
-    const auto& c_street_1() const {
-        return split_0.c_street_1;
-    }
-    auto& c_street_2() {
-        return split_0.c_street_2;
-    }
-    const auto& c_street_2() const {
-        return split_0.c_street_2;
-    }
-    auto& c_city() {
-        return split_0.c_city;
-    }
-    const auto& c_city() const {
-        return split_0.c_city;
-    }
-    auto& c_state() {
-        return split_0.c_state;
-    }
-    const auto& c_state() const {
-        return split_0.c_state;
-    }
-    auto& c_zip() {
-        return split_0.c_zip;
-    }
-    const auto& c_zip() const {
-        return split_0.c_zip;
-    }
-    auto& c_phone() {
-        return split_0.c_phone;
-    }
-    const auto& c_phone() const {
-        return split_0.c_phone;
-    }
-    auto& c_since() {
-        return split_0.c_since;
-    }
-    const auto& c_since() const {
-        return split_0.c_since;
-    }
-    auto& c_credit() {
-        return split_0.c_credit;
-    }
-    const auto& c_credit() const {
-        return split_0.c_credit;
-    }
-    auto& c_credit_lim() {
-        return split_0.c_credit_lim;
-    }
-    const auto& c_credit_lim() const {
-        return split_0.c_credit_lim;
-    }
-    auto& c_discount() {
-        return split_0.c_discount;
-    }
-    const auto& c_discount() const {
-        return split_0.c_discount;
-    }
-    auto& c_balance() {
-        return split_0.c_balance;
-    }
-    const auto& c_balance() const {
-        return split_0.c_balance;
-    }
-    auto& c_ytd_payment() {
-        return split_0.c_ytd_payment;
-    }
-    const auto& c_ytd_payment() const {
-        return split_0.c_ytd_payment;
-    }
-    auto& c_payment_cnt() {
-        return split_0.c_payment_cnt;
-    }
-    const auto& c_payment_cnt() const {
-        return split_0.c_payment_cnt;
-    }
-    auto& c_delivery_cnt() {
-        return split_0.c_delivery_cnt;
-    }
-    const auto& c_delivery_cnt() const {
-        return split_0.c_delivery_cnt;
-    }
-    auto& c_data() {
-        return split_0.c_data;
-    }
-    const auto& c_data() const {
-        return split_0.c_data;
-    }
-
-    split_value<0, 18> split_0;
+    value_type value_;
 };
 
 struct customer_value {
+    using NamedColumn = customer_value_datatypes::NamedColumn;
+    static constexpr auto MAX_SPLITS = 2;
+
     explicit customer_value() = default;
 
-    using NamedColumn = customer_value_datatypes::NamedColumn;
+    static inline void resplit(
+            customer_value& newvalue, const customer_value& oldvalue, NamedColumn index);
 
-    auto& c_first() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_first();
-            }, value);
-    }
-    const auto& c_first() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_first();
-            }, value);
-    }
-    auto& c_middle() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_middle();
-            }, value);
-    }
-    const auto& c_middle() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_middle();
-            }, value);
-    }
-    auto& c_last() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_last();
-            }, value);
-    }
-    const auto& c_last() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_last();
-            }, value);
-    }
-    auto& c_street_1() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_street_1();
-            }, value);
-    }
-    const auto& c_street_1() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_street_1();
-            }, value);
-    }
-    auto& c_street_2() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_street_2();
-            }, value);
-    }
-    const auto& c_street_2() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_street_2();
-            }, value);
-    }
-    auto& c_city() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_city();
-            }, value);
-    }
-    const auto& c_city() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_city();
-            }, value);
-    }
-    auto& c_state() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_state();
-            }, value);
-    }
-    const auto& c_state() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_state();
-            }, value);
-    }
-    auto& c_zip() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_zip();
-            }, value);
-    }
-    const auto& c_zip() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_zip();
-            }, value);
-    }
-    auto& c_phone() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_phone();
-            }, value);
-    }
-    const auto& c_phone() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_phone();
-            }, value);
-    }
-    auto& c_since() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_since();
-            }, value);
-    }
-    const auto& c_since() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_since();
-            }, value);
-    }
-    auto& c_credit() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_credit();
-            }, value);
-    }
-    const auto& c_credit() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_credit();
-            }, value);
-    }
-    auto& c_credit_lim() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_credit_lim();
-            }, value);
-    }
-    const auto& c_credit_lim() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_credit_lim();
-            }, value);
-    }
-    auto& c_discount() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_discount();
-            }, value);
-    }
-    const auto& c_discount() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_discount();
-            }, value);
-    }
-    auto& c_balance() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_balance();
-            }, value);
-    }
-    const auto& c_balance() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_balance();
-            }, value);
-    }
-    auto& c_ytd_payment() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_ytd_payment();
-            }, value);
-    }
-    const auto& c_ytd_payment() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_ytd_payment();
-            }, value);
-    }
-    auto& c_payment_cnt() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_payment_cnt();
-            }, value);
-    }
-    const auto& c_payment_cnt() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_payment_cnt();
-            }, value);
-    }
-    auto& c_delivery_cnt() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_delivery_cnt();
-            }, value);
-    }
-    const auto& c_delivery_cnt() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_delivery_cnt();
-            }, value);
-    }
-    auto& c_data() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.c_data();
-            }, value);
-    }
-    const auto& c_data() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.c_data();
-            }, value);
+    template <NamedColumn Column>
+    static inline void copy_data(customer_value& newvalue, const customer_value& oldvalue);
+
+    template <NamedColumn Column>
+    inline accessor<RoundedNamedColumn<Column>()>& get();
+
+    template <NamedColumn Column>
+    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+
+
+    const auto split_of(NamedColumn index) const {
+        return index < splitindex_ ? 0 : 1;
     }
 
-    std::variant<
-        unified_value<18>,
-        unified_value<17>,
-        unified_value<16>,
-        unified_value<15>,
-        unified_value<14>,
-        unified_value<13>,
-        unified_value<12>,
-        unified_value<11>,
-        unified_value<10>,
-        unified_value<9>,
-        unified_value<8>,
-        unified_value<7>,
-        unified_value<6>,
-        unified_value<5>,
-        unified_value<4>,
-        unified_value<3>,
-        unified_value<2>,
-        unified_value<1>
-        > value;
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::c_first> c_first;
+    accessor<NamedColumn::c_middle> c_middle;
+    accessor<NamedColumn::c_last> c_last;
+    accessor<NamedColumn::c_street_1> c_street_1;
+    accessor<NamedColumn::c_street_2> c_street_2;
+    accessor<NamedColumn::c_city> c_city;
+    accessor<NamedColumn::c_state> c_state;
+    accessor<NamedColumn::c_zip> c_zip;
+    accessor<NamedColumn::c_phone> c_phone;
+    accessor<NamedColumn::c_since> c_since;
+    accessor<NamedColumn::c_credit> c_credit;
+    accessor<NamedColumn::c_credit_lim> c_credit_lim;
+    accessor<NamedColumn::c_discount> c_discount;
+    accessor<NamedColumn::c_balance> c_balance;
+    accessor<NamedColumn::c_ytd_payment> c_ytd_payment;
+    accessor<NamedColumn::c_payment_cnt> c_payment_cnt;
+    accessor<NamedColumn::c_delivery_cnt> c_delivery_cnt;
+    accessor<NamedColumn::c_data> c_data;
 };
+
+inline void customer_value::resplit(
+        customer_value& newvalue, const customer_value& oldvalue, NamedColumn index) {
+    assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
+}
+
+template <NamedColumn Column>
+inline void customer_value::copy_data(customer_value& newvalue, const customer_value& oldvalue) {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+    if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
+        copy_data<Column + 1>(newvalue, oldvalue);
+    }
+}
+
+template <>
+inline accessor<NamedColumn::c_first>& customer_value::get<NamedColumn::c_first>() {
+    return c_first;
+}
+
+template <>
+inline const accessor<NamedColumn::c_first>& customer_value::get<NamedColumn::c_first>() const {
+    return c_first;
+}
+
+template <>
+inline accessor<NamedColumn::c_middle>& customer_value::get<NamedColumn::c_middle>() {
+    return c_middle;
+}
+
+template <>
+inline const accessor<NamedColumn::c_middle>& customer_value::get<NamedColumn::c_middle>() const {
+    return c_middle;
+}
+
+template <>
+inline accessor<NamedColumn::c_last>& customer_value::get<NamedColumn::c_last>() {
+    return c_last;
+}
+
+template <>
+inline const accessor<NamedColumn::c_last>& customer_value::get<NamedColumn::c_last>() const {
+    return c_last;
+}
+
+template <>
+inline accessor<NamedColumn::c_street_1>& customer_value::get<NamedColumn::c_street_1>() {
+    return c_street_1;
+}
+
+template <>
+inline const accessor<NamedColumn::c_street_1>& customer_value::get<NamedColumn::c_street_1>() const {
+    return c_street_1;
+}
+
+template <>
+inline accessor<NamedColumn::c_street_2>& customer_value::get<NamedColumn::c_street_2>() {
+    return c_street_2;
+}
+
+template <>
+inline const accessor<NamedColumn::c_street_2>& customer_value::get<NamedColumn::c_street_2>() const {
+    return c_street_2;
+}
+
+template <>
+inline accessor<NamedColumn::c_city>& customer_value::get<NamedColumn::c_city>() {
+    return c_city;
+}
+
+template <>
+inline const accessor<NamedColumn::c_city>& customer_value::get<NamedColumn::c_city>() const {
+    return c_city;
+}
+
+template <>
+inline accessor<NamedColumn::c_state>& customer_value::get<NamedColumn::c_state>() {
+    return c_state;
+}
+
+template <>
+inline const accessor<NamedColumn::c_state>& customer_value::get<NamedColumn::c_state>() const {
+    return c_state;
+}
+
+template <>
+inline accessor<NamedColumn::c_zip>& customer_value::get<NamedColumn::c_zip>() {
+    return c_zip;
+}
+
+template <>
+inline const accessor<NamedColumn::c_zip>& customer_value::get<NamedColumn::c_zip>() const {
+    return c_zip;
+}
+
+template <>
+inline accessor<NamedColumn::c_phone>& customer_value::get<NamedColumn::c_phone>() {
+    return c_phone;
+}
+
+template <>
+inline const accessor<NamedColumn::c_phone>& customer_value::get<NamedColumn::c_phone>() const {
+    return c_phone;
+}
+
+template <>
+inline accessor<NamedColumn::c_since>& customer_value::get<NamedColumn::c_since>() {
+    return c_since;
+}
+
+template <>
+inline const accessor<NamedColumn::c_since>& customer_value::get<NamedColumn::c_since>() const {
+    return c_since;
+}
+
+template <>
+inline accessor<NamedColumn::c_credit>& customer_value::get<NamedColumn::c_credit>() {
+    return c_credit;
+}
+
+template <>
+inline const accessor<NamedColumn::c_credit>& customer_value::get<NamedColumn::c_credit>() const {
+    return c_credit;
+}
+
+template <>
+inline accessor<NamedColumn::c_credit_lim>& customer_value::get<NamedColumn::c_credit_lim>() {
+    return c_credit_lim;
+}
+
+template <>
+inline const accessor<NamedColumn::c_credit_lim>& customer_value::get<NamedColumn::c_credit_lim>() const {
+    return c_credit_lim;
+}
+
+template <>
+inline accessor<NamedColumn::c_discount>& customer_value::get<NamedColumn::c_discount>() {
+    return c_discount;
+}
+
+template <>
+inline const accessor<NamedColumn::c_discount>& customer_value::get<NamedColumn::c_discount>() const {
+    return c_discount;
+}
+
+template <>
+inline accessor<NamedColumn::c_balance>& customer_value::get<NamedColumn::c_balance>() {
+    return c_balance;
+}
+
+template <>
+inline const accessor<NamedColumn::c_balance>& customer_value::get<NamedColumn::c_balance>() const {
+    return c_balance;
+}
+
+template <>
+inline accessor<NamedColumn::c_ytd_payment>& customer_value::get<NamedColumn::c_ytd_payment>() {
+    return c_ytd_payment;
+}
+
+template <>
+inline const accessor<NamedColumn::c_ytd_payment>& customer_value::get<NamedColumn::c_ytd_payment>() const {
+    return c_ytd_payment;
+}
+
+template <>
+inline accessor<NamedColumn::c_payment_cnt>& customer_value::get<NamedColumn::c_payment_cnt>() {
+    return c_payment_cnt;
+}
+
+template <>
+inline const accessor<NamedColumn::c_payment_cnt>& customer_value::get<NamedColumn::c_payment_cnt>() const {
+    return c_payment_cnt;
+}
+
+template <>
+inline accessor<NamedColumn::c_delivery_cnt>& customer_value::get<NamedColumn::c_delivery_cnt>() {
+    return c_delivery_cnt;
+}
+
+template <>
+inline const accessor<NamedColumn::c_delivery_cnt>& customer_value::get<NamedColumn::c_delivery_cnt>() const {
+    return c_delivery_cnt;
+}
+
+template <>
+inline accessor<NamedColumn::c_data>& customer_value::get<NamedColumn::c_data>() {
+    return c_data;
+}
+
+template <>
+inline const accessor<NamedColumn::c_data>& customer_value::get<NamedColumn::c_data>() const {
+    return c_data;
+}
+
 };  // namespace customer_value_datatypes
 
 using customer_value = customer_value_datatypes::customer_value;
 using ADAPTER_OF(customer_value) = ADAPTER_OF(customer_value_datatypes::customer_value);
 
+#pragma once
+
+#include <type_traits>
+
+#include "Adapter.hh"
+#include "Sto.hh"
+
 namespace history_value_datatypes {
 
 enum class NamedColumn : int {
     h_c_id = 0,
-    h_c_d_id = 1,
-    h_c_w_id = 2,
-    h_d_id = 3,
-    h_w_id = 4,
-    h_date = 5,
-    h_amount = 6,
-    h_data = 7,
-    COLCOUNT = 8
+    h_c_d_id,
+    h_c_w_id,
+    h_d_id,
+    h_w_id,
+    h_date,
+    h_amount,
+    h_data,
+    COLCOUNT
 };
 
-template <size_t ColIndex>
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+    return nc;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc) {
+    return nc += 1;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc, int) {
+    return nc += 1;
+}
+
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+    out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
+    return out;
+}
+
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    if constexpr (Column < NamedColumn::h_c_d_id) {
+        return NamedColumn::h_c_id;
+    }
+    if constexpr (Column < NamedColumn::h_c_w_id) {
+        return NamedColumn::h_c_d_id;
+    }
+    if constexpr (Column < NamedColumn::h_d_id) {
+        return NamedColumn::h_c_w_id;
+    }
+    if constexpr (Column < NamedColumn::h_w_id) {
+        return NamedColumn::h_d_id;
+    }
+    if constexpr (Column < NamedColumn::h_date) {
+        return NamedColumn::h_w_id;
+    }
+    if constexpr (Column < NamedColumn::h_amount) {
+        return NamedColumn::h_date;
+    }
+    if constexpr (Column < NamedColumn::h_data) {
+        return NamedColumn::h_amount;
+    }
+    return NamedColumn::h_data;
+}
+
+template <NamedColumn Column>
 struct accessor;
-
-template <size_t StartIndex, size_t EndIndex>
-struct split_value;
-
-template <size_t SplitIndex>
-struct unified_value;
 
 struct history_value;
 
-DEFINE_ADAPTER(history_value, 8);
+DEFINE_ADAPTER(history_value, NamedColumn);
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor_info;
 
 template <>
-struct accessor_info<0> {
+struct accessor_info<NamedColumn::h_c_id> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<1> {
+struct accessor_info<NamedColumn::h_c_d_id> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<2> {
+struct accessor_info<NamedColumn::h_c_w_id> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<3> {
+struct accessor_info<NamedColumn::h_d_id> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<4> {
+struct accessor_info<NamedColumn::h_w_id> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<5> {
+struct accessor_info<NamedColumn::h_date> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<6> {
+struct accessor_info<NamedColumn::h_amount> {
     using type = int64_t;
+    using value_type = int64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<7> {
+struct accessor_info<NamedColumn::h_data> {
     using type = var_string<24>;
+    using value_type = var_string<24>;
+    static constexpr bool is_array = false;
 };
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor {
-    using type = typename accessor_info<ColIndex>::type;
+    using adapter_type = ADAPTER_OF(history_value);
+    using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
-    operator type() {
-        ADAPTER_OF(history_value)::CountWrite(ColIndex + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(history_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(history_value)::CountWrite(ColIndex + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(history_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(history_value)::CountWrite(ColIndex + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<ColIndex>& other) {
-        ADAPTER_OF(history_value)::CountWrite(ColIndex + index_);
+    value_type operator =(accessor<Column>& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(history_value)::CountWrite(ColIndex + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(history_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(history_value)::CountWrite(ColIndex + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(history_value)::CountRead(ColIndex + index_);
-        return &value_;
-    }
-
-    size_t index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<0, 1> {
-    explicit split_value() = default;
-    accessor<0> h_c_id;
-};
-template <>
-struct split_value<1, 8> {
-    explicit split_value() = default;
-    accessor<1> h_c_d_id;
-    accessor<2> h_c_w_id;
-    accessor<3> h_d_id;
-    accessor<4> h_w_id;
-    accessor<5> h_date;
-    accessor<6> h_amount;
-    accessor<7> h_data;
-};
-template <>
-struct unified_value<1> {
-    auto& h_c_id() {
-        return split_0.h_c_id;
-    }
-    const auto& h_c_id() const {
-        return split_0.h_c_id;
-    }
-    auto& h_c_d_id() {
-        return split_1.h_c_d_id;
-    }
-    const auto& h_c_d_id() const {
-        return split_1.h_c_d_id;
-    }
-    auto& h_c_w_id() {
-        return split_1.h_c_w_id;
-    }
-    const auto& h_c_w_id() const {
-        return split_1.h_c_w_id;
-    }
-    auto& h_d_id() {
-        return split_1.h_d_id;
-    }
-    const auto& h_d_id() const {
-        return split_1.h_d_id;
-    }
-    auto& h_w_id() {
-        return split_1.h_w_id;
-    }
-    const auto& h_w_id() const {
-        return split_1.h_w_id;
-    }
-    auto& h_date() {
-        return split_1.h_date;
-    }
-    const auto& h_date() const {
-        return split_1.h_date;
-    }
-    auto& h_amount() {
-        return split_1.h_amount;
-    }
-    const auto& h_amount() const {
-        return split_1.h_amount;
-    }
-    auto& h_data() {
-        return split_1.h_data;
-    }
-    const auto& h_data() const {
-        return split_1.h_data;
-    }
-
-    split_value<0, 1> split_0;
-    split_value<1, 8> split_1;
-};
-
-template <>
-struct split_value<0, 2> {
-    explicit split_value() = default;
-    accessor<0> h_c_id;
-    accessor<1> h_c_d_id;
-};
-template <>
-struct split_value<2, 8> {
-    explicit split_value() = default;
-    accessor<2> h_c_w_id;
-    accessor<3> h_d_id;
-    accessor<4> h_w_id;
-    accessor<5> h_date;
-    accessor<6> h_amount;
-    accessor<7> h_data;
-};
-template <>
-struct unified_value<2> {
-    auto& h_c_id() {
-        return split_0.h_c_id;
-    }
-    const auto& h_c_id() const {
-        return split_0.h_c_id;
-    }
-    auto& h_c_d_id() {
-        return split_0.h_c_d_id;
-    }
-    const auto& h_c_d_id() const {
-        return split_0.h_c_d_id;
-    }
-    auto& h_c_w_id() {
-        return split_1.h_c_w_id;
-    }
-    const auto& h_c_w_id() const {
-        return split_1.h_c_w_id;
-    }
-    auto& h_d_id() {
-        return split_1.h_d_id;
-    }
-    const auto& h_d_id() const {
-        return split_1.h_d_id;
-    }
-    auto& h_w_id() {
-        return split_1.h_w_id;
-    }
-    const auto& h_w_id() const {
-        return split_1.h_w_id;
-    }
-    auto& h_date() {
-        return split_1.h_date;
-    }
-    const auto& h_date() const {
-        return split_1.h_date;
-    }
-    auto& h_amount() {
-        return split_1.h_amount;
-    }
-    const auto& h_amount() const {
-        return split_1.h_amount;
-    }
-    auto& h_data() {
-        return split_1.h_data;
-    }
-    const auto& h_data() const {
-        return split_1.h_data;
-    }
-
-    split_value<0, 2> split_0;
-    split_value<2, 8> split_1;
-};
-
-template <>
-struct split_value<0, 3> {
-    explicit split_value() = default;
-    accessor<0> h_c_id;
-    accessor<1> h_c_d_id;
-    accessor<2> h_c_w_id;
-};
-template <>
-struct split_value<3, 8> {
-    explicit split_value() = default;
-    accessor<3> h_d_id;
-    accessor<4> h_w_id;
-    accessor<5> h_date;
-    accessor<6> h_amount;
-    accessor<7> h_data;
-};
-template <>
-struct unified_value<3> {
-    auto& h_c_id() {
-        return split_0.h_c_id;
-    }
-    const auto& h_c_id() const {
-        return split_0.h_c_id;
-    }
-    auto& h_c_d_id() {
-        return split_0.h_c_d_id;
-    }
-    const auto& h_c_d_id() const {
-        return split_0.h_c_d_id;
-    }
-    auto& h_c_w_id() {
-        return split_0.h_c_w_id;
-    }
-    const auto& h_c_w_id() const {
-        return split_0.h_c_w_id;
-    }
-    auto& h_d_id() {
-        return split_1.h_d_id;
-    }
-    const auto& h_d_id() const {
-        return split_1.h_d_id;
-    }
-    auto& h_w_id() {
-        return split_1.h_w_id;
-    }
-    const auto& h_w_id() const {
-        return split_1.h_w_id;
-    }
-    auto& h_date() {
-        return split_1.h_date;
-    }
-    const auto& h_date() const {
-        return split_1.h_date;
-    }
-    auto& h_amount() {
-        return split_1.h_amount;
-    }
-    const auto& h_amount() const {
-        return split_1.h_amount;
-    }
-    auto& h_data() {
-        return split_1.h_data;
-    }
-    const auto& h_data() const {
-        return split_1.h_data;
-    }
-
-    split_value<0, 3> split_0;
-    split_value<3, 8> split_1;
-};
-
-template <>
-struct split_value<0, 4> {
-    explicit split_value() = default;
-    accessor<0> h_c_id;
-    accessor<1> h_c_d_id;
-    accessor<2> h_c_w_id;
-    accessor<3> h_d_id;
-};
-template <>
-struct split_value<4, 8> {
-    explicit split_value() = default;
-    accessor<4> h_w_id;
-    accessor<5> h_date;
-    accessor<6> h_amount;
-    accessor<7> h_data;
-};
-template <>
-struct unified_value<4> {
-    auto& h_c_id() {
-        return split_0.h_c_id;
-    }
-    const auto& h_c_id() const {
-        return split_0.h_c_id;
-    }
-    auto& h_c_d_id() {
-        return split_0.h_c_d_id;
-    }
-    const auto& h_c_d_id() const {
-        return split_0.h_c_d_id;
-    }
-    auto& h_c_w_id() {
-        return split_0.h_c_w_id;
-    }
-    const auto& h_c_w_id() const {
-        return split_0.h_c_w_id;
-    }
-    auto& h_d_id() {
-        return split_0.h_d_id;
-    }
-    const auto& h_d_id() const {
-        return split_0.h_d_id;
-    }
-    auto& h_w_id() {
-        return split_1.h_w_id;
-    }
-    const auto& h_w_id() const {
-        return split_1.h_w_id;
-    }
-    auto& h_date() {
-        return split_1.h_date;
-    }
-    const auto& h_date() const {
-        return split_1.h_date;
-    }
-    auto& h_amount() {
-        return split_1.h_amount;
-    }
-    const auto& h_amount() const {
-        return split_1.h_amount;
-    }
-    auto& h_data() {
-        return split_1.h_data;
-    }
-    const auto& h_data() const {
-        return split_1.h_data;
-    }
-
-    split_value<0, 4> split_0;
-    split_value<4, 8> split_1;
-};
-
-template <>
-struct split_value<0, 5> {
-    explicit split_value() = default;
-    accessor<0> h_c_id;
-    accessor<1> h_c_d_id;
-    accessor<2> h_c_w_id;
-    accessor<3> h_d_id;
-    accessor<4> h_w_id;
-};
-template <>
-struct split_value<5, 8> {
-    explicit split_value() = default;
-    accessor<5> h_date;
-    accessor<6> h_amount;
-    accessor<7> h_data;
-};
-template <>
-struct unified_value<5> {
-    auto& h_c_id() {
-        return split_0.h_c_id;
-    }
-    const auto& h_c_id() const {
-        return split_0.h_c_id;
-    }
-    auto& h_c_d_id() {
-        return split_0.h_c_d_id;
-    }
-    const auto& h_c_d_id() const {
-        return split_0.h_c_d_id;
-    }
-    auto& h_c_w_id() {
-        return split_0.h_c_w_id;
-    }
-    const auto& h_c_w_id() const {
-        return split_0.h_c_w_id;
-    }
-    auto& h_d_id() {
-        return split_0.h_d_id;
-    }
-    const auto& h_d_id() const {
-        return split_0.h_d_id;
-    }
-    auto& h_w_id() {
-        return split_0.h_w_id;
-    }
-    const auto& h_w_id() const {
-        return split_0.h_w_id;
-    }
-    auto& h_date() {
-        return split_1.h_date;
-    }
-    const auto& h_date() const {
-        return split_1.h_date;
-    }
-    auto& h_amount() {
-        return split_1.h_amount;
-    }
-    const auto& h_amount() const {
-        return split_1.h_amount;
-    }
-    auto& h_data() {
-        return split_1.h_data;
-    }
-    const auto& h_data() const {
-        return split_1.h_data;
-    }
-
-    split_value<0, 5> split_0;
-    split_value<5, 8> split_1;
-};
-
-template <>
-struct split_value<0, 6> {
-    explicit split_value() = default;
-    accessor<0> h_c_id;
-    accessor<1> h_c_d_id;
-    accessor<2> h_c_w_id;
-    accessor<3> h_d_id;
-    accessor<4> h_w_id;
-    accessor<5> h_date;
-};
-template <>
-struct split_value<6, 8> {
-    explicit split_value() = default;
-    accessor<6> h_amount;
-    accessor<7> h_data;
-};
-template <>
-struct unified_value<6> {
-    auto& h_c_id() {
-        return split_0.h_c_id;
-    }
-    const auto& h_c_id() const {
-        return split_0.h_c_id;
-    }
-    auto& h_c_d_id() {
-        return split_0.h_c_d_id;
-    }
-    const auto& h_c_d_id() const {
-        return split_0.h_c_d_id;
-    }
-    auto& h_c_w_id() {
-        return split_0.h_c_w_id;
-    }
-    const auto& h_c_w_id() const {
-        return split_0.h_c_w_id;
-    }
-    auto& h_d_id() {
-        return split_0.h_d_id;
-    }
-    const auto& h_d_id() const {
-        return split_0.h_d_id;
-    }
-    auto& h_w_id() {
-        return split_0.h_w_id;
-    }
-    const auto& h_w_id() const {
-        return split_0.h_w_id;
-    }
-    auto& h_date() {
-        return split_0.h_date;
-    }
-    const auto& h_date() const {
-        return split_0.h_date;
-    }
-    auto& h_amount() {
-        return split_1.h_amount;
-    }
-    const auto& h_amount() const {
-        return split_1.h_amount;
-    }
-    auto& h_data() {
-        return split_1.h_data;
-    }
-    const auto& h_data() const {
-        return split_1.h_data;
-    }
-
-    split_value<0, 6> split_0;
-    split_value<6, 8> split_1;
-};
-
-template <>
-struct split_value<0, 7> {
-    explicit split_value() = default;
-    accessor<0> h_c_id;
-    accessor<1> h_c_d_id;
-    accessor<2> h_c_w_id;
-    accessor<3> h_d_id;
-    accessor<4> h_w_id;
-    accessor<5> h_date;
-    accessor<6> h_amount;
-};
-template <>
-struct split_value<7, 8> {
-    explicit split_value() = default;
-    accessor<7> h_data;
-};
-template <>
-struct unified_value<7> {
-    auto& h_c_id() {
-        return split_0.h_c_id;
-    }
-    const auto& h_c_id() const {
-        return split_0.h_c_id;
-    }
-    auto& h_c_d_id() {
-        return split_0.h_c_d_id;
-    }
-    const auto& h_c_d_id() const {
-        return split_0.h_c_d_id;
-    }
-    auto& h_c_w_id() {
-        return split_0.h_c_w_id;
-    }
-    const auto& h_c_w_id() const {
-        return split_0.h_c_w_id;
-    }
-    auto& h_d_id() {
-        return split_0.h_d_id;
-    }
-    const auto& h_d_id() const {
-        return split_0.h_d_id;
-    }
-    auto& h_w_id() {
-        return split_0.h_w_id;
-    }
-    const auto& h_w_id() const {
-        return split_0.h_w_id;
-    }
-    auto& h_date() {
-        return split_0.h_date;
-    }
-    const auto& h_date() const {
-        return split_0.h_date;
-    }
-    auto& h_amount() {
-        return split_0.h_amount;
-    }
-    const auto& h_amount() const {
-        return split_0.h_amount;
-    }
-    auto& h_data() {
-        return split_1.h_data;
-    }
-    const auto& h_data() const {
-        return split_1.h_data;
-    }
-
-    split_value<0, 7> split_0;
-    split_value<7, 8> split_1;
-};
-
-template <>
-struct split_value<0, 8> {
-    explicit split_value() = default;
-    accessor<0> h_c_id;
-    accessor<1> h_c_d_id;
-    accessor<2> h_c_w_id;
-    accessor<3> h_d_id;
-    accessor<4> h_w_id;
-    accessor<5> h_date;
-    accessor<6> h_amount;
-    accessor<7> h_data;
-};
-template <>
-struct unified_value<8> {
-    auto& h_c_id() {
-        return split_0.h_c_id;
-    }
-    const auto& h_c_id() const {
-        return split_0.h_c_id;
-    }
-    auto& h_c_d_id() {
-        return split_0.h_c_d_id;
-    }
-    const auto& h_c_d_id() const {
-        return split_0.h_c_d_id;
-    }
-    auto& h_c_w_id() {
-        return split_0.h_c_w_id;
-    }
-    const auto& h_c_w_id() const {
-        return split_0.h_c_w_id;
-    }
-    auto& h_d_id() {
-        return split_0.h_d_id;
-    }
-    const auto& h_d_id() const {
-        return split_0.h_d_id;
-    }
-    auto& h_w_id() {
-        return split_0.h_w_id;
-    }
-    const auto& h_w_id() const {
-        return split_0.h_w_id;
-    }
-    auto& h_date() {
-        return split_0.h_date;
-    }
-    const auto& h_date() const {
-        return split_0.h_date;
-    }
-    auto& h_amount() {
-        return split_0.h_amount;
-    }
-    const auto& h_amount() const {
-        return split_0.h_amount;
-    }
-    auto& h_data() {
-        return split_0.h_data;
-    }
-    const auto& h_data() const {
-        return split_0.h_data;
-    }
-
-    split_value<0, 8> split_0;
+    value_type value_;
 };
 
 struct history_value {
+    using NamedColumn = history_value_datatypes::NamedColumn;
+    static constexpr auto MAX_SPLITS = 2;
+
     explicit history_value() = default;
 
-    using NamedColumn = history_value_datatypes::NamedColumn;
+    static inline void resplit(
+            history_value& newvalue, const history_value& oldvalue, NamedColumn index);
 
-    auto& h_c_id() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.h_c_id();
-            }, value);
-    }
-    const auto& h_c_id() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.h_c_id();
-            }, value);
-    }
-    auto& h_c_d_id() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.h_c_d_id();
-            }, value);
-    }
-    const auto& h_c_d_id() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.h_c_d_id();
-            }, value);
-    }
-    auto& h_c_w_id() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.h_c_w_id();
-            }, value);
-    }
-    const auto& h_c_w_id() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.h_c_w_id();
-            }, value);
-    }
-    auto& h_d_id() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.h_d_id();
-            }, value);
-    }
-    const auto& h_d_id() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.h_d_id();
-            }, value);
-    }
-    auto& h_w_id() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.h_w_id();
-            }, value);
-    }
-    const auto& h_w_id() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.h_w_id();
-            }, value);
-    }
-    auto& h_date() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.h_date();
-            }, value);
-    }
-    const auto& h_date() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.h_date();
-            }, value);
-    }
-    auto& h_amount() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.h_amount();
-            }, value);
-    }
-    const auto& h_amount() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.h_amount();
-            }, value);
-    }
-    auto& h_data() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.h_data();
-            }, value);
-    }
-    const auto& h_data() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.h_data();
-            }, value);
+    template <NamedColumn Column>
+    static inline void copy_data(history_value& newvalue, const history_value& oldvalue);
+
+    template <NamedColumn Column>
+    inline accessor<RoundedNamedColumn<Column>()>& get();
+
+    template <NamedColumn Column>
+    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+
+
+    const auto split_of(NamedColumn index) const {
+        return index < splitindex_ ? 0 : 1;
     }
 
-    std::variant<
-        unified_value<8>,
-        unified_value<7>,
-        unified_value<6>,
-        unified_value<5>,
-        unified_value<4>,
-        unified_value<3>,
-        unified_value<2>,
-        unified_value<1>
-        > value;
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::h_c_id> h_c_id;
+    accessor<NamedColumn::h_c_d_id> h_c_d_id;
+    accessor<NamedColumn::h_c_w_id> h_c_w_id;
+    accessor<NamedColumn::h_d_id> h_d_id;
+    accessor<NamedColumn::h_w_id> h_w_id;
+    accessor<NamedColumn::h_date> h_date;
+    accessor<NamedColumn::h_amount> h_amount;
+    accessor<NamedColumn::h_data> h_data;
 };
+
+inline void history_value::resplit(
+        history_value& newvalue, const history_value& oldvalue, NamedColumn index) {
+    assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
+}
+
+template <NamedColumn Column>
+inline void history_value::copy_data(history_value& newvalue, const history_value& oldvalue) {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+    if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
+        copy_data<Column + 1>(newvalue, oldvalue);
+    }
+}
+
+template <>
+inline accessor<NamedColumn::h_c_id>& history_value::get<NamedColumn::h_c_id>() {
+    return h_c_id;
+}
+
+template <>
+inline const accessor<NamedColumn::h_c_id>& history_value::get<NamedColumn::h_c_id>() const {
+    return h_c_id;
+}
+
+template <>
+inline accessor<NamedColumn::h_c_d_id>& history_value::get<NamedColumn::h_c_d_id>() {
+    return h_c_d_id;
+}
+
+template <>
+inline const accessor<NamedColumn::h_c_d_id>& history_value::get<NamedColumn::h_c_d_id>() const {
+    return h_c_d_id;
+}
+
+template <>
+inline accessor<NamedColumn::h_c_w_id>& history_value::get<NamedColumn::h_c_w_id>() {
+    return h_c_w_id;
+}
+
+template <>
+inline const accessor<NamedColumn::h_c_w_id>& history_value::get<NamedColumn::h_c_w_id>() const {
+    return h_c_w_id;
+}
+
+template <>
+inline accessor<NamedColumn::h_d_id>& history_value::get<NamedColumn::h_d_id>() {
+    return h_d_id;
+}
+
+template <>
+inline const accessor<NamedColumn::h_d_id>& history_value::get<NamedColumn::h_d_id>() const {
+    return h_d_id;
+}
+
+template <>
+inline accessor<NamedColumn::h_w_id>& history_value::get<NamedColumn::h_w_id>() {
+    return h_w_id;
+}
+
+template <>
+inline const accessor<NamedColumn::h_w_id>& history_value::get<NamedColumn::h_w_id>() const {
+    return h_w_id;
+}
+
+template <>
+inline accessor<NamedColumn::h_date>& history_value::get<NamedColumn::h_date>() {
+    return h_date;
+}
+
+template <>
+inline const accessor<NamedColumn::h_date>& history_value::get<NamedColumn::h_date>() const {
+    return h_date;
+}
+
+template <>
+inline accessor<NamedColumn::h_amount>& history_value::get<NamedColumn::h_amount>() {
+    return h_amount;
+}
+
+template <>
+inline const accessor<NamedColumn::h_amount>& history_value::get<NamedColumn::h_amount>() const {
+    return h_amount;
+}
+
+template <>
+inline accessor<NamedColumn::h_data>& history_value::get<NamedColumn::h_data>() {
+    return h_data;
+}
+
+template <>
+inline const accessor<NamedColumn::h_data>& history_value::get<NamedColumn::h_data>() const {
+    return h_data;
+}
+
 };  // namespace history_value_datatypes
 
 using history_value = history_value_datatypes::history_value;
 using ADAPTER_OF(history_value) = ADAPTER_OF(history_value_datatypes::history_value);
 
+#pragma once
+
+#include <type_traits>
+
+#include "Adapter.hh"
+#include "Sto.hh"
+
 namespace order_value_datatypes {
 
 enum class NamedColumn : int {
     o_c_id = 0,
-    o_entry_d = 1,
-    o_ol_cnt = 2,
-    o_all_local = 3,
-    o_carrier_id = 4,
-    COLCOUNT = 5
+    o_entry_d,
+    o_ol_cnt,
+    o_all_local,
+    o_carrier_id,
+    COLCOUNT
 };
 
-template <size_t ColIndex>
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+    return nc;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc) {
+    return nc += 1;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc, int) {
+    return nc += 1;
+}
+
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+    out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
+    return out;
+}
+
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    if constexpr (Column < NamedColumn::o_entry_d) {
+        return NamedColumn::o_c_id;
+    }
+    if constexpr (Column < NamedColumn::o_ol_cnt) {
+        return NamedColumn::o_entry_d;
+    }
+    if constexpr (Column < NamedColumn::o_all_local) {
+        return NamedColumn::o_ol_cnt;
+    }
+    if constexpr (Column < NamedColumn::o_carrier_id) {
+        return NamedColumn::o_all_local;
+    }
+    return NamedColumn::o_carrier_id;
+}
+
+template <NamedColumn Column>
 struct accessor;
-
-template <size_t StartIndex, size_t EndIndex>
-struct split_value;
-
-template <size_t SplitIndex>
-struct unified_value;
 
 struct order_value;
 
-DEFINE_ADAPTER(order_value, 5);
+DEFINE_ADAPTER(order_value, NamedColumn);
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor_info;
 
 template <>
-struct accessor_info<0> {
+struct accessor_info<NamedColumn::o_c_id> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<1> {
+struct accessor_info<NamedColumn::o_entry_d> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<2> {
+struct accessor_info<NamedColumn::o_ol_cnt> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<3> {
+struct accessor_info<NamedColumn::o_all_local> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<4> {
+struct accessor_info<NamedColumn::o_carrier_id> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor {
-    using type = typename accessor_info<ColIndex>::type;
+    using adapter_type = ADAPTER_OF(order_value);
+    using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
-    operator type() {
-        ADAPTER_OF(order_value)::CountWrite(ColIndex + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(order_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(order_value)::CountWrite(ColIndex + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(order_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(order_value)::CountWrite(ColIndex + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<ColIndex>& other) {
-        ADAPTER_OF(order_value)::CountWrite(ColIndex + index_);
+    value_type operator =(accessor<Column>& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(order_value)::CountWrite(ColIndex + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(order_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(order_value)::CountWrite(ColIndex + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(order_value)::CountRead(ColIndex + index_);
-        return &value_;
-    }
-
-    size_t index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<0, 1> {
-    explicit split_value() = default;
-    accessor<0> o_c_id;
-};
-template <>
-struct split_value<1, 5> {
-    explicit split_value() = default;
-    accessor<1> o_entry_d;
-    accessor<2> o_ol_cnt;
-    accessor<3> o_all_local;
-    accessor<4> o_carrier_id;
-};
-template <>
-struct unified_value<1> {
-    auto& o_c_id() {
-        return split_0.o_c_id;
-    }
-    const auto& o_c_id() const {
-        return split_0.o_c_id;
-    }
-    auto& o_entry_d() {
-        return split_1.o_entry_d;
-    }
-    const auto& o_entry_d() const {
-        return split_1.o_entry_d;
-    }
-    auto& o_ol_cnt() {
-        return split_1.o_ol_cnt;
-    }
-    const auto& o_ol_cnt() const {
-        return split_1.o_ol_cnt;
-    }
-    auto& o_all_local() {
-        return split_1.o_all_local;
-    }
-    const auto& o_all_local() const {
-        return split_1.o_all_local;
-    }
-    auto& o_carrier_id() {
-        return split_1.o_carrier_id;
-    }
-    const auto& o_carrier_id() const {
-        return split_1.o_carrier_id;
-    }
-
-    split_value<0, 1> split_0;
-    split_value<1, 5> split_1;
-};
-
-template <>
-struct split_value<0, 2> {
-    explicit split_value() = default;
-    accessor<0> o_c_id;
-    accessor<1> o_entry_d;
-};
-template <>
-struct split_value<2, 5> {
-    explicit split_value() = default;
-    accessor<2> o_ol_cnt;
-    accessor<3> o_all_local;
-    accessor<4> o_carrier_id;
-};
-template <>
-struct unified_value<2> {
-    auto& o_c_id() {
-        return split_0.o_c_id;
-    }
-    const auto& o_c_id() const {
-        return split_0.o_c_id;
-    }
-    auto& o_entry_d() {
-        return split_0.o_entry_d;
-    }
-    const auto& o_entry_d() const {
-        return split_0.o_entry_d;
-    }
-    auto& o_ol_cnt() {
-        return split_1.o_ol_cnt;
-    }
-    const auto& o_ol_cnt() const {
-        return split_1.o_ol_cnt;
-    }
-    auto& o_all_local() {
-        return split_1.o_all_local;
-    }
-    const auto& o_all_local() const {
-        return split_1.o_all_local;
-    }
-    auto& o_carrier_id() {
-        return split_1.o_carrier_id;
-    }
-    const auto& o_carrier_id() const {
-        return split_1.o_carrier_id;
-    }
-
-    split_value<0, 2> split_0;
-    split_value<2, 5> split_1;
-};
-
-template <>
-struct split_value<0, 3> {
-    explicit split_value() = default;
-    accessor<0> o_c_id;
-    accessor<1> o_entry_d;
-    accessor<2> o_ol_cnt;
-};
-template <>
-struct split_value<3, 5> {
-    explicit split_value() = default;
-    accessor<3> o_all_local;
-    accessor<4> o_carrier_id;
-};
-template <>
-struct unified_value<3> {
-    auto& o_c_id() {
-        return split_0.o_c_id;
-    }
-    const auto& o_c_id() const {
-        return split_0.o_c_id;
-    }
-    auto& o_entry_d() {
-        return split_0.o_entry_d;
-    }
-    const auto& o_entry_d() const {
-        return split_0.o_entry_d;
-    }
-    auto& o_ol_cnt() {
-        return split_0.o_ol_cnt;
-    }
-    const auto& o_ol_cnt() const {
-        return split_0.o_ol_cnt;
-    }
-    auto& o_all_local() {
-        return split_1.o_all_local;
-    }
-    const auto& o_all_local() const {
-        return split_1.o_all_local;
-    }
-    auto& o_carrier_id() {
-        return split_1.o_carrier_id;
-    }
-    const auto& o_carrier_id() const {
-        return split_1.o_carrier_id;
-    }
-
-    split_value<0, 3> split_0;
-    split_value<3, 5> split_1;
-};
-
-template <>
-struct split_value<0, 4> {
-    explicit split_value() = default;
-    accessor<0> o_c_id;
-    accessor<1> o_entry_d;
-    accessor<2> o_ol_cnt;
-    accessor<3> o_all_local;
-};
-template <>
-struct split_value<4, 5> {
-    explicit split_value() = default;
-    accessor<4> o_carrier_id;
-};
-template <>
-struct unified_value<4> {
-    auto& o_c_id() {
-        return split_0.o_c_id;
-    }
-    const auto& o_c_id() const {
-        return split_0.o_c_id;
-    }
-    auto& o_entry_d() {
-        return split_0.o_entry_d;
-    }
-    const auto& o_entry_d() const {
-        return split_0.o_entry_d;
-    }
-    auto& o_ol_cnt() {
-        return split_0.o_ol_cnt;
-    }
-    const auto& o_ol_cnt() const {
-        return split_0.o_ol_cnt;
-    }
-    auto& o_all_local() {
-        return split_0.o_all_local;
-    }
-    const auto& o_all_local() const {
-        return split_0.o_all_local;
-    }
-    auto& o_carrier_id() {
-        return split_1.o_carrier_id;
-    }
-    const auto& o_carrier_id() const {
-        return split_1.o_carrier_id;
-    }
-
-    split_value<0, 4> split_0;
-    split_value<4, 5> split_1;
-};
-
-template <>
-struct split_value<0, 5> {
-    explicit split_value() = default;
-    accessor<0> o_c_id;
-    accessor<1> o_entry_d;
-    accessor<2> o_ol_cnt;
-    accessor<3> o_all_local;
-    accessor<4> o_carrier_id;
-};
-template <>
-struct unified_value<5> {
-    auto& o_c_id() {
-        return split_0.o_c_id;
-    }
-    const auto& o_c_id() const {
-        return split_0.o_c_id;
-    }
-    auto& o_entry_d() {
-        return split_0.o_entry_d;
-    }
-    const auto& o_entry_d() const {
-        return split_0.o_entry_d;
-    }
-    auto& o_ol_cnt() {
-        return split_0.o_ol_cnt;
-    }
-    const auto& o_ol_cnt() const {
-        return split_0.o_ol_cnt;
-    }
-    auto& o_all_local() {
-        return split_0.o_all_local;
-    }
-    const auto& o_all_local() const {
-        return split_0.o_all_local;
-    }
-    auto& o_carrier_id() {
-        return split_0.o_carrier_id;
-    }
-    const auto& o_carrier_id() const {
-        return split_0.o_carrier_id;
-    }
-
-    split_value<0, 5> split_0;
+    value_type value_;
 };
 
 struct order_value {
+    using NamedColumn = order_value_datatypes::NamedColumn;
+    static constexpr auto MAX_SPLITS = 2;
+
     explicit order_value() = default;
 
-    using NamedColumn = order_value_datatypes::NamedColumn;
+    static inline void resplit(
+            order_value& newvalue, const order_value& oldvalue, NamedColumn index);
 
-    auto& o_c_id() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.o_c_id();
-            }, value);
-    }
-    const auto& o_c_id() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.o_c_id();
-            }, value);
-    }
-    auto& o_entry_d() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.o_entry_d();
-            }, value);
-    }
-    const auto& o_entry_d() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.o_entry_d();
-            }, value);
-    }
-    auto& o_ol_cnt() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.o_ol_cnt();
-            }, value);
-    }
-    const auto& o_ol_cnt() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.o_ol_cnt();
-            }, value);
-    }
-    auto& o_all_local() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.o_all_local();
-            }, value);
-    }
-    const auto& o_all_local() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.o_all_local();
-            }, value);
-    }
-    auto& o_carrier_id() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.o_carrier_id();
-            }, value);
-    }
-    const auto& o_carrier_id() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.o_carrier_id();
-            }, value);
+    template <NamedColumn Column>
+    static inline void copy_data(order_value& newvalue, const order_value& oldvalue);
+
+    template <NamedColumn Column>
+    inline accessor<RoundedNamedColumn<Column>()>& get();
+
+    template <NamedColumn Column>
+    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+
+
+    const auto split_of(NamedColumn index) const {
+        return index < splitindex_ ? 0 : 1;
     }
 
-    std::variant<
-        unified_value<5>,
-        unified_value<4>,
-        unified_value<3>,
-        unified_value<2>,
-        unified_value<1>
-        > value;
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::o_c_id> o_c_id;
+    accessor<NamedColumn::o_entry_d> o_entry_d;
+    accessor<NamedColumn::o_ol_cnt> o_ol_cnt;
+    accessor<NamedColumn::o_all_local> o_all_local;
+    accessor<NamedColumn::o_carrier_id> o_carrier_id;
 };
+
+inline void order_value::resplit(
+        order_value& newvalue, const order_value& oldvalue, NamedColumn index) {
+    assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
+}
+
+template <NamedColumn Column>
+inline void order_value::copy_data(order_value& newvalue, const order_value& oldvalue) {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+    if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
+        copy_data<Column + 1>(newvalue, oldvalue);
+    }
+}
+
+template <>
+inline accessor<NamedColumn::o_c_id>& order_value::get<NamedColumn::o_c_id>() {
+    return o_c_id;
+}
+
+template <>
+inline const accessor<NamedColumn::o_c_id>& order_value::get<NamedColumn::o_c_id>() const {
+    return o_c_id;
+}
+
+template <>
+inline accessor<NamedColumn::o_entry_d>& order_value::get<NamedColumn::o_entry_d>() {
+    return o_entry_d;
+}
+
+template <>
+inline const accessor<NamedColumn::o_entry_d>& order_value::get<NamedColumn::o_entry_d>() const {
+    return o_entry_d;
+}
+
+template <>
+inline accessor<NamedColumn::o_ol_cnt>& order_value::get<NamedColumn::o_ol_cnt>() {
+    return o_ol_cnt;
+}
+
+template <>
+inline const accessor<NamedColumn::o_ol_cnt>& order_value::get<NamedColumn::o_ol_cnt>() const {
+    return o_ol_cnt;
+}
+
+template <>
+inline accessor<NamedColumn::o_all_local>& order_value::get<NamedColumn::o_all_local>() {
+    return o_all_local;
+}
+
+template <>
+inline const accessor<NamedColumn::o_all_local>& order_value::get<NamedColumn::o_all_local>() const {
+    return o_all_local;
+}
+
+template <>
+inline accessor<NamedColumn::o_carrier_id>& order_value::get<NamedColumn::o_carrier_id>() {
+    return o_carrier_id;
+}
+
+template <>
+inline const accessor<NamedColumn::o_carrier_id>& order_value::get<NamedColumn::o_carrier_id>() const {
+    return o_carrier_id;
+}
+
 };  // namespace order_value_datatypes
 
 using order_value = order_value_datatypes::order_value;
 using ADAPTER_OF(order_value) = ADAPTER_OF(order_value_datatypes::order_value);
 
+#pragma once
+
+#include <type_traits>
+
+#include "Adapter.hh"
+#include "Sto.hh"
+
 namespace orderline_value_datatypes {
 
 enum class NamedColumn : int {
     ol_i_id = 0,
-    ol_supply_w_id = 1,
-    ol_quantity = 2,
-    ol_amount = 3,
-    ol_dist_info = 4,
-    ol_delivery_d = 5,
-    COLCOUNT = 6
+    ol_supply_w_id,
+    ol_quantity,
+    ol_amount,
+    ol_dist_info,
+    ol_delivery_d,
+    COLCOUNT
 };
 
-template <size_t ColIndex>
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+    return nc;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc) {
+    return nc += 1;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc, int) {
+    return nc += 1;
+}
+
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+    out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
+    return out;
+}
+
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    if constexpr (Column < NamedColumn::ol_supply_w_id) {
+        return NamedColumn::ol_i_id;
+    }
+    if constexpr (Column < NamedColumn::ol_quantity) {
+        return NamedColumn::ol_supply_w_id;
+    }
+    if constexpr (Column < NamedColumn::ol_amount) {
+        return NamedColumn::ol_quantity;
+    }
+    if constexpr (Column < NamedColumn::ol_dist_info) {
+        return NamedColumn::ol_amount;
+    }
+    if constexpr (Column < NamedColumn::ol_delivery_d) {
+        return NamedColumn::ol_dist_info;
+    }
+    return NamedColumn::ol_delivery_d;
+}
+
+template <NamedColumn Column>
 struct accessor;
-
-template <size_t StartIndex, size_t EndIndex>
-struct split_value;
-
-template <size_t SplitIndex>
-struct unified_value;
 
 struct orderline_value;
 
-DEFINE_ADAPTER(orderline_value, 6);
+DEFINE_ADAPTER(orderline_value, NamedColumn);
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor_info;
 
 template <>
-struct accessor_info<0> {
+struct accessor_info<NamedColumn::ol_i_id> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<1> {
+struct accessor_info<NamedColumn::ol_supply_w_id> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<2> {
+struct accessor_info<NamedColumn::ol_quantity> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<3> {
+struct accessor_info<NamedColumn::ol_amount> {
     using type = int32_t;
+    using value_type = int32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<4> {
+struct accessor_info<NamedColumn::ol_dist_info> {
     using type = fix_string<24>;
+    using value_type = fix_string<24>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<5> {
+struct accessor_info<NamedColumn::ol_delivery_d> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor {
-    using type = typename accessor_info<ColIndex>::type;
+    using adapter_type = ADAPTER_OF(orderline_value);
+    using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
-    operator type() {
-        ADAPTER_OF(orderline_value)::CountWrite(ColIndex + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(orderline_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(orderline_value)::CountWrite(ColIndex + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(orderline_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(orderline_value)::CountWrite(ColIndex + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<ColIndex>& other) {
-        ADAPTER_OF(orderline_value)::CountWrite(ColIndex + index_);
+    value_type operator =(accessor<Column>& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(orderline_value)::CountWrite(ColIndex + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(orderline_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(orderline_value)::CountWrite(ColIndex + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(orderline_value)::CountRead(ColIndex + index_);
-        return &value_;
-    }
-
-    size_t index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<0, 1> {
-    explicit split_value() = default;
-    accessor<0> ol_i_id;
-};
-template <>
-struct split_value<1, 6> {
-    explicit split_value() = default;
-    accessor<1> ol_supply_w_id;
-    accessor<2> ol_quantity;
-    accessor<3> ol_amount;
-    accessor<4> ol_dist_info;
-    accessor<5> ol_delivery_d;
-};
-template <>
-struct unified_value<1> {
-    auto& ol_i_id() {
-        return split_0.ol_i_id;
-    }
-    const auto& ol_i_id() const {
-        return split_0.ol_i_id;
-    }
-    auto& ol_supply_w_id() {
-        return split_1.ol_supply_w_id;
-    }
-    const auto& ol_supply_w_id() const {
-        return split_1.ol_supply_w_id;
-    }
-    auto& ol_quantity() {
-        return split_1.ol_quantity;
-    }
-    const auto& ol_quantity() const {
-        return split_1.ol_quantity;
-    }
-    auto& ol_amount() {
-        return split_1.ol_amount;
-    }
-    const auto& ol_amount() const {
-        return split_1.ol_amount;
-    }
-    auto& ol_dist_info() {
-        return split_1.ol_dist_info;
-    }
-    const auto& ol_dist_info() const {
-        return split_1.ol_dist_info;
-    }
-    auto& ol_delivery_d() {
-        return split_1.ol_delivery_d;
-    }
-    const auto& ol_delivery_d() const {
-        return split_1.ol_delivery_d;
-    }
-
-    split_value<0, 1> split_0;
-    split_value<1, 6> split_1;
-};
-
-template <>
-struct split_value<0, 2> {
-    explicit split_value() = default;
-    accessor<0> ol_i_id;
-    accessor<1> ol_supply_w_id;
-};
-template <>
-struct split_value<2, 6> {
-    explicit split_value() = default;
-    accessor<2> ol_quantity;
-    accessor<3> ol_amount;
-    accessor<4> ol_dist_info;
-    accessor<5> ol_delivery_d;
-};
-template <>
-struct unified_value<2> {
-    auto& ol_i_id() {
-        return split_0.ol_i_id;
-    }
-    const auto& ol_i_id() const {
-        return split_0.ol_i_id;
-    }
-    auto& ol_supply_w_id() {
-        return split_0.ol_supply_w_id;
-    }
-    const auto& ol_supply_w_id() const {
-        return split_0.ol_supply_w_id;
-    }
-    auto& ol_quantity() {
-        return split_1.ol_quantity;
-    }
-    const auto& ol_quantity() const {
-        return split_1.ol_quantity;
-    }
-    auto& ol_amount() {
-        return split_1.ol_amount;
-    }
-    const auto& ol_amount() const {
-        return split_1.ol_amount;
-    }
-    auto& ol_dist_info() {
-        return split_1.ol_dist_info;
-    }
-    const auto& ol_dist_info() const {
-        return split_1.ol_dist_info;
-    }
-    auto& ol_delivery_d() {
-        return split_1.ol_delivery_d;
-    }
-    const auto& ol_delivery_d() const {
-        return split_1.ol_delivery_d;
-    }
-
-    split_value<0, 2> split_0;
-    split_value<2, 6> split_1;
-};
-
-template <>
-struct split_value<0, 3> {
-    explicit split_value() = default;
-    accessor<0> ol_i_id;
-    accessor<1> ol_supply_w_id;
-    accessor<2> ol_quantity;
-};
-template <>
-struct split_value<3, 6> {
-    explicit split_value() = default;
-    accessor<3> ol_amount;
-    accessor<4> ol_dist_info;
-    accessor<5> ol_delivery_d;
-};
-template <>
-struct unified_value<3> {
-    auto& ol_i_id() {
-        return split_0.ol_i_id;
-    }
-    const auto& ol_i_id() const {
-        return split_0.ol_i_id;
-    }
-    auto& ol_supply_w_id() {
-        return split_0.ol_supply_w_id;
-    }
-    const auto& ol_supply_w_id() const {
-        return split_0.ol_supply_w_id;
-    }
-    auto& ol_quantity() {
-        return split_0.ol_quantity;
-    }
-    const auto& ol_quantity() const {
-        return split_0.ol_quantity;
-    }
-    auto& ol_amount() {
-        return split_1.ol_amount;
-    }
-    const auto& ol_amount() const {
-        return split_1.ol_amount;
-    }
-    auto& ol_dist_info() {
-        return split_1.ol_dist_info;
-    }
-    const auto& ol_dist_info() const {
-        return split_1.ol_dist_info;
-    }
-    auto& ol_delivery_d() {
-        return split_1.ol_delivery_d;
-    }
-    const auto& ol_delivery_d() const {
-        return split_1.ol_delivery_d;
-    }
-
-    split_value<0, 3> split_0;
-    split_value<3, 6> split_1;
-};
-
-template <>
-struct split_value<0, 4> {
-    explicit split_value() = default;
-    accessor<0> ol_i_id;
-    accessor<1> ol_supply_w_id;
-    accessor<2> ol_quantity;
-    accessor<3> ol_amount;
-};
-template <>
-struct split_value<4, 6> {
-    explicit split_value() = default;
-    accessor<4> ol_dist_info;
-    accessor<5> ol_delivery_d;
-};
-template <>
-struct unified_value<4> {
-    auto& ol_i_id() {
-        return split_0.ol_i_id;
-    }
-    const auto& ol_i_id() const {
-        return split_0.ol_i_id;
-    }
-    auto& ol_supply_w_id() {
-        return split_0.ol_supply_w_id;
-    }
-    const auto& ol_supply_w_id() const {
-        return split_0.ol_supply_w_id;
-    }
-    auto& ol_quantity() {
-        return split_0.ol_quantity;
-    }
-    const auto& ol_quantity() const {
-        return split_0.ol_quantity;
-    }
-    auto& ol_amount() {
-        return split_0.ol_amount;
-    }
-    const auto& ol_amount() const {
-        return split_0.ol_amount;
-    }
-    auto& ol_dist_info() {
-        return split_1.ol_dist_info;
-    }
-    const auto& ol_dist_info() const {
-        return split_1.ol_dist_info;
-    }
-    auto& ol_delivery_d() {
-        return split_1.ol_delivery_d;
-    }
-    const auto& ol_delivery_d() const {
-        return split_1.ol_delivery_d;
-    }
-
-    split_value<0, 4> split_0;
-    split_value<4, 6> split_1;
-};
-
-template <>
-struct split_value<0, 5> {
-    explicit split_value() = default;
-    accessor<0> ol_i_id;
-    accessor<1> ol_supply_w_id;
-    accessor<2> ol_quantity;
-    accessor<3> ol_amount;
-    accessor<4> ol_dist_info;
-};
-template <>
-struct split_value<5, 6> {
-    explicit split_value() = default;
-    accessor<5> ol_delivery_d;
-};
-template <>
-struct unified_value<5> {
-    auto& ol_i_id() {
-        return split_0.ol_i_id;
-    }
-    const auto& ol_i_id() const {
-        return split_0.ol_i_id;
-    }
-    auto& ol_supply_w_id() {
-        return split_0.ol_supply_w_id;
-    }
-    const auto& ol_supply_w_id() const {
-        return split_0.ol_supply_w_id;
-    }
-    auto& ol_quantity() {
-        return split_0.ol_quantity;
-    }
-    const auto& ol_quantity() const {
-        return split_0.ol_quantity;
-    }
-    auto& ol_amount() {
-        return split_0.ol_amount;
-    }
-    const auto& ol_amount() const {
-        return split_0.ol_amount;
-    }
-    auto& ol_dist_info() {
-        return split_0.ol_dist_info;
-    }
-    const auto& ol_dist_info() const {
-        return split_0.ol_dist_info;
-    }
-    auto& ol_delivery_d() {
-        return split_1.ol_delivery_d;
-    }
-    const auto& ol_delivery_d() const {
-        return split_1.ol_delivery_d;
-    }
-
-    split_value<0, 5> split_0;
-    split_value<5, 6> split_1;
-};
-
-template <>
-struct split_value<0, 6> {
-    explicit split_value() = default;
-    accessor<0> ol_i_id;
-    accessor<1> ol_supply_w_id;
-    accessor<2> ol_quantity;
-    accessor<3> ol_amount;
-    accessor<4> ol_dist_info;
-    accessor<5> ol_delivery_d;
-};
-template <>
-struct unified_value<6> {
-    auto& ol_i_id() {
-        return split_0.ol_i_id;
-    }
-    const auto& ol_i_id() const {
-        return split_0.ol_i_id;
-    }
-    auto& ol_supply_w_id() {
-        return split_0.ol_supply_w_id;
-    }
-    const auto& ol_supply_w_id() const {
-        return split_0.ol_supply_w_id;
-    }
-    auto& ol_quantity() {
-        return split_0.ol_quantity;
-    }
-    const auto& ol_quantity() const {
-        return split_0.ol_quantity;
-    }
-    auto& ol_amount() {
-        return split_0.ol_amount;
-    }
-    const auto& ol_amount() const {
-        return split_0.ol_amount;
-    }
-    auto& ol_dist_info() {
-        return split_0.ol_dist_info;
-    }
-    const auto& ol_dist_info() const {
-        return split_0.ol_dist_info;
-    }
-    auto& ol_delivery_d() {
-        return split_0.ol_delivery_d;
-    }
-    const auto& ol_delivery_d() const {
-        return split_0.ol_delivery_d;
-    }
-
-    split_value<0, 6> split_0;
+    value_type value_;
 };
 
 struct orderline_value {
+    using NamedColumn = orderline_value_datatypes::NamedColumn;
+    static constexpr auto MAX_SPLITS = 2;
+
     explicit orderline_value() = default;
 
-    using NamedColumn = orderline_value_datatypes::NamedColumn;
+    static inline void resplit(
+            orderline_value& newvalue, const orderline_value& oldvalue, NamedColumn index);
 
-    auto& ol_i_id() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.ol_i_id();
-            }, value);
-    }
-    const auto& ol_i_id() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.ol_i_id();
-            }, value);
-    }
-    auto& ol_supply_w_id() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.ol_supply_w_id();
-            }, value);
-    }
-    const auto& ol_supply_w_id() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.ol_supply_w_id();
-            }, value);
-    }
-    auto& ol_quantity() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.ol_quantity();
-            }, value);
-    }
-    const auto& ol_quantity() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.ol_quantity();
-            }, value);
-    }
-    auto& ol_amount() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.ol_amount();
-            }, value);
-    }
-    const auto& ol_amount() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.ol_amount();
-            }, value);
-    }
-    auto& ol_dist_info() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.ol_dist_info();
-            }, value);
-    }
-    const auto& ol_dist_info() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.ol_dist_info();
-            }, value);
-    }
-    auto& ol_delivery_d() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.ol_delivery_d();
-            }, value);
-    }
-    const auto& ol_delivery_d() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.ol_delivery_d();
-            }, value);
+    template <NamedColumn Column>
+    static inline void copy_data(orderline_value& newvalue, const orderline_value& oldvalue);
+
+    template <NamedColumn Column>
+    inline accessor<RoundedNamedColumn<Column>()>& get();
+
+    template <NamedColumn Column>
+    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+
+
+    const auto split_of(NamedColumn index) const {
+        return index < splitindex_ ? 0 : 1;
     }
 
-    std::variant<
-        unified_value<6>,
-        unified_value<5>,
-        unified_value<4>,
-        unified_value<3>,
-        unified_value<2>,
-        unified_value<1>
-        > value;
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::ol_i_id> ol_i_id;
+    accessor<NamedColumn::ol_supply_w_id> ol_supply_w_id;
+    accessor<NamedColumn::ol_quantity> ol_quantity;
+    accessor<NamedColumn::ol_amount> ol_amount;
+    accessor<NamedColumn::ol_dist_info> ol_dist_info;
+    accessor<NamedColumn::ol_delivery_d> ol_delivery_d;
 };
+
+inline void orderline_value::resplit(
+        orderline_value& newvalue, const orderline_value& oldvalue, NamedColumn index) {
+    assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
+}
+
+template <NamedColumn Column>
+inline void orderline_value::copy_data(orderline_value& newvalue, const orderline_value& oldvalue) {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+    if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
+        copy_data<Column + 1>(newvalue, oldvalue);
+    }
+}
+
+template <>
+inline accessor<NamedColumn::ol_i_id>& orderline_value::get<NamedColumn::ol_i_id>() {
+    return ol_i_id;
+}
+
+template <>
+inline const accessor<NamedColumn::ol_i_id>& orderline_value::get<NamedColumn::ol_i_id>() const {
+    return ol_i_id;
+}
+
+template <>
+inline accessor<NamedColumn::ol_supply_w_id>& orderline_value::get<NamedColumn::ol_supply_w_id>() {
+    return ol_supply_w_id;
+}
+
+template <>
+inline const accessor<NamedColumn::ol_supply_w_id>& orderline_value::get<NamedColumn::ol_supply_w_id>() const {
+    return ol_supply_w_id;
+}
+
+template <>
+inline accessor<NamedColumn::ol_quantity>& orderline_value::get<NamedColumn::ol_quantity>() {
+    return ol_quantity;
+}
+
+template <>
+inline const accessor<NamedColumn::ol_quantity>& orderline_value::get<NamedColumn::ol_quantity>() const {
+    return ol_quantity;
+}
+
+template <>
+inline accessor<NamedColumn::ol_amount>& orderline_value::get<NamedColumn::ol_amount>() {
+    return ol_amount;
+}
+
+template <>
+inline const accessor<NamedColumn::ol_amount>& orderline_value::get<NamedColumn::ol_amount>() const {
+    return ol_amount;
+}
+
+template <>
+inline accessor<NamedColumn::ol_dist_info>& orderline_value::get<NamedColumn::ol_dist_info>() {
+    return ol_dist_info;
+}
+
+template <>
+inline const accessor<NamedColumn::ol_dist_info>& orderline_value::get<NamedColumn::ol_dist_info>() const {
+    return ol_dist_info;
+}
+
+template <>
+inline accessor<NamedColumn::ol_delivery_d>& orderline_value::get<NamedColumn::ol_delivery_d>() {
+    return ol_delivery_d;
+}
+
+template <>
+inline const accessor<NamedColumn::ol_delivery_d>& orderline_value::get<NamedColumn::ol_delivery_d>() const {
+    return ol_delivery_d;
+}
+
 };  // namespace orderline_value_datatypes
 
 using orderline_value = orderline_value_datatypes::orderline_value;
 using ADAPTER_OF(orderline_value) = ADAPTER_OF(orderline_value_datatypes::orderline_value);
 
+#pragma once
+
+#include <type_traits>
+
+#include "Adapter.hh"
+#include "Sto.hh"
+
 namespace item_value_datatypes {
 
 enum class NamedColumn : int {
     i_im_id = 0,
-    i_price = 1,
-    i_name = 2,
-    i_data = 3,
-    COLCOUNT = 4
+    i_price,
+    i_name,
+    i_data,
+    COLCOUNT
 };
 
-template <size_t ColIndex>
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+    return nc;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc) {
+    return nc += 1;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc, int) {
+    return nc += 1;
+}
+
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+    out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
+    return out;
+}
+
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    if constexpr (Column < NamedColumn::i_price) {
+        return NamedColumn::i_im_id;
+    }
+    if constexpr (Column < NamedColumn::i_name) {
+        return NamedColumn::i_price;
+    }
+    if constexpr (Column < NamedColumn::i_data) {
+        return NamedColumn::i_name;
+    }
+    return NamedColumn::i_data;
+}
+
+template <NamedColumn Column>
 struct accessor;
-
-template <size_t StartIndex, size_t EndIndex>
-struct split_value;
-
-template <size_t SplitIndex>
-struct unified_value;
 
 struct item_value;
 
-DEFINE_ADAPTER(item_value, 4);
+DEFINE_ADAPTER(item_value, NamedColumn);
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor_info;
 
 template <>
-struct accessor_info<0> {
+struct accessor_info<NamedColumn::i_im_id> {
     using type = uint64_t;
+    using value_type = uint64_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<1> {
+struct accessor_info<NamedColumn::i_price> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<2> {
+struct accessor_info<NamedColumn::i_name> {
     using type = var_string<24>;
+    using value_type = var_string<24>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<3> {
+struct accessor_info<NamedColumn::i_data> {
     using type = var_string<50>;
+    using value_type = var_string<50>;
+    static constexpr bool is_array = false;
 };
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor {
-    using type = typename accessor_info<ColIndex>::type;
+    using adapter_type = ADAPTER_OF(item_value);
+    using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
-    operator type() {
-        ADAPTER_OF(item_value)::CountWrite(ColIndex + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(item_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(item_value)::CountWrite(ColIndex + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(item_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(item_value)::CountWrite(ColIndex + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<ColIndex>& other) {
-        ADAPTER_OF(item_value)::CountWrite(ColIndex + index_);
+    value_type operator =(accessor<Column>& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(item_value)::CountWrite(ColIndex + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(item_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(item_value)::CountWrite(ColIndex + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(item_value)::CountRead(ColIndex + index_);
-        return &value_;
-    }
-
-    size_t index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<0, 1> {
-    explicit split_value() = default;
-    accessor<0> i_im_id;
-};
-template <>
-struct split_value<1, 4> {
-    explicit split_value() = default;
-    accessor<1> i_price;
-    accessor<2> i_name;
-    accessor<3> i_data;
-};
-template <>
-struct unified_value<1> {
-    auto& i_im_id() {
-        return split_0.i_im_id;
-    }
-    const auto& i_im_id() const {
-        return split_0.i_im_id;
-    }
-    auto& i_price() {
-        return split_1.i_price;
-    }
-    const auto& i_price() const {
-        return split_1.i_price;
-    }
-    auto& i_name() {
-        return split_1.i_name;
-    }
-    const auto& i_name() const {
-        return split_1.i_name;
-    }
-    auto& i_data() {
-        return split_1.i_data;
-    }
-    const auto& i_data() const {
-        return split_1.i_data;
-    }
-
-    split_value<0, 1> split_0;
-    split_value<1, 4> split_1;
-};
-
-template <>
-struct split_value<0, 2> {
-    explicit split_value() = default;
-    accessor<0> i_im_id;
-    accessor<1> i_price;
-};
-template <>
-struct split_value<2, 4> {
-    explicit split_value() = default;
-    accessor<2> i_name;
-    accessor<3> i_data;
-};
-template <>
-struct unified_value<2> {
-    auto& i_im_id() {
-        return split_0.i_im_id;
-    }
-    const auto& i_im_id() const {
-        return split_0.i_im_id;
-    }
-    auto& i_price() {
-        return split_0.i_price;
-    }
-    const auto& i_price() const {
-        return split_0.i_price;
-    }
-    auto& i_name() {
-        return split_1.i_name;
-    }
-    const auto& i_name() const {
-        return split_1.i_name;
-    }
-    auto& i_data() {
-        return split_1.i_data;
-    }
-    const auto& i_data() const {
-        return split_1.i_data;
-    }
-
-    split_value<0, 2> split_0;
-    split_value<2, 4> split_1;
-};
-
-template <>
-struct split_value<0, 3> {
-    explicit split_value() = default;
-    accessor<0> i_im_id;
-    accessor<1> i_price;
-    accessor<2> i_name;
-};
-template <>
-struct split_value<3, 4> {
-    explicit split_value() = default;
-    accessor<3> i_data;
-};
-template <>
-struct unified_value<3> {
-    auto& i_im_id() {
-        return split_0.i_im_id;
-    }
-    const auto& i_im_id() const {
-        return split_0.i_im_id;
-    }
-    auto& i_price() {
-        return split_0.i_price;
-    }
-    const auto& i_price() const {
-        return split_0.i_price;
-    }
-    auto& i_name() {
-        return split_0.i_name;
-    }
-    const auto& i_name() const {
-        return split_0.i_name;
-    }
-    auto& i_data() {
-        return split_1.i_data;
-    }
-    const auto& i_data() const {
-        return split_1.i_data;
-    }
-
-    split_value<0, 3> split_0;
-    split_value<3, 4> split_1;
-};
-
-template <>
-struct split_value<0, 4> {
-    explicit split_value() = default;
-    accessor<0> i_im_id;
-    accessor<1> i_price;
-    accessor<2> i_name;
-    accessor<3> i_data;
-};
-template <>
-struct unified_value<4> {
-    auto& i_im_id() {
-        return split_0.i_im_id;
-    }
-    const auto& i_im_id() const {
-        return split_0.i_im_id;
-    }
-    auto& i_price() {
-        return split_0.i_price;
-    }
-    const auto& i_price() const {
-        return split_0.i_price;
-    }
-    auto& i_name() {
-        return split_0.i_name;
-    }
-    const auto& i_name() const {
-        return split_0.i_name;
-    }
-    auto& i_data() {
-        return split_0.i_data;
-    }
-    const auto& i_data() const {
-        return split_0.i_data;
-    }
-
-    split_value<0, 4> split_0;
+    value_type value_;
 };
 
 struct item_value {
+    using NamedColumn = item_value_datatypes::NamedColumn;
+    static constexpr auto MAX_SPLITS = 2;
+
     explicit item_value() = default;
 
-    using NamedColumn = item_value_datatypes::NamedColumn;
+    static inline void resplit(
+            item_value& newvalue, const item_value& oldvalue, NamedColumn index);
 
-    auto& i_im_id() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.i_im_id();
-            }, value);
-    }
-    const auto& i_im_id() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.i_im_id();
-            }, value);
-    }
-    auto& i_price() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.i_price();
-            }, value);
-    }
-    const auto& i_price() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.i_price();
-            }, value);
-    }
-    auto& i_name() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.i_name();
-            }, value);
-    }
-    const auto& i_name() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.i_name();
-            }, value);
-    }
-    auto& i_data() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.i_data();
-            }, value);
-    }
-    const auto& i_data() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.i_data();
-            }, value);
+    template <NamedColumn Column>
+    static inline void copy_data(item_value& newvalue, const item_value& oldvalue);
+
+    template <NamedColumn Column>
+    inline accessor<RoundedNamedColumn<Column>()>& get();
+
+    template <NamedColumn Column>
+    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+
+
+    const auto split_of(NamedColumn index) const {
+        return index < splitindex_ ? 0 : 1;
     }
 
-    std::variant<
-        unified_value<4>,
-        unified_value<3>,
-        unified_value<2>,
-        unified_value<1>
-        > value;
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::i_im_id> i_im_id;
+    accessor<NamedColumn::i_price> i_price;
+    accessor<NamedColumn::i_name> i_name;
+    accessor<NamedColumn::i_data> i_data;
 };
+
+inline void item_value::resplit(
+        item_value& newvalue, const item_value& oldvalue, NamedColumn index) {
+    assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
+}
+
+template <NamedColumn Column>
+inline void item_value::copy_data(item_value& newvalue, const item_value& oldvalue) {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+    if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
+        copy_data<Column + 1>(newvalue, oldvalue);
+    }
+}
+
+template <>
+inline accessor<NamedColumn::i_im_id>& item_value::get<NamedColumn::i_im_id>() {
+    return i_im_id;
+}
+
+template <>
+inline const accessor<NamedColumn::i_im_id>& item_value::get<NamedColumn::i_im_id>() const {
+    return i_im_id;
+}
+
+template <>
+inline accessor<NamedColumn::i_price>& item_value::get<NamedColumn::i_price>() {
+    return i_price;
+}
+
+template <>
+inline const accessor<NamedColumn::i_price>& item_value::get<NamedColumn::i_price>() const {
+    return i_price;
+}
+
+template <>
+inline accessor<NamedColumn::i_name>& item_value::get<NamedColumn::i_name>() {
+    return i_name;
+}
+
+template <>
+inline const accessor<NamedColumn::i_name>& item_value::get<NamedColumn::i_name>() const {
+    return i_name;
+}
+
+template <>
+inline accessor<NamedColumn::i_data>& item_value::get<NamedColumn::i_data>() {
+    return i_data;
+}
+
+template <>
+inline const accessor<NamedColumn::i_data>& item_value::get<NamedColumn::i_data>() const {
+    return i_data;
+}
+
 };  // namespace item_value_datatypes
 
 using item_value = item_value_datatypes::item_value;
 using ADAPTER_OF(item_value) = ADAPTER_OF(item_value_datatypes::item_value);
 
+#pragma once
+
+#include <type_traits>
+
+#include "Adapter.hh"
+#include "Sto.hh"
+
 namespace stock_value_datatypes {
 
 enum class NamedColumn : int {
     s_dists = 0,
-    s_data = 1,
-    s_quantity = 2,
-    s_ytd = 3,
-    s_order_cnt = 4,
-    s_remote_cnt = 5,
-    COLCOUNT = 6
+    s_data = 10,
+    s_quantity,
+    s_ytd,
+    s_order_cnt,
+    s_remote_cnt,
+    COLCOUNT
 };
 
-template <size_t ColIndex>
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+    return nc;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc) {
+    return nc += 1;
+}
+
+inline NamedColumn& operator++(NamedColumn& nc, int) {
+    return nc += 1;
+}
+
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+    nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+    return nc;
+}
+
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+    out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
+    return out;
+}
+
+template <NamedColumn Column>
+constexpr NamedColumn RoundedNamedColumn() {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    if constexpr (Column < NamedColumn::s_data) {
+        return NamedColumn::s_dists;
+    }
+    if constexpr (Column < NamedColumn::s_quantity) {
+        return NamedColumn::s_data;
+    }
+    if constexpr (Column < NamedColumn::s_ytd) {
+        return NamedColumn::s_quantity;
+    }
+    if constexpr (Column < NamedColumn::s_order_cnt) {
+        return NamedColumn::s_ytd;
+    }
+    if constexpr (Column < NamedColumn::s_remote_cnt) {
+        return NamedColumn::s_order_cnt;
+    }
+    return NamedColumn::s_remote_cnt;
+}
+
+template <NamedColumn Column>
 struct accessor;
-
-template <size_t StartIndex, size_t EndIndex>
-struct split_value;
-
-template <size_t SplitIndex>
-struct unified_value;
 
 struct stock_value;
 
-DEFINE_ADAPTER(stock_value, 6);
+DEFINE_ADAPTER(stock_value, NamedColumn);
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor_info;
 
 template <>
-struct accessor_info<0> {
-    using type = std::array<fix_string<24>, NUM_DISTRICTS_PER_WAREHOUSE>;
+struct accessor_info<NamedColumn::s_dists> {
+    using type = fix_string<24>;
+    using value_type = std::array<fix_string<24>, 10>;
+    static constexpr bool is_array = true;
 };
 
 template <>
-struct accessor_info<1> {
+struct accessor_info<NamedColumn::s_data> {
     using type = var_string<50>;
+    using value_type = var_string<50>;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<2> {
+struct accessor_info<NamedColumn::s_quantity> {
     using type = int32_t;
+    using value_type = int32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<3> {
+struct accessor_info<NamedColumn::s_ytd> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<4> {
+struct accessor_info<NamedColumn::s_order_cnt> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
 template <>
-struct accessor_info<5> {
+struct accessor_info<NamedColumn::s_remote_cnt> {
     using type = uint32_t;
+    using value_type = uint32_t;
+    static constexpr bool is_array = false;
 };
 
-template <size_t ColIndex>
+template <NamedColumn Column>
 struct accessor {
-    using type = typename accessor_info<ColIndex>::type;
+    using adapter_type = ADAPTER_OF(stock_value);
+    using type = typename accessor_info<Column>::type;
+    using value_type = typename accessor_info<Column>::value_type;
 
     accessor() = default;
-    accessor(type& value) : value_(value) {}
-    accessor(const type& value) : value_(const_cast<type&>(value)) {}
+    template <typename... Args>
+    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
-    operator type() {
-        ADAPTER_OF(stock_value)::CountWrite(ColIndex + index_);
+    operator const value_type() const {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+        }
         return value_;
     }
 
-    operator const type() const {
-        ADAPTER_OF(stock_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    operator type&() {
-        ADAPTER_OF(stock_value)::CountWrite(ColIndex + index_);
-        return value_;
-    }
-
-    operator const type&() const {
-        ADAPTER_OF(stock_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type operator =(const type& other) {
-        ADAPTER_OF(stock_value)::CountWrite(ColIndex + index_);
+    value_type operator =(const value_type& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other;
     }
 
-    type operator =(const accessor<ColIndex>& other) {
-        ADAPTER_OF(stock_value)::CountWrite(ColIndex + index_);
+    value_type operator =(accessor<Column>& other) {
+        if constexpr (accessor_info<Column>::is_array) {
+            adapter_type::CountReads(Column, Column + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(Column);
+            adapter_type::CountWrite(Column);
+        }
         return value_ = other.value_;
     }
 
-    type operator *() {
-        ADAPTER_OF(stock_value)::CountWrite(ColIndex + index_);
+    template <NamedColumn OtherColumn>
+    value_type operator =(const accessor<OtherColumn>& other) {
+        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
+            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
+            adapter_type::CountWrites(Column, Column + value_.size());
+        } else {
+            adapter_type::CountRead(OtherColumn);
+            adapter_type::CountWrite(Column);
+        }
+        return value_ = other.value_;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, void>
+    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
+        adapter_type::CountWrite(Column + index);
+        value_[index] = value;
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type&>
+    operator ()(const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountWrite(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, type>
+    operator [](const std::underlying_type_t<NamedColumn>& index) {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<is_array, const type&>
+    operator [](const std::underlying_type_t<NamedColumn>& index) const {
+        adapter_type::CountRead(Column + index);
+        return value_[index];
+    }
+
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type&>
+    operator *() {
+        adapter_type::CountWrite(Column);
         return value_;
     }
 
-    const type operator *() const {
-        ADAPTER_OF(stock_value)::CountRead(ColIndex + index_);
-        return value_;
-    }
-
-    type* operator ->() {
-        ADAPTER_OF(stock_value)::CountWrite(ColIndex + index_);
+    template <bool is_array = accessor_info<Column>::is_array>
+    std::enable_if_t<!is_array, type*>
+    operator ->() {
+        adapter_type::CountWrite(Column);
         return &value_;
     }
 
-    const type* operator ->() const {
-        ADAPTER_OF(stock_value)::CountRead(ColIndex + index_);
-        return &value_;
-    }
-
-    size_t index_ = 0;
-    type value_;
-};
-
-template <>
-struct split_value<0, 1> {
-    explicit split_value() = default;
-    accessor<0> s_dists;
-};
-template <>
-struct split_value<1, 6> {
-    explicit split_value() = default;
-    accessor<1> s_data;
-    accessor<2> s_quantity;
-    accessor<3> s_ytd;
-    accessor<4> s_order_cnt;
-    accessor<5> s_remote_cnt;
-};
-template <>
-struct unified_value<1> {
-    auto& s_dists() {
-        return split_0.s_dists;
-    }
-    const auto& s_dists() const {
-        return split_0.s_dists;
-    }
-    auto& s_data() {
-        return split_1.s_data;
-    }
-    const auto& s_data() const {
-        return split_1.s_data;
-    }
-    auto& s_quantity() {
-        return split_1.s_quantity;
-    }
-    const auto& s_quantity() const {
-        return split_1.s_quantity;
-    }
-    auto& s_ytd() {
-        return split_1.s_ytd;
-    }
-    const auto& s_ytd() const {
-        return split_1.s_ytd;
-    }
-    auto& s_order_cnt() {
-        return split_1.s_order_cnt;
-    }
-    const auto& s_order_cnt() const {
-        return split_1.s_order_cnt;
-    }
-    auto& s_remote_cnt() {
-        return split_1.s_remote_cnt;
-    }
-    const auto& s_remote_cnt() const {
-        return split_1.s_remote_cnt;
-    }
-
-    split_value<0, 1> split_0;
-    split_value<1, 6> split_1;
-};
-
-template <>
-struct split_value<0, 2> {
-    explicit split_value() = default;
-    accessor<0> s_dists;
-    accessor<1> s_data;
-};
-template <>
-struct split_value<2, 6> {
-    explicit split_value() = default;
-    accessor<2> s_quantity;
-    accessor<3> s_ytd;
-    accessor<4> s_order_cnt;
-    accessor<5> s_remote_cnt;
-};
-template <>
-struct unified_value<2> {
-    auto& s_dists() {
-        return split_0.s_dists;
-    }
-    const auto& s_dists() const {
-        return split_0.s_dists;
-    }
-    auto& s_data() {
-        return split_0.s_data;
-    }
-    const auto& s_data() const {
-        return split_0.s_data;
-    }
-    auto& s_quantity() {
-        return split_1.s_quantity;
-    }
-    const auto& s_quantity() const {
-        return split_1.s_quantity;
-    }
-    auto& s_ytd() {
-        return split_1.s_ytd;
-    }
-    const auto& s_ytd() const {
-        return split_1.s_ytd;
-    }
-    auto& s_order_cnt() {
-        return split_1.s_order_cnt;
-    }
-    const auto& s_order_cnt() const {
-        return split_1.s_order_cnt;
-    }
-    auto& s_remote_cnt() {
-        return split_1.s_remote_cnt;
-    }
-    const auto& s_remote_cnt() const {
-        return split_1.s_remote_cnt;
-    }
-
-    split_value<0, 2> split_0;
-    split_value<2, 6> split_1;
-};
-
-template <>
-struct split_value<0, 3> {
-    explicit split_value() = default;
-    accessor<0> s_dists;
-    accessor<1> s_data;
-    accessor<2> s_quantity;
-};
-template <>
-struct split_value<3, 6> {
-    explicit split_value() = default;
-    accessor<3> s_ytd;
-    accessor<4> s_order_cnt;
-    accessor<5> s_remote_cnt;
-};
-template <>
-struct unified_value<3> {
-    auto& s_dists() {
-        return split_0.s_dists;
-    }
-    const auto& s_dists() const {
-        return split_0.s_dists;
-    }
-    auto& s_data() {
-        return split_0.s_data;
-    }
-    const auto& s_data() const {
-        return split_0.s_data;
-    }
-    auto& s_quantity() {
-        return split_0.s_quantity;
-    }
-    const auto& s_quantity() const {
-        return split_0.s_quantity;
-    }
-    auto& s_ytd() {
-        return split_1.s_ytd;
-    }
-    const auto& s_ytd() const {
-        return split_1.s_ytd;
-    }
-    auto& s_order_cnt() {
-        return split_1.s_order_cnt;
-    }
-    const auto& s_order_cnt() const {
-        return split_1.s_order_cnt;
-    }
-    auto& s_remote_cnt() {
-        return split_1.s_remote_cnt;
-    }
-    const auto& s_remote_cnt() const {
-        return split_1.s_remote_cnt;
-    }
-
-    split_value<0, 3> split_0;
-    split_value<3, 6> split_1;
-};
-
-template <>
-struct split_value<0, 4> {
-    explicit split_value() = default;
-    accessor<0> s_dists;
-    accessor<1> s_data;
-    accessor<2> s_quantity;
-    accessor<3> s_ytd;
-};
-template <>
-struct split_value<4, 6> {
-    explicit split_value() = default;
-    accessor<4> s_order_cnt;
-    accessor<5> s_remote_cnt;
-};
-template <>
-struct unified_value<4> {
-    auto& s_dists() {
-        return split_0.s_dists;
-    }
-    const auto& s_dists() const {
-        return split_0.s_dists;
-    }
-    auto& s_data() {
-        return split_0.s_data;
-    }
-    const auto& s_data() const {
-        return split_0.s_data;
-    }
-    auto& s_quantity() {
-        return split_0.s_quantity;
-    }
-    const auto& s_quantity() const {
-        return split_0.s_quantity;
-    }
-    auto& s_ytd() {
-        return split_0.s_ytd;
-    }
-    const auto& s_ytd() const {
-        return split_0.s_ytd;
-    }
-    auto& s_order_cnt() {
-        return split_1.s_order_cnt;
-    }
-    const auto& s_order_cnt() const {
-        return split_1.s_order_cnt;
-    }
-    auto& s_remote_cnt() {
-        return split_1.s_remote_cnt;
-    }
-    const auto& s_remote_cnt() const {
-        return split_1.s_remote_cnt;
-    }
-
-    split_value<0, 4> split_0;
-    split_value<4, 6> split_1;
-};
-
-template <>
-struct split_value<0, 5> {
-    explicit split_value() = default;
-    accessor<0> s_dists;
-    accessor<1> s_data;
-    accessor<2> s_quantity;
-    accessor<3> s_ytd;
-    accessor<4> s_order_cnt;
-};
-template <>
-struct split_value<5, 6> {
-    explicit split_value() = default;
-    accessor<5> s_remote_cnt;
-};
-template <>
-struct unified_value<5> {
-    auto& s_dists() {
-        return split_0.s_dists;
-    }
-    const auto& s_dists() const {
-        return split_0.s_dists;
-    }
-    auto& s_data() {
-        return split_0.s_data;
-    }
-    const auto& s_data() const {
-        return split_0.s_data;
-    }
-    auto& s_quantity() {
-        return split_0.s_quantity;
-    }
-    const auto& s_quantity() const {
-        return split_0.s_quantity;
-    }
-    auto& s_ytd() {
-        return split_0.s_ytd;
-    }
-    const auto& s_ytd() const {
-        return split_0.s_ytd;
-    }
-    auto& s_order_cnt() {
-        return split_0.s_order_cnt;
-    }
-    const auto& s_order_cnt() const {
-        return split_0.s_order_cnt;
-    }
-    auto& s_remote_cnt() {
-        return split_1.s_remote_cnt;
-    }
-    const auto& s_remote_cnt() const {
-        return split_1.s_remote_cnt;
-    }
-
-    split_value<0, 5> split_0;
-    split_value<5, 6> split_1;
-};
-
-template <>
-struct split_value<0, 6> {
-    explicit split_value() = default;
-    accessor<0> s_dists;
-    accessor<1> s_data;
-    accessor<2> s_quantity;
-    accessor<3> s_ytd;
-    accessor<4> s_order_cnt;
-    accessor<5> s_remote_cnt;
-};
-template <>
-struct unified_value<6> {
-    auto& s_dists() {
-        return split_0.s_dists;
-    }
-    const auto& s_dists() const {
-        return split_0.s_dists;
-    }
-    auto& s_data() {
-        return split_0.s_data;
-    }
-    const auto& s_data() const {
-        return split_0.s_data;
-    }
-    auto& s_quantity() {
-        return split_0.s_quantity;
-    }
-    const auto& s_quantity() const {
-        return split_0.s_quantity;
-    }
-    auto& s_ytd() {
-        return split_0.s_ytd;
-    }
-    const auto& s_ytd() const {
-        return split_0.s_ytd;
-    }
-    auto& s_order_cnt() {
-        return split_0.s_order_cnt;
-    }
-    const auto& s_order_cnt() const {
-        return split_0.s_order_cnt;
-    }
-    auto& s_remote_cnt() {
-        return split_0.s_remote_cnt;
-    }
-    const auto& s_remote_cnt() const {
-        return split_0.s_remote_cnt;
-    }
-
-    split_value<0, 6> split_0;
+    value_type value_;
 };
 
 struct stock_value {
+    using NamedColumn = stock_value_datatypes::NamedColumn;
+    static constexpr auto MAX_SPLITS = 2;
+
     explicit stock_value() = default;
 
-    using NamedColumn = stock_value_datatypes::NamedColumn;
+    static inline void resplit(
+            stock_value& newvalue, const stock_value& oldvalue, NamedColumn index);
 
-    auto& s_dists() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.s_dists();
-            }, value);
-    }
-    const auto& s_dists() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.s_dists();
-            }, value);
-    }
-    auto& s_data() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.s_data();
-            }, value);
-    }
-    const auto& s_data() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.s_data();
-            }, value);
-    }
-    auto& s_quantity() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.s_quantity();
-            }, value);
-    }
-    const auto& s_quantity() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.s_quantity();
-            }, value);
-    }
-    auto& s_ytd() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.s_ytd();
-            }, value);
-    }
-    const auto& s_ytd() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.s_ytd();
-            }, value);
-    }
-    auto& s_order_cnt() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.s_order_cnt();
-            }, value);
-    }
-    const auto& s_order_cnt() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.s_order_cnt();
-            }, value);
-    }
-    auto& s_remote_cnt() {
-        return std::visit([this] (auto&& val) -> auto& {
-                return val.s_remote_cnt();
-            }, value);
-    }
-    const auto& s_remote_cnt() const {
-        return std::visit([this] (auto&& val) -> const auto& {
-                return val.s_remote_cnt();
-            }, value);
+    template <NamedColumn Column>
+    static inline void copy_data(stock_value& newvalue, const stock_value& oldvalue);
+
+    template <NamedColumn Column>
+    inline accessor<RoundedNamedColumn<Column>()>& get();
+
+    template <NamedColumn Column>
+    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+
+
+    const auto split_of(NamedColumn index) const {
+        return index < splitindex_ ? 0 : 1;
     }
 
-    std::variant<
-        unified_value<6>,
-        unified_value<5>,
-        unified_value<4>,
-        unified_value<3>,
-        unified_value<2>,
-        unified_value<1>
-        > value;
+    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    accessor<NamedColumn::s_dists> s_dists;
+    accessor<NamedColumn::s_data> s_data;
+    accessor<NamedColumn::s_quantity> s_quantity;
+    accessor<NamedColumn::s_ytd> s_ytd;
+    accessor<NamedColumn::s_order_cnt> s_order_cnt;
+    accessor<NamedColumn::s_remote_cnt> s_remote_cnt;
 };
+
+inline void stock_value::resplit(
+        stock_value& newvalue, const stock_value& oldvalue, NamedColumn index) {
+    assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
+    memcpy(&newvalue, &oldvalue, sizeof newvalue);
+    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    newvalue.splitindex_ = index;
+}
+
+template <NamedColumn Column>
+inline void stock_value::copy_data(stock_value& newvalue, const stock_value& oldvalue) {
+    static_assert(Column < NamedColumn::COLCOUNT);
+    newvalue.template get<Column>().value_ = oldvalue.template get<Column>().value_;
+    if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
+        copy_data<Column + 1>(newvalue, oldvalue);
+    }
+}
+
+template <>
+inline accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 0>() {
+    return s_dists;
+}
+
+template <>
+inline const accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 0>() const {
+    return s_dists;
+}
+
+template <>
+inline accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 1>() {
+    return s_dists;
+}
+
+template <>
+inline const accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 1>() const {
+    return s_dists;
+}
+
+template <>
+inline accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 2>() {
+    return s_dists;
+}
+
+template <>
+inline const accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 2>() const {
+    return s_dists;
+}
+
+template <>
+inline accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 3>() {
+    return s_dists;
+}
+
+template <>
+inline const accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 3>() const {
+    return s_dists;
+}
+
+template <>
+inline accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 4>() {
+    return s_dists;
+}
+
+template <>
+inline const accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 4>() const {
+    return s_dists;
+}
+
+template <>
+inline accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 5>() {
+    return s_dists;
+}
+
+template <>
+inline const accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 5>() const {
+    return s_dists;
+}
+
+template <>
+inline accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 6>() {
+    return s_dists;
+}
+
+template <>
+inline const accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 6>() const {
+    return s_dists;
+}
+
+template <>
+inline accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 7>() {
+    return s_dists;
+}
+
+template <>
+inline const accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 7>() const {
+    return s_dists;
+}
+
+template <>
+inline accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 8>() {
+    return s_dists;
+}
+
+template <>
+inline const accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 8>() const {
+    return s_dists;
+}
+
+template <>
+inline accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 9>() {
+    return s_dists;
+}
+
+template <>
+inline const accessor<NamedColumn::s_dists>& stock_value::get<NamedColumn::s_dists + 9>() const {
+    return s_dists;
+}
+
+template <>
+inline accessor<NamedColumn::s_data>& stock_value::get<NamedColumn::s_data>() {
+    return s_data;
+}
+
+template <>
+inline const accessor<NamedColumn::s_data>& stock_value::get<NamedColumn::s_data>() const {
+    return s_data;
+}
+
+template <>
+inline accessor<NamedColumn::s_quantity>& stock_value::get<NamedColumn::s_quantity>() {
+    return s_quantity;
+}
+
+template <>
+inline const accessor<NamedColumn::s_quantity>& stock_value::get<NamedColumn::s_quantity>() const {
+    return s_quantity;
+}
+
+template <>
+inline accessor<NamedColumn::s_ytd>& stock_value::get<NamedColumn::s_ytd>() {
+    return s_ytd;
+}
+
+template <>
+inline const accessor<NamedColumn::s_ytd>& stock_value::get<NamedColumn::s_ytd>() const {
+    return s_ytd;
+}
+
+template <>
+inline accessor<NamedColumn::s_order_cnt>& stock_value::get<NamedColumn::s_order_cnt>() {
+    return s_order_cnt;
+}
+
+template <>
+inline const accessor<NamedColumn::s_order_cnt>& stock_value::get<NamedColumn::s_order_cnt>() const {
+    return s_order_cnt;
+}
+
+template <>
+inline accessor<NamedColumn::s_remote_cnt>& stock_value::get<NamedColumn::s_remote_cnt>() {
+    return s_remote_cnt;
+}
+
+template <>
+inline const accessor<NamedColumn::s_remote_cnt>& stock_value::get<NamedColumn::s_remote_cnt>() const {
+    return s_remote_cnt;
+}
+
 };  // namespace stock_value_datatypes
 
 using stock_value = stock_value_datatypes::stock_value;

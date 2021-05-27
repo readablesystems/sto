@@ -8,28 +8,28 @@
 namespace commutators {
 
 using warehouse_value = tpcc::warehouse_value;
-using warehouse_value_frequpd = tpcc::warehouse_value_frequpd;
-using warehouse_value_infreq = tpcc::warehouse_value_infreq;
+//using warehouse_value_frequpd = tpcc::warehouse_value_frequpd;
+//using warehouse_value_infreq = tpcc::warehouse_value_infreq;
 
 using district_value = tpcc::district_value;
-using district_value_frequpd = tpcc::district_value_frequpd;
-using district_value_infreq = tpcc::district_value_infreq;
+//using district_value_frequpd = tpcc::district_value_frequpd;
+//using district_value_infreq = tpcc::district_value_infreq;
 
 using customer_value = tpcc::customer_value;
-using customer_value_frequpd = tpcc::customer_value_frequpd;
-using customer_value_infreq = tpcc::customer_value_infreq;
+//using customer_value_frequpd = tpcc::customer_value_frequpd;
+//using customer_value_infreq = tpcc::customer_value_infreq;
 
 using order_value = tpcc::order_value;
-using order_value_frequpd = tpcc::order_value_frequpd;
-using order_value_infreq = tpcc::order_value_infreq;
+//using order_value_frequpd = tpcc::order_value_frequpd;
+//using order_value_infreq = tpcc::order_value_infreq;
 
 using orderline_value = tpcc::orderline_value;
-using orderline_value_frequpd = tpcc::orderline_value_frequpd;
-using orderline_value_infreq = tpcc::orderline_value_infreq;
+//using orderline_value_frequpd = tpcc::orderline_value_frequpd;
+//using orderline_value_infreq = tpcc::orderline_value_infreq;
 
 using stock_value = tpcc::stock_value;
-using stock_value_frequpd = tpcc::stock_value_frequpd;
-using stock_value_infreq = tpcc::stock_value_infreq;
+//using stock_value_frequpd = tpcc::stock_value_frequpd;
+//using stock_value_infreq = tpcc::stock_value_infreq;
 
 using tpcc::c_data_info;
 
@@ -41,14 +41,15 @@ public:
     explicit Commutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
 
     void operate(warehouse_value &w) const {
-        w.w_ytd() += (uint64_t)delta_ytd;
+        w.w_ytd = w.w_ytd + (uint64_t)delta_ytd;
     }
 
 private:
     int64_t delta_ytd;
-    friend Commutator<warehouse_value_frequpd>;
+    //friend Commutator<warehouse_value_frequpd>;
 };
 
+/*
 template <>
 class Commutator<warehouse_value_infreq> : Commutator<warehouse_value> {
 public:
@@ -73,6 +74,7 @@ public:
         w.w_ytd += (uint64_t)delta_ytd;
     }
 };
+*/
 
 template <>
 class Commutator<district_value> {
@@ -82,14 +84,15 @@ public:
     explicit Commutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
 
     void operate(district_value &d) const {
-        d.d_ytd() += delta_ytd;
+        d.d_ytd = d.d_ytd + delta_ytd;
     }
 
 private:
     int64_t delta_ytd;
-    friend Commutator<district_value_frequpd>;
+    //friend Commutator<district_value_frequpd>;
 };
 
+/*
 template <>
 class Commutator<district_value_infreq> : Commutator<district_value> {
 public:
@@ -114,6 +117,7 @@ public:
         d.d_ytd += (uint64_t)delta_ytd;
     }
 };
+*/
 
 /*
  * Yihe's comment: as it turns out payment transactions don't actually commute
@@ -141,15 +145,15 @@ public:
 
     void operate(customer_value &c) const {
         if (op == OpType::Payment) {
-            c.c_balance() += delta_balance;
-            c.c_payment_cnt() += 1;
-            c.c_ytd_payment() += delta_ytd_payment;
+            c.c_balance = c.c_balance + delta_balance;
+            c.c_payment_cnt = c.c_payment_cnt + 1;
+            c.c_ytd_payment = c.c_ytd_payment + delta_ytd_payment;
             if (bad_credit) {
-                c.c_data()->insert_left(delta_data.buf(), c_data_info::len);
+                c.c_data->insert_left(delta_data.buf(), c_data_info::len);
             }
         } else if (op == OpType::Delivery) {
-            c.c_balance() += delta_balance;
-            c.c_delivery_cnt() += 1;
+            c.c_balance = c.c_balance + delta_balance;
+            c.c_delivery_cnt = c.c_delivery_cnt + 1;
         }
     }
 
@@ -160,10 +164,11 @@ private:
     bool        bad_credit;
     c_data_info delta_data;
 
-    friend Commutator<customer_value_infreq>;
-    friend Commutator<customer_value_frequpd>;
+    //friend Commutator<customer_value_infreq>;
+    //friend Commutator<customer_value_frequpd>;
 };
 
+/*
 template <>
 class Commutator<customer_value_infreq> : Commutator<customer_value> {
 public:
@@ -198,6 +203,7 @@ public:
         }
     }
 };
+*/
 
 template <>
 class Commutator<order_value> {
@@ -206,14 +212,15 @@ public:
 
     explicit Commutator(uint64_t write_carrier_id) : write_carrier_id(write_carrier_id) {}
     void operate(order_value& ov) const {
-        ov.o_carrier_id() = write_carrier_id;
+        ov.o_carrier_id = write_carrier_id;
     }
 private:
     uint64_t write_carrier_id;
 
-    friend Commutator<order_value_frequpd>;
+    //friend Commutator<order_value_frequpd>;
 };
 
+/*
 template <>
 class Commutator<order_value_infreq> : Commutator<order_value> {
 public:
@@ -238,6 +245,7 @@ public:
         ov.o_carrier_id = write_carrier_id;
     }
 };
+*/
 
 template <>
 class Commutator<orderline_value> {
@@ -246,14 +254,15 @@ public:
 
     explicit Commutator(uint32_t write_delivery_d) : write_delivery_d(write_delivery_d) {}
     void operate(orderline_value& ol) const {
-        ol.ol_delivery_d() = write_delivery_d;
+        ol.ol_delivery_d = write_delivery_d;
     }
 private:
     uint32_t write_delivery_d;
 
-    friend Commutator<orderline_value_frequpd>;
+    //friend Commutator<orderline_value_frequpd>;
 };
 
+/*
 template <>
 class Commutator<orderline_value_infreq> : Commutator<orderline_value> {
 public:
@@ -278,6 +287,7 @@ public:
         ol.ol_delivery_d = write_delivery_d;
     }
 };
+*/
 
 template <>
 class Commutator<stock_value> {
@@ -286,23 +296,24 @@ public:
 
     explicit Commutator(int32_t qty, bool remote) : update_qty(qty), is_remote(remote) {}
     void operate(stock_value& sv) const {
-        if ((*sv.s_quantity() - 10) >= update_qty)
-            sv.s_quantity() -= update_qty;
+        if ((sv.s_quantity - 10) >= update_qty)
+            sv.s_quantity = sv.s_quantity - update_qty;
         else
-            sv.s_quantity() += (91 - update_qty);
-        sv.s_ytd() += update_qty;
-        sv.s_order_cnt() += 1;
+            sv.s_quantity = sv.s_quantity + (91 - update_qty);
+        sv.s_ytd = sv.s_ytd + update_qty;
+        sv.s_order_cnt = sv.s_order_cnt + 1;
         if (is_remote)
-            sv.s_remote_cnt() += 1;
+            sv.s_remote_cnt = sv.s_remote_cnt + 1;
     }
 
 private:
     int32_t update_qty;
     bool is_remote;
 
-    friend Commutator<stock_value_frequpd>;
+    //friend Commutator<stock_value_frequpd>;
 };
 
+/*
 template <>
 class Commutator<stock_value_infreq> : Commutator<stock_value> {
 public:
@@ -334,5 +345,6 @@ public:
             sv.s_remote_cnt += 1;
     }
 };
+*/
 
 }

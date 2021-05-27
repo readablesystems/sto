@@ -69,7 +69,7 @@ class Output:
 
     ### Generation methods; hierarchical, not lexicographical
 
-    def convert_struct(self, struct, sdata):
+    def convert_struct(self, struct, sdata, headers=False):
         '''Output a single struct's variants.'''
         self.colcount = Output.count_columns(sdata.keys())
         self._data = {
@@ -86,7 +86,8 @@ class Output:
                 }
         self.sdata = sdata
 
-        self.writelns('''\
+        if headers:
+            self.writelns('''\
 #pragma once
 
 #include <type_traits>
@@ -187,33 +188,33 @@ using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
         self.writelns('''\
 {rbrace};
 
-constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {lbrace}
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {lbrace}
 {indent}return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 {rbrace}
 
-NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {lbrace}
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {lbrace}
 {indent}nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 {indent}return nc;
 {rbrace}
 
-NamedColumn& operator++(NamedColumn& nc) {lbrace}
+inline NamedColumn& operator++(NamedColumn& nc) {lbrace}
 {indent}return nc += 1;
 {rbrace}
 
-NamedColumn& operator++(NamedColumn& nc, int) {lbrace}
+inline NamedColumn& operator++(NamedColumn& nc, int) {lbrace}
 {indent}return nc += 1;
 {rbrace}
 
-constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {lbrace}
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {lbrace}
 {indent}return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 {rbrace}
 
-NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {lbrace}
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {lbrace}
 {indent}nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 {indent}return nc;
 {rbrace}
 
-std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {lbrace}
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {lbrace}
 {indent}out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
 {indent}return out;
 {rbrace}
@@ -472,7 +473,9 @@ The fully-qualified namespace for the struct, e.g. ::benchmark::tpcc\
     if not namespaces[-1]:
         namespaces = namespaces[:-1]
 
+    headers = True
     for struct in config.sections():
-        Output(outfile, namespaces).convert_struct(struct, config[struct])
+        Output(outfile, namespaces).convert_struct(struct, config[struct], headers=True)
+        headers = False
 
     outfile.close()

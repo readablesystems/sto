@@ -176,7 +176,7 @@ template <typename T> struct Packer<T, false> {
             return buf.template allocate<UniqueKey<T> >(x);
     }
     static void* repack(TransactionBuffer&, void* p, const T& x) {
-        unpack(p) = x;
+        unpack(p) = const_cast<T&>(x);
         return p;
     }
     static void* repack(TransactionBuffer&, void* p, T&& x) {
