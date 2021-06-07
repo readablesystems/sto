@@ -9,16 +9,18 @@
 
 namespace tpcc {
 
-inline void tpcc_adapters_commit() {
-    ADAPTER_OF(warehouse_value)::Commit();
-    ADAPTER_OF(district_value)::Commit();
-    ADAPTER_OF(customer_idx_value)::Commit();
-    ADAPTER_OF(customer_value)::Commit();
-    ADAPTER_OF(history_value)::Commit();
-    ADAPTER_OF(order_value)::Commit();
-    ADAPTER_OF(orderline_value)::Commit();
-    ADAPTER_OF(item_value)::Commit();
-    ADAPTER_OF(stock_value)::Commit();
+inline void tpcc_adapters_commit(std::function<uint64_t(uint64_t)> random) {
+    if (!random(4)) {
+        ADAPTER_OF(warehouse_value)::Commit();
+        ADAPTER_OF(district_value)::Commit();
+        ADAPTER_OF(customer_idx_value)::Commit();
+        ADAPTER_OF(customer_value)::Commit();
+        ADAPTER_OF(history_value)::Commit();
+        ADAPTER_OF(order_value)::Commit();
+        ADAPTER_OF(orderline_value)::Commit();
+        ADAPTER_OF(item_value)::Commit();
+        ADAPTER_OF(stock_value)::Commit();
+    }
 }
 
 inline void tpcc_adapters_treset() {
@@ -92,7 +94,7 @@ if constexpr (!DBParams::MVCC) {
     // begin txn
     RWTXN {
     ++starts;
-    tpcc_adapters_commit();
+    tpcc_adapters_commit([this](uint64_t range) -> uint64_t { return ig.random(0, range); });
     tpcc_adapters_treset();
 
     int64_t wh_tax_rate, dt_tax_rate;
@@ -149,6 +151,7 @@ if constexpr (!DBParams::MVCC) {
     order_cidx_key ock(q_w_id, q_d_id, q_c_id, dt_next_oid);
     order_value* ov = Sto::tx_alloc<order_value>();
     new (ov) order_value();
+    ov->init();
     ov->o_c_id = q_c_id;
     ov->o_carrier_id = 0;
     ov->o_all_local = all_local ? 1 : 0;
@@ -224,7 +227,8 @@ if constexpr (!DBParams::MVCC) {
         } else {
             stock_value* new_sv = Sto::tx_alloc<stock_value>();
             new (new_sv) stock_value();
-            memcpy(new_sv, value, sizeof *new_sv);
+            new_sv->init(value);
+            //memcpy(new_sv, value, sizeof *new_sv);
             if ((s_quantity - 10) >= (int32_t) qty)
                 new_sv->s_quantity = new_sv->s_quantity - qty;
             else
@@ -242,6 +246,7 @@ if constexpr (!DBParams::MVCC) {
         orderline_key olk(q_w_id, q_d_id, dt_next_oid, i + 1);
         orderline_value *olv = Sto::tx_alloc<orderline_value>();
         new (olv) orderline_value();
+        olv->init();
         olv->ol_i_id = iid;
         olv->ol_supply_w_id = wid;
         olv->ol_delivery_d = 0;
@@ -338,7 +343,7 @@ if constexpr (!DBParams::MVCC) {
     RWTXN {
     Sto::transaction()->special_txp = true;
     ++starts;
-    tpcc_adapters_commit();
+    tpcc_adapters_commit([this](uint64_t range) -> uint64_t { return ig.random(0, range); });
     tpcc_adapters_treset();
 
     // select warehouse row for update and retrieve warehouse info
@@ -370,7 +375,8 @@ if constexpr (!DBParams::MVCC) {
     } else {
         auto new_wv = Sto::tx_alloc<warehouse_value>();
         new (new_wv) warehouse_value();
-        memcpy(new_wv, value, sizeof *value);
+        new_wv->init(value);
+        //memcpy(new_wv, value, sizeof *value);
         new_wv->w_ytd = new_wv->w_ytd + h_amount;
         db.tbl_warehouses().update_row(row, new_wv);
     }
@@ -407,7 +413,8 @@ if constexpr (!DBParams::MVCC) {
     } else {
         auto new_dv = Sto::tx_alloc<district_value>();
         new (new_dv) district_value();
-        memcpy(new_dv, value, sizeof *new_dv);
+        new_dv->init(value);
+        //memcpy(new_dv, value, sizeof *new_dv);
         // update district ytd in-place
         new_dv->d_ytd = new_dv->d_ytd + h_amount;
         db.tbl_districts(q_w_id).update_row(row, new_dv);
@@ -470,7 +477,8 @@ if constexpr (!DBParams::MVCC) {
     } else {
         auto new_cv = Sto::tx_alloc<customer_value>();
         new (new_cv) customer_value();
-        memcpy(new_cv, value, sizeof *new_cv);
+        new_cv->init(value);
+        //memcpy(new_cv, value, sizeof *new_cv);
         new_cv->c_balance = new_cv->c_balance - h_amount;
         new_cv->c_payment_cnt = new_cv->c_payment_cnt + 1;
         new_cv->c_ytd_payment = new_cv->c_ytd_payment + h_amount;
@@ -486,6 +494,7 @@ if constexpr (!DBParams::MVCC) {
     // insert to history table
     history_value *hv = Sto::tx_alloc<history_value>();
     new (hv) history_value();
+    hv->init();
     hv->h_c_id = q_c_id;
     hv->h_c_d_id = q_c_d_id;
     hv->h_c_w_id = q_c_w_id;
@@ -559,7 +568,7 @@ if constexpr (!DBParams::MVCC) {
 
     TXN {
     ++starts;
-    tpcc_adapters_commit();
+    tpcc_adapters_commit([this](uint64_t range) -> uint64_t { return ig.random(0, range); });
     tpcc_adapters_treset();
 
     if (by_name) {
@@ -691,7 +700,7 @@ if constexpr (DBParams::MVCC) {
 
     RWTXN {
     ++starts;
-    tpcc_adapters_commit();
+    tpcc_adapters_commit([this](uint64_t range) -> uint64_t { return ig.random(0, range); });
     tpcc_adapters_treset();
 
     for (uint64_t q_d_id = 1; q_d_id <= 10; ++q_d_id) {
@@ -744,7 +753,8 @@ if constexpr (DBParams::MVCC) {
         } else {
             order_value* new_ov = Sto::tx_alloc<order_value>();
             new (new_ov) order_value();
-            memcpy(new_ov, value, sizeof *new_ov);
+            new_ov->init(value);
+            //memcpy(new_ov, value, sizeof *new_ov);
             new_ov->o_carrier_id = carrier_id;
             db.tbl_orders(q_w_id).update_row(row, new_ov);
         }
@@ -772,7 +782,8 @@ if constexpr (DBParams::MVCC) {
             } else {
                 orderline_value* new_olv = Sto::tx_alloc<orderline_value>();
                 new (new_olv) orderline_value();
-                memcpy(new_olv, value, sizeof *new_olv);
+                new_olv->init(value);
+                //memcpy(new_olv, value, sizeof *new_olv);
                 new_olv->ol_delivery_d = delivery_date;
                 db.tbl_orderlines(q_w_id).update_row(row, new_olv);
             }
@@ -797,7 +808,8 @@ if constexpr (DBParams::MVCC) {
         } else {
             auto new_cv = Sto::tx_alloc<customer_value>();
             new (new_cv) customer_value();
-            memcpy(new_cv, value, sizeof *new_cv);
+            new_cv->init(value);
+            //memcpy(new_cv, value, sizeof *new_cv);
             new_cv->c_balance = new_cv->c_balance + (int64_t)ol_amount_sum;
             new_cv->c_delivery_cnt = new_cv->c_delivery_cnt + 1;
             db.tbl_customers(q_w_id).update_row(row, new_cv);
@@ -842,7 +854,7 @@ if constexpr (!DBParams::MVCC) {
 
     TXN {
     ++starts;
-    tpcc_adapters_commit();
+    tpcc_adapters_commit([this](uint64_t range) -> uint64_t { return ig.random(0, range); });
     tpcc_adapters_treset();
 
     ol_iids.clear();

@@ -251,6 +251,12 @@ struct warehouse_value {
     template <NamedColumn Column>
     static inline void copy_data(warehouse_value& newvalue, const warehouse_value& oldvalue);
 
+    inline void init(const warehouse_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            warehouse_value::resplit(*this, *oldvalue, ADAPTER_OF(warehouse_value)::CurrentSplit());
+        }
+    }
+
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -276,8 +282,10 @@ struct warehouse_value {
 inline void warehouse_value::resplit(
         warehouse_value& newvalue, const warehouse_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 
@@ -628,6 +636,12 @@ struct district_value {
     template <NamedColumn Column>
     static inline void copy_data(district_value& newvalue, const district_value& oldvalue);
 
+    inline void init(const district_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            district_value::resplit(*this, *oldvalue, ADAPTER_OF(district_value)::CurrentSplit());
+        }
+    }
+
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -653,8 +667,10 @@ struct district_value {
 inline void district_value::resplit(
         district_value& newvalue, const district_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 
@@ -928,6 +944,12 @@ struct customer_idx_value {
     template <NamedColumn Column>
     static inline void copy_data(customer_idx_value& newvalue, const customer_idx_value& oldvalue);
 
+    inline void init(const customer_idx_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            customer_idx_value::resplit(*this, *oldvalue, ADAPTER_OF(customer_idx_value)::CurrentSplit());
+        }
+    }
+
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -946,8 +968,10 @@ struct customer_idx_value {
 inline void customer_idx_value::resplit(
         customer_idx_value& newvalue, const customer_idx_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 
@@ -1338,6 +1362,12 @@ struct customer_value {
     template <NamedColumn Column>
     static inline void copy_data(customer_value& newvalue, const customer_value& oldvalue);
 
+    inline void init(const customer_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            customer_value::resplit(*this, *oldvalue, ADAPTER_OF(customer_value)::CurrentSplit());
+        }
+    }
+
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -1373,8 +1403,10 @@ struct customer_value {
 inline void customer_value::resplit(
         customer_value& newvalue, const customer_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 
@@ -1825,6 +1857,12 @@ struct history_value {
     template <NamedColumn Column>
     static inline void copy_data(history_value& newvalue, const history_value& oldvalue);
 
+    inline void init(const history_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            history_value::resplit(*this, *oldvalue, ADAPTER_OF(history_value)::CurrentSplit());
+        }
+    }
+
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -1850,8 +1888,10 @@ struct history_value {
 inline void history_value::resplit(
         history_value& newvalue, const history_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 
@@ -2169,6 +2209,12 @@ struct order_value {
     template <NamedColumn Column>
     static inline void copy_data(order_value& newvalue, const order_value& oldvalue);
 
+    inline void init(const order_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            order_value::resplit(*this, *oldvalue, ADAPTER_OF(order_value)::CurrentSplit());
+        }
+    }
+
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -2191,8 +2237,10 @@ struct order_value {
 inline void order_value::resplit(
         order_value& newvalue, const order_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 
@@ -2491,6 +2539,12 @@ struct orderline_value {
     template <NamedColumn Column>
     static inline void copy_data(orderline_value& newvalue, const orderline_value& oldvalue);
 
+    inline void init(const orderline_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            orderline_value::resplit(*this, *oldvalue, ADAPTER_OF(orderline_value)::CurrentSplit());
+        }
+    }
+
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -2514,8 +2568,10 @@ struct orderline_value {
 inline void orderline_value::resplit(
         orderline_value& newvalue, const orderline_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 
@@ -2802,6 +2858,12 @@ struct item_value {
     template <NamedColumn Column>
     static inline void copy_data(item_value& newvalue, const item_value& oldvalue);
 
+    inline void init(const item_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            item_value::resplit(*this, *oldvalue, ADAPTER_OF(item_value)::CurrentSplit());
+        }
+    }
+
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -2823,8 +2885,10 @@ struct item_value {
 inline void item_value::resplit(
         item_value& newvalue, const item_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 
@@ -3113,6 +3177,12 @@ struct stock_value {
     template <NamedColumn Column>
     static inline void copy_data(stock_value& newvalue, const stock_value& oldvalue);
 
+    inline void init(const stock_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            stock_value::resplit(*this, *oldvalue, ADAPTER_OF(stock_value)::CurrentSplit());
+        }
+    }
+
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -3136,8 +3206,10 @@ struct stock_value {
 inline void stock_value::resplit(
         stock_value& newvalue, const stock_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 

@@ -130,6 +130,12 @@ static inline void resplit(
 template <NamedColumn Column>
 static inline void copy_data({struct}& newvalue, const {struct}& oldvalue);
 
+inline void init(const {struct}* oldvalue = nullptr) {lbrace}
+{indent}if (oldvalue) {lbrace}
+{indent}{indent}{struct}::resplit(*this, *oldvalue, ADAPTER_OF({struct})::CurrentSplit());
+{indent}{rbrace}
+{rbrace}
+
 template <NamedColumn Column>
 inline accessor<RoundedNamedColumn<Column>()>& get();
 
@@ -404,8 +410,10 @@ const auto split_of(NamedColumn index) const {lbrace}
 inline void {struct}::resplit(
 {indent}{indent}{struct}& newvalue, const {struct}& oldvalue, NamedColumn index) {lbrace}
 {indent}assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-{indent}memcpy(&newvalue, &oldvalue, sizeof newvalue);
-{indent}//copy_data<NamedColumn(0)>(newvalue, oldvalue);
+{indent}if (&newvalue != &oldvalue) {lbrace}
+{indent}{indent}memcpy(&newvalue, &oldvalue, sizeof newvalue);
+{indent}{indent}//copy_data<NamedColumn(0)>(newvalue, oldvalue);
+{indent}{rbrace}
 {indent}newvalue.splitindex_ = index;
 {rbrace}
 
