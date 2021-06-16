@@ -20,6 +20,37 @@ inline void tpcc_adapters_commit(std::function<uint64_t(uint64_t)> random) {
         ADAPTER_OF(orderline_value)::Commit();
         ADAPTER_OF(item_value)::Commit();
         ADAPTER_OF(stock_value)::Commit();
+        if (!random(100)) {
+            switch (random(9)) {
+                case 0:
+                    ADAPTER_OF(warehouse_value)::RecomputeSplit();
+                    break;
+                case 1:
+                    ADAPTER_OF(district_value)::RecomputeSplit();
+                    break;
+                case 2:
+                    ADAPTER_OF(customer_idx_value)::RecomputeSplit();
+                    break;
+                case 3:
+                    ADAPTER_OF(customer_value)::RecomputeSplit();
+                    break;
+                case 4:
+                    ADAPTER_OF(history_value)::RecomputeSplit();
+                    break;
+                case 5:
+                    ADAPTER_OF(order_value)::RecomputeSplit();
+                    break;
+                case 6:
+                    ADAPTER_OF(orderline_value)::RecomputeSplit();
+                    break;
+                case 7:
+                    ADAPTER_OF(item_value)::RecomputeSplit();
+                    break;
+                case 8:
+                    ADAPTER_OF(stock_value)::RecomputeSplit();
+                    break;
+            }
+        }
     }
 }
 
@@ -36,7 +67,7 @@ inline void tpcc_adapters_treset() {
 }
 
 template <typename DBParams>
-void tpcc_runner<DBParams>::run_txn_neworder() {
+void tpcc_runner<DBParams>::run_txn_neworder(const bool empty) {
 if constexpr (!DBParams::MVCC) {
     typedef warehouse_value::NamedColumn wh_nc;
     typedef district_value::NamedColumn dt_nc;
@@ -76,7 +107,7 @@ if constexpr (!DBParams::MVCC) {
         }
         ol_supply_w_ids[i] = ol_s_w_id;
 
-        ol_quantities[i] = ig.random(1, 10);
+        ol_quantities[i] = empty ? 0 : ig.random(1, 10);
     }
 
     // holding outputs of the transaction
@@ -203,12 +234,14 @@ if constexpr (!DBParams::MVCC) {
 
         {
         auto [abort, result, row, value] = db.tbl_stocks(wid).select_row(stock_key(wid, iid),
-            {{st_nc::s_quantity, Commute ? AccessType::write : AccessType::update},
-             {st_nc::s_ytd, Commute ? AccessType::write : AccessType::update},
-             {st_nc::s_order_cnt, Commute ? AccessType::write : AccessType::update},
-             {st_nc::s_remote_cnt, Commute ? AccessType::write : AccessType::update},
-             {st_nc::s_dists, AccessType::read },
-             {st_nc::s_data, AccessType::read }}
+            {{st_nc::s_quantity, empty ? AccessType::read :
+                    (Commute ? AccessType::write : AccessType::update)},
+             {st_nc::s_ytd, empty ? AccessType::read :
+                    (Commute ? AccessType::write : AccessType::update)},
+             {st_nc::s_order_cnt, Commute ? access_t::write : access_t::update},
+             {st_nc::s_remote_cnt, Commute ? access_t::write : access_t::update},
+             {st_nc::s_dists, access_t::read },
+             {st_nc::s_data, access_t::read }}
         );
         (void)result;
         CHK(abort);
@@ -229,11 +262,13 @@ if constexpr (!DBParams::MVCC) {
             new (new_sv) stock_value();
             new_sv->init(value);
             //memcpy(new_sv, value, sizeof *new_sv);
-            if ((s_quantity - 10) >= (int32_t) qty)
-                new_sv->s_quantity = new_sv->s_quantity - qty;
-            else
-                new_sv->s_quantity = new_sv->s_quantity + (91 - (int32_t) qty);
-            new_sv->s_ytd = new_sv->s_ytd + qty;
+            if (!empty) {
+                if ((s_quantity - 10) >= (int32_t) qty)
+                    new_sv->s_quantity = new_sv->s_quantity - qty;
+                else
+                    new_sv->s_quantity = new_sv->s_quantity + (91 - (int32_t) qty);
+                new_sv->s_ytd = new_sv->s_ytd + qty;
+            }
             new_sv->s_order_cnt = new_sv->s_order_cnt + 1;
             if (wid != q_w_id) {
                 new_sv->s_remote_cnt = new_sv->s_remote_cnt + 1;
@@ -272,6 +307,8 @@ if constexpr (!DBParams::MVCC) {
 
     TXP_INCREMENT(txp_tpcc_no_commits);
     TXP_ACCOUNT(txp_tpcc_no_aborts, starts - 1);
+} else {
+    (void) empty;
 }
 }
 
@@ -345,6 +382,8 @@ if constexpr (!DBParams::MVCC) {
     ++starts;
     tpcc_adapters_commit([this](uint64_t range) -> uint64_t { return ig.random(0, range); });
     tpcc_adapters_treset();
+
+    TXP_INCREMENT(txp_tpcc_pm_stage0);
 
     // select warehouse row for update and retrieve warehouse info
     {

@@ -290,7 +290,7 @@ public:
             return txn_type::payment;
     }
 
-    inline void run_txn_neworder();
+    inline void run_txn_neworder(const bool empty=false);
     inline void run_txn_payment();
     inline void run_txn_orderstatus();
     inline void run_txn_delivery(uint64_t wid,
@@ -742,9 +742,10 @@ public:
                 break;
 
             txn_type t = runner.next_transaction();
+            const bool alt = local_cnt > 100;
             switch (t) {
                 case txn_type::new_order:
-                    runner.run_txn_neworder();
+                    runner.run_txn_neworder(alt);
                     break;
                 case txn_type::payment:
                     runner.run_txn_payment();
