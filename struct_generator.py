@@ -71,7 +71,11 @@ class Output:
 
     def convert_struct(self, struct, sdata, headers=False):
         '''Output a single struct's variants.'''
-        self.colcount = Output.count_columns(sdata.keys())
+        self.sdata = dict(filter(lambda item: item[0][0] != '@', sdata.items()))
+        self.mdata = dict(map(lambda item: (item[0][1:], item[1]),
+            filter(lambda item: item[0][0] == '@', sdata.items())))
+
+        self.colcount = Output.count_columns(self.sdata.keys())
         self._data = {
                 'accessorstruct': 'accessor',
                 'colcount': self.colcount,
@@ -84,7 +88,6 @@ class Output:
                 'qns': ''.join('::' + ns for ns in self._namespaces),  # Globally-qualified namespace
                 'struct': struct,
                 }
-        self.sdata = sdata
 
         if headers:
             self.writelns('''\
@@ -120,6 +123,7 @@ DEFINE_ADAPTER({struct}, NamedColumn);
 
         self.writelns('''\
 using NamedColumn = {ns}::NamedColumn;
+static constexpr auto DEFAULT_SPLIT = NamedColumn::{defaultsplit};
 static constexpr auto MAX_SPLITS = 2;
 
 explicit {struct}() = default;
@@ -141,7 +145,7 @@ inline accessor<RoundedNamedColumn<Column>()>& get();
 
 template <NamedColumn Column>
 inline const accessor<RoundedNamedColumn<Column>()>& get() const;
-''')
+''', defaultsplit=self.mdata.get('split', 'COLCOUNT'))
 
         self.convert_accessors()
 
@@ -198,6 +202,10 @@ inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<Na
 {indent}return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 {rbrace}
 
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {lbrace}
+{indent}return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
+{rbrace}
+
 inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {lbrace}
 {indent}nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 {indent}return nc;
@@ -213,6 +221,10 @@ inline NamedColumn& operator++(NamedColumn& nc, int) {lbrace}
 
 inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {lbrace}
 {indent}return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
+{rbrace}
+
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {lbrace}
+{indent}return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
 {rbrace}
 
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {lbrace}
@@ -396,7 +408,7 @@ const auto split_of(NamedColumn index) const {lbrace}
     def convert_members(self):
         '''Output the member variables.'''
 
-        self.writeln('NamedColumn splitindex_ = NamedColumn::COLCOUNT;');
+        self.writeln('NamedColumn splitindex_ = DEFAULT_SPLIT;')
 
         for member in self.sdata:
             member, _, count = Output.extract_member_type(member)
@@ -483,7 +495,7 @@ The fully-qualified namespace for the struct, e.g. ::benchmark::tpcc\
 
     headers = True
     for struct in config.sections():
-        Output(outfile, namespaces).convert_struct(struct, config[struct], headers=True)
+        Output(outfile, namespaces).convert_struct(struct, config[struct], headers=headers)
         headers = False
 
     outfile.close()

@@ -550,22 +550,23 @@ void Transaction::print_stats() {
         fprintf(stderr, "$     Avg spins/commit: %.3f\n", 1.0 * out.p(txp_mvcc_flat_spins) / out.p(txp_mvcc_flat_commits));
     }
     if (txp_count >= txp_tpcc_st_aborts) {
-        fprintf(stderr, "$ TPCC txn profiles: commits(aborts), abort rate\n");
-        fprintf(stderr, "$     New-Order: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_no_commits), out.p(txp_tpcc_no_aborts),
-                100.0 * (double) out.p(txp_tpcc_no_aborts) / (out.p(txp_tpcc_no_commits) + out.p(txp_tpcc_no_aborts)));
-        fprintf(stderr, "$       Payment: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_pm_commits), out.p(txp_tpcc_pm_aborts),
-                100.0 * (double) out.p(txp_tpcc_pm_aborts) / (out.p(txp_tpcc_pm_commits) + out.p(txp_tpcc_pm_aborts)));
-        fprintf(stderr, "$  Order-Status: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_os_commits), out.p(txp_tpcc_os_aborts),
-                100.0 * (double) out.p(txp_tpcc_os_aborts) / (out.p(txp_tpcc_os_commits) + out.p(txp_tpcc_os_aborts)));
-        fprintf(stderr, "$      Delivery: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_dl_commits), out.p(txp_tpcc_dl_aborts),
-                100.0 * (double) out.p(txp_tpcc_dl_aborts) / (out.p(txp_tpcc_dl_commits) + out.p(txp_tpcc_dl_aborts)));
-        fprintf(stderr, "$   Stock-Level: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_st_commits), out.p(txp_tpcc_st_aborts),
-                100.0 * (double) out.p(txp_tpcc_st_aborts) / (out.p(txp_tpcc_st_commits) + out.p(txp_tpcc_st_aborts)));
+//        fprintf(stderr, "$ TPCC txn profiles: commits(aborts), abort rate\n");
+//        fprintf(stderr, "$     New-Order: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_no_commits), out.p(txp_tpcc_no_aborts),
+//                100.0 * (double) out.p(txp_tpcc_no_aborts) / (out.p(txp_tpcc_no_commits) + out.p(txp_tpcc_no_aborts)));
+//        fprintf(stderr, "$       Payment: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_pm_commits), out.p(txp_tpcc_pm_aborts),
+//                100.0 * (double) out.p(txp_tpcc_pm_aborts) / (out.p(txp_tpcc_pm_commits) + out.p(txp_tpcc_pm_aborts)));
+//        fprintf(stderr, "$  Order-Status: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_os_commits), out.p(txp_tpcc_os_aborts),
+//                100.0 * (double) out.p(txp_tpcc_os_aborts) / (out.p(txp_tpcc_os_commits) + out.p(txp_tpcc_os_aborts)));
+//        fprintf(stderr, "$      Delivery: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_dl_commits), out.p(txp_tpcc_dl_aborts),
+//                100.0 * (double) out.p(txp_tpcc_dl_aborts) / (out.p(txp_tpcc_dl_commits) + out.p(txp_tpcc_dl_aborts)));
+//        fprintf(stderr, "$   Stock-Level: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_st_commits), out.p(txp_tpcc_st_aborts),
+//                100.0 * (double) out.p(txp_tpcc_st_aborts) / (out.p(txp_tpcc_st_commits) + out.p(txp_tpcc_st_aborts)));
 //        fprintf(stderr, "$ NewOrder (stage 1): %llu\n", out.p(txp_tpcc_no_stage1));
 //        fprintf(stderr, "$ NewOrder (stage 2): %llu\n", out.p(txp_tpcc_no_stage2));
 //        fprintf(stderr, "$ NewOrder (stage 3): %llu\n", out.p(txp_tpcc_no_stage3));
 //        fprintf(stderr, "$ NewOrder (stage 4): %llu\n", out.p(txp_tpcc_no_stage4));
 //        fprintf(stderr, "$ NewOrder (stage 5): %llu\n", out.p(txp_tpcc_no_stage5));
+//        fprintf(stderr, "$ Payment  (stage 0): %llu\n", out.p(txp_tpcc_pm_stage0));
 //        fprintf(stderr, "$ Payment  (stage 1): %llu\n", out.p(txp_tpcc_pm_stage1));
 //        fprintf(stderr, "$ Payment  (stage 2): %llu\n", out.p(txp_tpcc_pm_stage2));
 //        fprintf(stderr, "$ Payment  (stage 3): %llu\n", out.p(txp_tpcc_pm_stage3));
@@ -577,11 +578,20 @@ void Transaction::print_stats() {
 //        fprintf(stderr, "$ Delivery (stage 3): %llu\n", out.p(txp_tpcc_dl_stage3));
 //        fprintf(stderr, "$ Delivery (stage 4): %llu\n", out.p(txp_tpcc_dl_stage4));
 //        fprintf(stderr, "$ Delivery (stage 5): %llu\n", out.p(txp_tpcc_dl_stage5));
-        fprintf(stderr, "$       Lock Abort 1: %llu\n", out.p(txp_tpcc_lock_abort1));
-        fprintf(stderr, "$       Lock Abort 2: %llu\n", out.p(txp_tpcc_lock_abort2));
-        fprintf(stderr, "$       Lock Abort 3: %llu\n", out.p(txp_tpcc_lock_abort3));
-        fprintf(stderr, "$      Check Abort 1: %llu\n", out.p(txp_tpcc_check_abort1));
-        fprintf(stderr, "$      Check Abort 2: %llu\n", out.p(txp_tpcc_check_abort2));
+//        fprintf(stderr, "$       Lock Abort 1: %llu\n", out.p(txp_tpcc_lock_abort1));
+//        fprintf(stderr, "$       Lock Abort 2: %llu\n", out.p(txp_tpcc_lock_abort2));
+//        fprintf(stderr, "$       Lock Abort 3: %llu\n", out.p(txp_tpcc_lock_abort3));
+//        fprintf(stderr, "$      Check Abort 1: %llu\n", out.p(txp_tpcc_check_abort1));
+//        fprintf(stderr, "$      Check Abort 2: %llu\n", out.p(txp_tpcc_check_abort2));
+        fprintf(stderr, "$ Dynamic txn profiles: commits(aborts), abort rate\n");
+        fprintf(stderr, "$          Read: %llu(%llu), %.3f%%\n", out.p(txp_dyn_r_commits), out.p(txp_dyn_r_aborts),
+                100.0 * (double) out.p(txp_dyn_r_aborts) / (out.p(txp_dyn_r_commits) + out.p(txp_dyn_r_aborts)));
+        fprintf(stderr, "$    Read-heavy: %llu(%llu), %.3f%%\n", out.p(txp_dyn_rh_commits), out.p(txp_dyn_rh_aborts),
+                100.0 * (double) out.p(txp_dyn_rh_aborts) / (out.p(txp_dyn_rh_commits) + out.p(txp_dyn_rh_aborts)));
+        fprintf(stderr, "$         Write: %llu(%llu), %.3f%%\n", out.p(txp_dyn_w_commits), out.p(txp_dyn_w_aborts),
+                100.0 * (double) out.p(txp_dyn_w_aborts) / (out.p(txp_dyn_w_commits) + out.p(txp_dyn_w_aborts)));
+        fprintf(stderr, "$   Write-heavy: %llu(%llu), %.3f%%\n", out.p(txp_dyn_wh_commits), out.p(txp_dyn_wh_aborts),
+                100.0 * (double) out.p(txp_dyn_wh_aborts) / (out.p(txp_dyn_wh_commits) + out.p(txp_dyn_wh_aborts)));
     }
 
 #if STO_TSC_PROFILE

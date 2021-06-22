@@ -302,151 +302,154 @@ TPCC_TMPLS = $(OBJ)/tpcc_d.o $(OBJ)/tpcc_dc.o $(OBJ)/tpcc_dn.o $(OBJ)/tpcc_dcn.o
 	$(OBJ)/tpcc_s.o $(OBJ)/tpcc_t.o $(OBJ)/tpcc_tc.o $(OBJ)/tpcc_tn.o $(OBJ)/tpcc_tcn.o $(OBJ)/tpcc_o.o $(OBJ)/tpcc_oc.o
 
 concurrent: $(OBJ)/concurrent.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 single: $(OBJ)/single.o $(INDEX_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 singleelems: $(OBJ)/singleelems.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 ex-counter: $(OBJ)/ex-counter.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-rcu: $(OBJ)/unit-rcu.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tarray: $(OBJ)/unit-tarray.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tflexarray: $(OBJ)/unit-tflexarray.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tintpredicate: $(OBJ)/unit-tintpredicate.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tcounter: $(OBJ)/unit-tcounter.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tbox: $(OBJ)/unit-tbox.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tgeneric: $(OBJ)/unit-tgeneric.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tvector: $(OBJ)/unit-tvector.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tvector-nopred: $(OBJ)/unit-tvector-nopred.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-mbta: $(OBJ)/unit-mbta.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-sampling: $(OBJ)/unit-sampling.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-opacity: $(OBJ)/unit-opacity.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-swisstarray: $(OBJ)/unit-swisstarray.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-swisstgeneric: $(OBJ)/unit-swisstgeneric.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-masstree: $(OBJ)/unit-masstree.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_DEPS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_DEPS) $(LDFLAGS) $(LIBS)
 
 unit-tmvarray: $(OBJ)/unit-tmvarray.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tmvbox: $(OBJ)/unit-tmvbox.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-hashtable: $(OBJ)/unit-hashtable.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
 
 unit-mvcc-access-all: $(OBJ)/unit-mvcc-access-all.o $(INDEX_DEPS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 unit-adaptive-occ: $(OBJ)/unit-adaptive-occ.o $(INDEX_DEPS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 unit-adaptive-ts: $(OBJ)/unit-adaptive-ts.o $(INDEX_DEPS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 unit-tmvbox-concurrent: $(OBJ)/unit-tmvbox-concurrent.o $(INDEX_DEPS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 unit-dbindex-concurrent: $(OBJ)/unit-dbindex-concurrent.o $(INDEX_DEPS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 list1: $(OBJ)/list1.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 vector: $(OBJ)/vector.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 pqueue: $(OBJ)/pqueue.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 rbtree: $(OBJ)/rbtree.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 genericTest: $(OBJ)/genericTest.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 trans_test: $(OBJ)/trans_test.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 ht_mt: $(OBJ)/ht_mt.o $(INDEX_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 pqVsIt: $(OBJ)/pqVsIt.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 iterators: $(OBJ)/iterators.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 predicates: $(OBJ)/predicates.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 hashtable_nostm: $(OBJ)/hashtable_nostm.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 tpcc_bench: $(OBJ)/TPCC_bench.o $(TPCC_TMPLS) $(INDEX_OBJS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 ycsb_bench: $(OBJ)/YCSB_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+
+dynamic_bench: $(OBJ)/Dynamic_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 ht_bench: $(OBJ)/HT_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 prcu_bench: $(OBJ)/PRCU_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 micro_bench: $(OBJ)/MicroBenchmarks.o $(INDEX_OBJS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 gc_bench: $(OBJ)/Garbage_bench.o $(INDEX_OBJS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 pred_bench: $(OBJ)/Predicate_bench.o $(INDEX_OBJS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 wiki_bench: $(OBJ)/Wikipedia_bench.o $(OBJ)/Wikipedia_data.o $(INDEX_OBJS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 voter_bench: $(OBJ)/Voter_bench.o $(OBJ)/Voter_data.o $(INDEX_OBJS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 rubis_bench: $(OBJ)/Rubis_bench.o $(INDEX_OBJS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
 

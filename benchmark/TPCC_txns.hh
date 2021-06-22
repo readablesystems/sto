@@ -238,10 +238,10 @@ if constexpr (!DBParams::MVCC) {
                     (Commute ? AccessType::write : AccessType::update)},
              {st_nc::s_ytd, empty ? AccessType::read :
                     (Commute ? AccessType::write : AccessType::update)},
-             {st_nc::s_order_cnt, Commute ? access_t::write : access_t::update},
-             {st_nc::s_remote_cnt, Commute ? access_t::write : access_t::update},
-             {st_nc::s_dists, access_t::read },
-             {st_nc::s_data, access_t::read }}
+             {st_nc::s_order_cnt, Commute ? AccessType::write : AccessType::update},
+             {st_nc::s_remote_cnt, Commute ? AccessType::write : AccessType::update},
+             {st_nc::s_dists, AccessType::read },
+             {st_nc::s_data, AccessType::read }}
         );
         (void)result;
         CHK(abort);

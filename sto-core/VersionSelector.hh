@@ -177,7 +177,7 @@ public:
     }
 
     std::array<AccessType, NUM_VERSIONS>
-    split_accesses(std::initializer_list<ColumnAccess> accesses) {
+    split_accesses(std::vector<ColumnAccess> accesses) {
         std::array<AccessType, NUM_VERSIONS> split_accesses = {};
 
         /*

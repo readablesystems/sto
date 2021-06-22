@@ -138,7 +138,7 @@ public:
 #endif
 
     sel_return_type
-    select_row(const key_type& key, std::initializer_list<ColumnAccess> accesses) {
+    select_row(const key_type& key, std::vector<ColumnAccess> accesses) {
         unlocked_cursor_type lp(table_, key);
         bool found = lp.find_unlocked(*ti);
         internal_elem *e = lp.value();
@@ -218,7 +218,7 @@ public:
 #endif
 
     sel_return_type
-    select_row(uintptr_t rid, std::initializer_list<ColumnAccess> accesses) {
+    select_row(uintptr_t rid, std::vector<ColumnAccess> accesses) {
         auto e = reinterpret_cast<internal_elem*>(rid);
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
@@ -305,6 +305,9 @@ public:
     void update_row(uintptr_t rid, value_type *new_row) {
         auto e = reinterpret_cast<internal_elem*>(rid);
         auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+        if (!new_row) {
+            std::cout << "WTF" << std::endl;
+        }
         if (value_is_small) {
             row_item.acquire_write(e->version(), *new_row);
         } else {
