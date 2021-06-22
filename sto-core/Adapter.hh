@@ -42,8 +42,15 @@ public:
         }
     };
 
-    Adapter() = delete;
+private:
+    Adapter() = default;
 
+    static Adapter& Global() {
+        static Adapter* instance = new Adapter();
+        return *instance;
+    }
+
+public:
     static inline void Commit() {
         Commit(TThread::id());
     }
@@ -51,10 +58,10 @@ public:
     static inline void Commit(size_t threadid) {
         if (AdapterConfig::Enabled) {
             for (size_t i = 0; i < NCOUNTERS; i++) {
-                global_counters.read_counters[i].fetch_add(
-                        thread_counters[threadid].read_counters[i], std::memory_order::memory_order_relaxed);
-                global_counters.write_counters[i].fetch_add(
-                        thread_counters[threadid].write_counters[i], std::memory_order::memory_order_relaxed);
+                Global().global_counters.read_counters[i].fetch_add(
+                        Global().thread_counters[threadid].read_counters[i], std::memory_order::memory_order_relaxed);
+                Global().global_counters.write_counters[i].fetch_add(
+                        Global().thread_counters[threadid].write_counters[i], std::memory_order::memory_order_relaxed);
             }
         }
     }
@@ -87,12 +94,12 @@ public:
         size_t best_split = NCOUNTERS;
         double best_data[2] = {read_psum[best_split - 1] * 1.0 / read_total, write_psum[best_split - 1] * 1.0 / write_total};
         // Maximize write load vs read load difference
-        for (size_t current_split = NCOUNTERS - 1; current_split; current_split--) {
-            double current_data[2] = {read_psum[current_split - 1] * 1.0 / read_total, write_psum[current_split - 1] * 1.0 / write_total};
+        for (size_t active_split = NCOUNTERS - 1; active_split; active_split--) {
+            double current_data[2] = {read_psum[active_split - 1] * 1.0 / read_total, write_psum[active_split - 1] * 1.0 / write_total};
             double best_diff = std::abs(best_data[1] - best_data[0]);
             double current_diff = std::abs(current_data[1] - current_data[0]);
             if (current_diff > best_diff * 1.05) {
-                best_split = current_split;
+                best_split = active_split;
                 best_data[0] = current_data[0];
                 best_data[1] = current_data[1];
             }
@@ -100,12 +107,12 @@ public:
 
         // Load difference is unsubstantial, try to balance writes
         if (best_split == NCOUNTERS) {
-            for (size_t current_split = NCOUNTERS - 1; current_split; current_split--) {
+            for (size_t active_split = NCOUNTERS - 1; active_split; active_split--) {
                 double best_diff = std::abs(write_psum[best_split - 1] * 1.0 / write_total - 0.5);
-                double current_diff = std::abs(write_psum[current_split - 1] * 1.0 / write_total - 0.5);
+                double current_diff = std::abs(write_psum[active_split - 1] * 1.0 / write_total - 0.5);
 
                 if (current_diff < best_diff * 0.95) {
-                    best_split = current_split;
+                    best_split = active_split;
                 }
             }
         }
@@ -121,7 +128,7 @@ public:
         assert(index < Index::COLCOUNT);
         if (AdapterConfig::Enabled) {
             auto numindex = static_cast<std::underlying_type_t<Index>>(index);
-            thread_counters[TThread::id()].read_counters[numindex] += count;
+            Global().thread_counters[TThread::id()].read_counters[numindex] += count;
         }
     }
 
@@ -137,7 +144,7 @@ public:
             for (auto index = start; index < end; index++) {
                 auto numindex =
                     static_cast<std::underlying_type_t<Index>>(index);
-                thread_counters[TThread::id()].read_counters[numindex] += count;
+                Global().thread_counters[TThread::id()].read_counters[numindex] += count;
             }
         }
     }
@@ -150,7 +157,7 @@ public:
         assert(index < Index::COLCOUNT);
         if (AdapterConfig::Enabled) {
             auto numindex = static_cast<std::underlying_type_t<Index>>(index);
-            thread_counters[TThread::id()].write_counters[numindex] += count;
+            Global().thread_counters[TThread::id()].write_counters[numindex] += count;
         }
     }
 
@@ -166,18 +173,15 @@ public:
             for (auto index = start; index < end; index++) {
                 auto numindex =
                     static_cast<std::underlying_type_t<Index>>(index);
-                thread_counters[TThread::id()].write_counters[numindex] += count;
+                Global().thread_counters[TThread::id()].write_counters[numindex] += count;
             }
         }
     }
 
     static inline Index CurrentSplit() {
-        // 0 is an invalid split
-        if (current_split == Index(0)) {
-            return Index::COLCOUNT;
-        }
-
-        return current_split;
+        auto split = Global().current_split.load(std::memory_order::memory_order_relaxed);
+        assert(split > Index(0));  // 0 is an invalid split
+        return split;
 
     }
 
@@ -188,7 +192,7 @@ public:
     static inline counter_type GetRead(const Index index) {
         if (AdapterConfig::Enabled) {
             auto numindex = static_cast<std::underlying_type_t<Index>>(index);
-            return global_counters.read_counters[numindex]
+            return Global().global_counters.read_counters[numindex]
                 .load(std::memory_order::memory_order_relaxed);
         }
         return 0;
@@ -197,7 +201,7 @@ public:
     static inline counter_type GetWrite(const Index index) {
         if (AdapterConfig::Enabled) {
             auto numindex = static_cast<std::underlying_type_t<Index>>(index);
-            return global_counters.write_counters[numindex]
+            return Global().global_counters.write_counters[numindex]
                 .load(std::memory_order::memory_order_relaxed);
         }
         return 0;
@@ -213,27 +217,34 @@ public:
                 << "Write [" << index << "] = " << GetWrite(index) << std::endl;
         }
 
-        std::cout << "Computed split index: " << ComputeSplitIndex() << std::endl;
+        std::cout << "Ending split index: " << static_cast<int>(CurrentSplit()) << std::endl;
+        std::cout << "Next split index:   " << ComputeSplitIndex() << std::endl;
     }
 
     static inline bool RecomputeSplit() {
-        auto split = Index(ComputeSplitIndex());
-        ResetGlobal();
-        std::cout << "Recomputed split: " << split << std::endl;
-        bool changed = (split != current_split);
-        current_split = split;
-        return changed;
+        if (AdapterConfig::Enabled) {
+            auto split = Index(ComputeSplitIndex());
+            ResetGlobal();
+#if DEBUG
+            std::cout << "Recomputed split: " << split << std::endl;
+#endif
+            auto prev_split = Global().current_split.load(std::memory_order::memory_order_relaxed);
+            bool changed = (split != prev_split);
+            Global().current_split.store(split, std::memory_order::memory_order_relaxed);
+            return changed;
+        }
+        return false;
     }
 
     static inline void ResetGlobal() {
         if (AdapterConfig::Enabled) {
-            global_counters.template Reset<true>();
+            Global().global_counters.template Reset<true>();
         }
     };
 
     static inline void ResetThread() {
         if (AdapterConfig::Enabled) {
-            thread_counters[TThread::id()].template Reset<false>();
+            Global().thread_counters[TThread::id()].template Reset<false>();
         }
     };
 
@@ -251,7 +262,7 @@ public:
 
     static inline counter_type TGetRead(const size_t threadid, const Index index) {
         if (AdapterConfig::Enabled) {
-            return thread_counters[threadid].read_counters[
+            return Global().thread_counters[threadid].read_counters[
                 static_cast<std::underlying_type_t<Index>>(index)];
         }
         return 0;
@@ -263,15 +274,15 @@ public:
 
     static inline counter_type TGetWrite(const size_t threadid, const Index index) {
         if (AdapterConfig::Enabled) {
-            return thread_counters[threadid].write_counters[
+            return Global().thread_counters[threadid].write_counters[
                 static_cast<std::underlying_type_t<Index>>(index)];
         }
         return 0;
     }
 
-    static Index current_split;
-    static CounterSet<atomic_counter_type> global_counters;
-    static std::array<CounterSet<counter_type>, MAX_THREADS> thread_counters;
+    std::atomic<Index> current_split = T::DEFAULT_SPLIT;
+    CounterSet<atomic_counter_type> global_counters;
+    std::array<CounterSet<counter_type>, MAX_THREADS> thread_counters;
 };
 
 #ifndef ADAPTER_OF
@@ -283,20 +294,22 @@ public:
     using ADAPTER_OF(Type) = ::sto::Adapter<Type, IndexType>;
 #endif
 
+/*
 #ifndef INITIALIZE_ADAPTER
 #define INITIALIZE_ADAPTER(Type) \
     template <> \
-    Type::Index Type::current_split = {}; \
+    Type::Index Type::current_split = Type::ClassType::DEFAULT_SPLIT; \
     template <> \
     Type::CounterSet<Type::atomic_counter_type> Type::global_counters = {}; \
     template <> \
     std::array<Type::CounterSet<Type::counter_type>, MAX_THREADS> Type::thread_counters = {};
 #endif
+*/
 
 #ifndef CREATE_ADAPTER
 #define CREATE_ADAPTER(Type, IndexType) \
-    DEFINE_ADAPTER(Type, IndexType); \
-    INITIALIZE_ADAPTER(ADAPTER_OF(Type));
+    DEFINE_ADAPTER(Type, IndexType); /*\
+    INITIALIZE_ADAPTER(ADAPTER_OF(Type));*/
 #endif
 
 }  // namespace sto;
