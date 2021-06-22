@@ -14,33 +14,41 @@ enum class NamedColumn : int {
     COLCOUNT
 };
 
-constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 }
 
-NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
     return nc;
 }
 
-NamedColumn& operator++(NamedColumn& nc) {
+inline NamedColumn& operator++(NamedColumn& nc) {
     return nc += 1;
 }
 
-NamedColumn& operator++(NamedColumn& nc, int) {
+inline NamedColumn& operator++(NamedColumn& nc, int) {
     return nc += 1;
 }
 
-constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
-NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
 }
 
-std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
     out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
     return out;
 }
@@ -186,6 +194,7 @@ struct accessor {
 
 struct index_value {
     using NamedColumn = index_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit index_value() = default;
@@ -195,6 +204,12 @@ struct index_value {
 
     template <NamedColumn Column>
     static inline void copy_data(index_value& newvalue, const index_value& oldvalue);
+
+    inline void init(const index_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            index_value::resplit(*this, *oldvalue, ADAPTER_OF(index_value)::CurrentSplit());
+        }
+    }
 
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
@@ -207,7 +222,7 @@ struct index_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::data> data;
     accessor<NamedColumn::label> label;
     accessor<NamedColumn::flagged> flagged;
@@ -216,8 +231,10 @@ struct index_value {
 inline void index_value::resplit(
         index_value& newvalue, const index_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 

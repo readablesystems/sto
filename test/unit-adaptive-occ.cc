@@ -13,8 +13,6 @@ using bench::access_t;
 
 bool sto::AdapterConfig::Enabled = true;
 
-INITIALIZE_ADAPTER(ADAPTER_OF(index_value));
-
 template <bool Ordered>
 class Tester {
 public:
@@ -34,6 +32,7 @@ private:
 
     void CounterTest();
     void ResplittingTest();
+    void ResplitInflightTest();
 };
 
 template <bool Ordered>
@@ -46,6 +45,7 @@ void Tester<Ordered>::RunTests() {
 
     CounterTest();
     ResplittingTest();
+    ResplitInflightTest();
 }
 
 template <bool Ordered>
@@ -116,8 +116,24 @@ void Tester<Ordered>::ResplittingTest() {
     printf("Test pass: ResplittingTest\n");
 }
 
+template <bool Ordered>
+void Tester<Ordered>::ResplitInflightTest() {
+    adapter_type::ResetGlobal();
+    adapter_type::RecomputeSplit();
+
+    assert(adapter_type::CurrentSplit() == nc::COLCOUNT);
+
+    adapter_type::ResetThread();
+
+    {
+
+    }
+
+    printf("Test pass: ResplitInflightTest\n");
+}
+
 int main() {
-    if constexpr (false) {
+    {
         Tester<true> tester;
         tester.RunTests();
     }
