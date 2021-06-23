@@ -34,7 +34,7 @@
 // @section: clp parser definitions
 enum {
     opt_dbid = 1, opt_thld, opt_nthrs, opt_time, opt_perf, opt_pfcnt, opt_gc,
-    opt_gr, opt_node, opt_comm, opt_verb, opt_mix, opt_ada, opt_samp
+    opt_gr, opt_node, opt_comm, opt_verb, opt_mix, opt_ada, opt_samp, opt_prof
 };
 
 extern const char* workload_mix_names[];
@@ -149,6 +149,7 @@ public:
     struct Params {
         int mix;
         int threshold;
+        bool profile;
         bool sample;
     };
 
@@ -156,8 +157,8 @@ public:
     using u_table_access = typename dynamic_db<DBParams>::u_table_type::ColumnAccess;
 
     dynamic_runner(int id, dynamic_db<DBParams>& database, Params& params)
-        : ig(id), count(0), db(database), mix(params.mix), sample(params.sample),
-          threshold(params.threshold),
+        : ig(id), count(0), db(database), mix(params.mix), adapt_profile(params.profile),
+          sample(params.sample), threshold(params.threshold),
           tsc_threshold(threshold * constants::processor_tsc_frequency * constants::million),
           runner_id(id), prev_workload(0), switches(0) {}
 
@@ -182,7 +183,7 @@ public:
         if (!ig.random(0, 3)) {
             ADAPTER_OF(ordered_value)::Commit();
             ADAPTER_OF(unordered_value)::Commit();
-            if (!ig.random(0, 999)) {
+            if (!adapt_profile && !ig.random(0, 999)) {
                 switch (ig.random(0, 1)) {
                     case 0:
                         ADAPTER_OF(ordered_value)::RecomputeSplit();
@@ -210,6 +211,7 @@ private:
     int64_t count;
     dynamic_db<DBParams>& db;
     int mix;
+    const bool adapt_profile;
     const bool sample;
     int threshold;
     uint64_t tsc_threshold;
@@ -433,6 +435,7 @@ public:
         bool enable_gc = false;
         unsigned gc_rate = Transaction::get_epoch_cycle();
         bool sample = false;
+        bool profile = false;
         bool verbose = false;
 
         Clp_Parser *clp = Clp_NewParser(argc, argv, noptions, options);
@@ -472,6 +475,9 @@ public:
                     break;
                 case opt_samp:
                     sample = !clp->negated;
+                    break;
+                case opt_prof:
+                    profile = !clp->negated;
                     break;
                 case opt_verb:
                     verbose = !clp->negated;
@@ -531,7 +537,7 @@ public:
         std::cout << std::endl << std::flush;
 
         typename dynamic_runner<DBParams>::Params params {
-            mix, threshold, sample
+            mix, threshold, profile, sample
         };
 
         prof.start(profiler_mode);
