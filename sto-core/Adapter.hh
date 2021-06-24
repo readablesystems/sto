@@ -91,7 +91,8 @@ public:
             write_total += write_freq[numindex];
         }
 
-        size_t best_split = NCOUNTERS;
+        size_t best_split = static_cast<size_t>(
+                Global().current_split.load(std::memory_order::memory_order_relaxed));
         double best_data[2] = {read_psum[best_split - 1] * 1.0 / read_total, write_psum[best_split - 1] * 1.0 / write_total};
         // Maximize write load vs read load difference
         for (size_t active_split = NCOUNTERS - 1; active_split; active_split--) {
@@ -107,6 +108,8 @@ public:
 
         // Load difference is unsubstantial, try to balance writes
         if (best_split == NCOUNTERS) {
+            best_split = static_cast<size_t>(
+                    Global().current_split.load(std::memory_order::memory_order_relaxed));
             for (size_t active_split = NCOUNTERS - 1; active_split; active_split--) {
                 double best_diff = std::abs(write_psum[best_split - 1] * 1.0 / write_total - 0.5);
                 double current_diff = std::abs(write_psum[active_split - 1] * 1.0 / write_total - 0.5);
@@ -223,14 +226,15 @@ public:
 
     static inline bool RecomputeSplit() {
         if (AdapterConfig::Enabled) {
-            auto split = Index(ComputeSplitIndex());
+            auto split = ComputeSplitIndex();
             ResetGlobal();
+            auto next_split = Index(split);
 #if DEBUG
             std::cout << "Recomputed split: " << split << std::endl;
 #endif
             auto prev_split = Global().current_split.load(std::memory_order::memory_order_relaxed);
-            bool changed = (split != prev_split);
-            Global().current_split.store(split, std::memory_order::memory_order_relaxed);
+            bool changed = (next_split != prev_split);
+            Global().current_split.store(next_split, std::memory_order::memory_order_relaxed);
             return changed;
         }
         return false;
