@@ -10,8 +10,8 @@ namespace ordered_value_datatypes {
 enum class NamedColumn : int {
     ro = 0,
     rw = 2,
-    wo = 6,
-    COLCOUNT = 8
+    wo = 10,
+    COLCOUNT = 12
 };
 
 inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
@@ -46,6 +46,10 @@ inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -85,7 +89,7 @@ struct accessor_info<NamedColumn::ro> {
 template <>
 struct accessor_info<NamedColumn::rw> {
     using type = uint64_t;
-    using value_type = std::array<uint64_t, 4>;
+    using value_type = std::array<uint64_t, 8>;
     static constexpr bool is_array = true;
 };
 
@@ -308,6 +312,46 @@ inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 3>(
 }
 
 template <>
+inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 4>() {
+    return rw;
+}
+
+template <>
+inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 4>() const {
+    return rw;
+}
+
+template <>
+inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 5>() {
+    return rw;
+}
+
+template <>
+inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 5>() const {
+    return rw;
+}
+
+template <>
+inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 6>() {
+    return rw;
+}
+
+template <>
+inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 6>() const {
+    return rw;
+}
+
+template <>
+inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 7>() {
+    return rw;
+}
+
+template <>
+inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 7>() const {
+    return rw;
+}
+
+template <>
 inline accessor<NamedColumn::wo>& ordered_value::get<NamedColumn::wo + 0>() {
     return wo;
 }
@@ -337,8 +381,8 @@ namespace unordered_value_datatypes {
 enum class NamedColumn : int {
     ro = 0,
     rw = 2,
-    wo = 6,
-    COLCOUNT = 8
+    wo = 10,
+    COLCOUNT = 12
 };
 
 inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
@@ -373,6 +417,10 @@ inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -412,7 +460,7 @@ struct accessor_info<NamedColumn::ro> {
 template <>
 struct accessor_info<NamedColumn::rw> {
     using type = uint64_t;
-    using value_type = std::array<uint64_t, 4>;
+    using value_type = std::array<uint64_t, 8>;
     static constexpr bool is_array = true;
 };
 
@@ -631,6 +679,46 @@ inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 3>() {
 
 template <>
 inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 3>() const {
+    return rw;
+}
+
+template <>
+inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 4>() {
+    return rw;
+}
+
+template <>
+inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 4>() const {
+    return rw;
+}
+
+template <>
+inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 5>() {
+    return rw;
+}
+
+template <>
+inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 5>() const {
+    return rw;
+}
+
+template <>
+inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 6>() {
+    return rw;
+}
+
+template <>
+inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 6>() const {
+    return rw;
+}
+
+template <>
+inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 7>() {
+    return rw;
+}
+
+template <>
+inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 7>() const {
     return rw;
 }
 

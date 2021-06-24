@@ -142,6 +142,8 @@ public:
     enum class txn_type : int {
         read = 1,
         write,
+        read_medium,
+        write_medium,
         read_heavy,
         write_heavy
     };
@@ -166,13 +168,33 @@ public:
         ++count;
         uint64_t x = ig.random(0, 99);
         if (mix == 0) {
-            int workload = (tsc_elapsed / tsc_threshold) % 2;
+            int workload = (tsc_elapsed / tsc_threshold) % 8;
+            //int workload = (count / 10000) % 2;
             switches += workload != prev_workload;
+            /*
+            bool change_workload = ig.random(0, tsc_threshold - 1) < (tsc_elapsed % tsc_threshold);
+            int workload = change_workload? 1 - prev_workload : prev_workload;
+            switches += change_workload;
+            */
+            if (workload != prev_workload) {
+                //std::cout << "Workload switched from " << prev_workload << " to " << workload << std::endl;
+            }
             prev_workload = workload;
-            if (workload == 0) {
-                return x < 50 ? txn_type::read_heavy : txn_type::write;
-            } else {
-                return x < 50 ? txn_type::read : txn_type::write_heavy;
+            switch (workload) {
+                case 0:
+                case 7:
+                    return x < 50 ? txn_type::read_heavy : txn_type::write;
+                case 5:
+                case 6:
+                    return x < 50 ? txn_type::read_medium : txn_type::write_medium;
+                case 1:
+                case 2:
+                case 3:
+                case 4:
+                    return x < 10 ? txn_type::read : txn_type::write_heavy;
+                default:
+                    std::cerr << "Invalid workload variant: " << workload << std::endl;
+                    assert(false);
             }
         }
         assert(false);
@@ -183,10 +205,12 @@ public:
         if (!ig.random(0, 3)) {
             ADAPTER_OF(ordered_value)::Commit();
             ADAPTER_OF(unordered_value)::Commit();
-            if (!adapt_profile && !ig.random(0, 999)) {
-                switch (ig.random(0, 1)) {
+            if (!adapt_profile && !ig.random(0, 99)) {
+                switch (ig.random(0, 0)) {
                     case 0:
-                        ADAPTER_OF(ordered_value)::RecomputeSplit();
+                        if (ADAPTER_OF(ordered_value)::RecomputeSplit()) {
+                            std::cout << "Split changed to " << (int)ADAPTER_OF(ordered_value)::CurrentSplit() << std::endl;
+                        }
                         break;
                     case 1:
                         ADAPTER_OF(unordered_value)::RecomputeSplit();
@@ -201,10 +225,8 @@ public:
         ADAPTER_OF(unordered_value)::ResetThread();
     }
 
-    inline void run_txn_read();
-    inline void run_txn_write();
-    inline void run_txn_read_heavy();
-    inline void run_txn_write_heavy();
+    inline void run_txn_read(uint64_t);
+    inline void run_txn_write(uint64_t);
 
 private:
     dynamic_input_generator ig;
@@ -218,6 +240,8 @@ private:
     int runner_id;
     int prev_workload;
     int switches;
+
+    const uint64_t tsc_sec = constants::processor_tsc_frequency * constants::million;
 
     friend class dynamic_access<DBParams>;
 };
@@ -372,16 +396,22 @@ public:
             txn_type t = runner.next_transaction(curr_t - start_t);
             switch (t) {
                 case txn_type::read:
-                    runner.run_txn_read();
+                    runner.run_txn_read(0);
                     break;
                 case txn_type::write:
-                    runner.run_txn_write();
+                    runner.run_txn_write(0);
+                    break;
+                case txn_type::read_medium:
+                    runner.run_txn_read(1);
+                    break;
+                case txn_type::write_medium:
+                    runner.run_txn_write(1);
                     break;
                 case txn_type::read_heavy:
-                    runner.run_txn_read_heavy();
+                    runner.run_txn_read(2);
                     break;
                 case txn_type::write_heavy:
-                    runner.run_txn_write_heavy();
+                    runner.run_txn_write(2);
                     break;
                 default:
                     fprintf(stderr, "r:%d unknown txn type\n", runner_id);
@@ -519,7 +549,7 @@ public:
         ADAPTER_OF(unordered_value)::ResetGlobal();
 
         db_profiler prof(spawn_perf);
-        dynamic_db<DBParams> db(16, 65536);
+        dynamic_db<DBParams> db(16, 1ULL << 16);
 
         std::cout << "Prepopulating database..." << std::endl;
         prepopulate_db(db, num_threads);

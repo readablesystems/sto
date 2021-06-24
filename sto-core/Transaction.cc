@@ -586,11 +586,15 @@ void Transaction::print_stats() {
         fprintf(stderr, "$ Dynamic txn profiles: commits(aborts), abort rate\n");
         fprintf(stderr, "$          Read: %llu(%llu), %.3f%%\n", out.p(txp_dyn_r_commits), out.p(txp_dyn_r_aborts),
                 100.0 * (double) out.p(txp_dyn_r_aborts) / (out.p(txp_dyn_r_commits) + out.p(txp_dyn_r_aborts)));
-        fprintf(stderr, "$    Read-heavy: %llu(%llu), %.3f%%\n", out.p(txp_dyn_rh_commits), out.p(txp_dyn_rh_aborts),
+        fprintf(stderr, "$    Read-medium: %llu(%llu), %.3f%%\n", out.p(txp_dyn_rm_commits), out.p(txp_dyn_rm_aborts),
+                100.0 * (double) out.p(txp_dyn_rm_aborts) / (out.p(txp_dyn_rm_commits) + out.p(txp_dyn_rm_aborts)));
+        fprintf(stderr, "$    Read-heavy: %llu(%llu), %.3f%%\n", out.p(txp_dyn_rm_commits), out.p(txp_dyn_rm_aborts),
                 100.0 * (double) out.p(txp_dyn_rh_aborts) / (out.p(txp_dyn_rh_commits) + out.p(txp_dyn_rh_aborts)));
         fprintf(stderr, "$         Write: %llu(%llu), %.3f%%\n", out.p(txp_dyn_w_commits), out.p(txp_dyn_w_aborts),
                 100.0 * (double) out.p(txp_dyn_w_aborts) / (out.p(txp_dyn_w_commits) + out.p(txp_dyn_w_aborts)));
-        fprintf(stderr, "$   Write-heavy: %llu(%llu), %.3f%%\n", out.p(txp_dyn_wh_commits), out.p(txp_dyn_wh_aborts),
+        fprintf(stderr, "$   Write-medium: %llu(%llu), %.3f%%\n", out.p(txp_dyn_wm_commits), out.p(txp_dyn_wm_aborts),
+                100.0 * (double) out.p(txp_dyn_wm_aborts) / (out.p(txp_dyn_wm_commits) + out.p(txp_dyn_wm_aborts)));
+        fprintf(stderr, "$   Write-heavy: %llu(%llu), %.3f%%\n", out.p(txp_dyn_wm_commits), out.p(txp_dyn_wm_aborts),
                 100.0 * (double) out.p(txp_dyn_wh_aborts) / (out.p(txp_dyn_wh_commits) + out.p(txp_dyn_wh_aborts)));
     }
 

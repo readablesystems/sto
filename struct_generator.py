@@ -232,6 +232,10 @@ inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColu
 {indent}return nc;
 {rbrace}
 
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {lbrace}
+{indent}return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
+{rbrace}
+
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {lbrace}
 {indent}out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
 {indent}return out;
