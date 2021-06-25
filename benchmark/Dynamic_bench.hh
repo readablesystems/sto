@@ -168,7 +168,7 @@ public:
         ++count;
         uint64_t x = ig.random(0, 99);
         if (mix == 0) {
-            int workload = (tsc_elapsed / tsc_threshold) % 8;
+            int workload = (tsc_elapsed / tsc_threshold) % 4;
             //int workload = (count / 10000) % 2;
             switches += workload != prev_workload;
             /*
@@ -182,15 +182,11 @@ public:
             prev_workload = workload;
             switch (workload) {
                 case 0:
-                case 7:
-                    return x < 50 ? txn_type::read_heavy : txn_type::write;
-                case 5:
-                case 6:
+                    return x < 90 ? txn_type::read_heavy : txn_type::write;
+                case 3:
                     return x < 50 ? txn_type::read_medium : txn_type::write_medium;
                 case 1:
                 case 2:
-                case 3:
-                case 4:
                     return x < 10 ? txn_type::read : txn_type::write_heavy;
                 default:
                     std::cerr << "Invalid workload variant: " << workload << std::endl;
