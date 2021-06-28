@@ -111,9 +111,9 @@ if constexpr (!DBParams::MVCC) {
 
     ov_nc range_start;
     switch (depth) {
-        case 0: range_start = ov_nc::rw; break;
+        case 0: range_start = ov_nc::wo; break;
         case 1: range_start = (ov_nc::rw + ov_nc::wo) / 2; break;
-        case 2: range_start = ov_nc::wo; break;
+        case 2: range_start = ov_nc::rw; break;
         default:
             std::cerr << "Invalid depth parameter: " << depth << std::endl;
             assert(false);

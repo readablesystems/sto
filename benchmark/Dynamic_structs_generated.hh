@@ -198,7 +198,7 @@ struct accessor {
 
 struct ordered_value {
     using NamedColumn = ordered_value_datatypes::NamedColumn;
-    static constexpr auto DEFAULT_SPLIT = NamedColumn::wo;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::rw + 4;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit ordered_value() = default;

@@ -168,30 +168,38 @@ public:
         ++count;
         uint64_t x = ig.random(0, 99);
         if (mix == 0) {
-            int workload = (tsc_elapsed / tsc_threshold) % 4;
-            //int workload = (count / 10000) % 2;
-            switches += workload != prev_workload;
+            int workload_variant = (tsc_elapsed / tsc_threshold) % 4;
+            //int workload_variant = (count / 10000) % 2;
             /*
             bool change_workload = ig.random(0, tsc_threshold - 1) < (tsc_elapsed % tsc_threshold);
-            int workload = change_workload? 1 - prev_workload : prev_workload;
-            switches += change_workload;
+            int workload_variant = change_workload? 1 - prev_workload : prev_workload;
             */
-            if (workload != prev_workload) {
-                //std::cout << "Workload switched from " << prev_workload << " to " << workload << std::endl;
-            }
-            prev_workload = workload;
-            switch (workload) {
+            txn_type txn;
+            int next_workload;
+            switch (workload_variant) {
                 case 0:
-                    return x < 90 ? txn_type::read_heavy : txn_type::write;
-                case 3:
-                    return x < 50 ? txn_type::read_medium : txn_type::write_medium;
+                    next_workload = 0;
+                    txn = x < 90 ? txn_type::read_heavy : txn_type::write;
+                    break;
                 case 1:
+                case 3:
+                    next_workload = 1;
+                    txn = x < 50 ? txn_type::read_medium : txn_type::write_medium;
+                    break;
                 case 2:
-                    return x < 10 ? txn_type::read : txn_type::write_heavy;
+                    next_workload = 2;
+                    txn = x < 10 ? txn_type::read : txn_type::write_heavy;
+                    break;
                 default:
-                    std::cerr << "Invalid workload variant: " << workload << std::endl;
+                    std::cerr << "Invalid workload variant: " << workload_variant << std::endl;
                     assert(false);
             }
+            switches += next_workload != prev_workload;
+            if (next_workload != prev_workload) {
+                //std::cout << "Workload switched from " << prev_workload << " to " << workload << std::endl;
+            }
+            prev_workload = next_workload;
+            return txn;
         }
         assert(false);
         return txn_type::read;
@@ -418,7 +426,7 @@ public:
             ++local_cnt;
         }
 
-        std::cout << "Switches: " << runner.switches << std::endl;
+        printf("Switches: %d\n", runner.switches);
 
         txn_cnt = local_cnt;
     }

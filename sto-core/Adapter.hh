@@ -91,15 +91,21 @@ public:
             write_total += write_freq[numindex];
         }
 
-        size_t best_split = static_cast<size_t>(
+        size_t prev_split = static_cast<size_t>(
                 Global().current_split.load(std::memory_order::memory_order_relaxed));
+        size_t best_split = prev_split;
         double best_data[2] = {read_psum[best_split - 1] * 1.0 / read_total, write_psum[best_split - 1] * 1.0 / write_total};
         // Maximize write load vs read load difference
         for (size_t active_split = NCOUNTERS - 1; active_split; active_split--) {
             double current_data[2] = {read_psum[active_split - 1] * 1.0 / read_total, write_psum[active_split - 1] * 1.0 / write_total};
             double best_diff = std::abs(best_data[1] - best_data[0]);
             double current_diff = std::abs(current_data[1] - current_data[0]);
-            if (current_diff > best_diff * 1.05) {
+            double factor = best_split == prev_split ? 1.05 : 1;
+            if (current_diff > factor * best_diff) {
+#if DEBUG
+                printf("Split diff %.6f (%zu) > %.2f * %.6f (%zu)\n",
+                       current_diff, active_split, factor,  best_diff, best_split);
+#endif
                 best_split = active_split;
                 best_data[0] = current_data[0];
                 best_data[1] = current_data[1];
@@ -108,13 +114,20 @@ public:
 
         // Load difference is unsubstantial, try to balance writes
         if (best_split == NCOUNTERS) {
-            best_split = static_cast<size_t>(
-                    Global().current_split.load(std::memory_order::memory_order_relaxed));
+#if DEBUG
+            printf("Load difference is unsubstantial, switching to write-balancing\n");
+#endif
+            best_split = prev_split;
             for (size_t active_split = NCOUNTERS - 1; active_split; active_split--) {
                 double best_diff = std::abs(write_psum[best_split - 1] * 1.0 / write_total - 0.5);
                 double current_diff = std::abs(write_psum[active_split - 1] * 1.0 / write_total - 0.5);
 
-                if (current_diff < best_diff * 0.95) {
+                double factor = best_split == prev_split ? 0.95 : 1;
+                if (current_diff < factor * best_diff) {
+#if DEBUG
+                    printf("Split diff %.6f (%zu) < %.2f * %.6f (%zu)\n",
+                           current_diff, active_split, factor, best_diff, best_split);
+#endif
                     best_split = active_split;
                 }
             }
