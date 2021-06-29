@@ -569,7 +569,7 @@ struct accessor {
 
 struct unordered_value {
     using NamedColumn = unordered_value_datatypes::NamedColumn;
-    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::rw + 4;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit unordered_value() = default;
