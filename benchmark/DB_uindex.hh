@@ -147,7 +147,7 @@ public:
 #endif
 
     sel_return_type
-    select_row(const key_type& k, std::initializer_list<ColumnAccess> accesses) {
+    select_row(const key_type& k, std::vector<ColumnAccess> accesses) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
         bucket_version_type buck_vers = buck.version;
         fence();
@@ -227,7 +227,7 @@ public:
 #endif
 
     sel_return_type
-    select_row(uintptr_t rid, std::initializer_list<ColumnAccess> accesses) {
+    select_row(uintptr_t rid, std::vector<ColumnAccess> accesses) {
         auto e = reinterpret_cast<internal_elem*>(rid);
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 

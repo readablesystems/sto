@@ -35,6 +35,7 @@ const Clp_Option options[] = {
         { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "verbose",      'v', opt_verb,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "mix",          'm', opt_mix,   Clp_ValInt,    Clp_Optional },
+        { "ordered",      'o', opt_ordr,  Clp_ValInt,    Clp_Optional },
         { "adapt",        'a', opt_ada,   Clp_NoVal,     Clp_Negate| Clp_Optional },
         { "sample",       's', opt_samp,  Clp_NoVal,     Clp_Negate| Clp_Optional },
         { "profile",      'f', opt_prof,  Clp_NoVal,     Clp_Negate| Clp_Optional },
@@ -79,6 +80,8 @@ void print_usage(const char *argv_0) {
        << "    Enable commutative updates in MVCC (default false)." << std::endl
        << "  --verbose (or -v)" << std::endl
        << "    Enable verbose output (default false)." << std::endl
+       << "  --ordered (or -o)" << std::endl
+       << "    Execute using an ordered index (default false)." << std::endl
        << "  --mix=<NUM> or -m<NUM>" << std::endl
        << "    Specify workload mix:" << std::endl
        << "    0. Full mix (default)" << std::endl

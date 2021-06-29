@@ -34,7 +34,8 @@
 // @section: clp parser definitions
 enum {
     opt_dbid = 1, opt_thld, opt_nthrs, opt_time, opt_perf, opt_pfcnt, opt_gc,
-    opt_gr, opt_node, opt_comm, opt_verb, opt_mix, opt_ada, opt_samp, opt_prof
+    opt_gr, opt_node, opt_comm, opt_verb, opt_mix, opt_ordr, opt_ada, opt_samp,
+    opt_prof
 };
 
 extern const char* workload_mix_names[];
@@ -151,6 +152,7 @@ public:
     struct Params {
         int mix;
         int threshold;
+        bool ordered;
         bool profile;
         bool sample;
     };
@@ -159,9 +161,9 @@ public:
     using u_table_access = typename dynamic_db<DBParams>::u_table_type::ColumnAccess;
 
     dynamic_runner(int id, dynamic_db<DBParams>& database, Params& params)
-        : ig(id), count(0), db(database), mix(params.mix), adapt_profile(params.profile),
-          sample(params.sample), threshold(params.threshold),
-          tsc_threshold(threshold * constants::processor_tsc_frequency * constants::million),
+        : ig(id), count(0), db(database), mix(params.mix), params(params),
+          threshold(params.threshold),
+          tsc_threshold(params.threshold * constants::processor_tsc_frequency * constants::million),
           runner_id(id), prev_workload(0), switches(0) {}
 
     inline txn_type next_transaction(uint64_t tsc_elapsed) {
@@ -207,38 +209,44 @@ public:
 
     inline void adapters_commit() {
         if (!ig.random(0, 3)) {
-            ADAPTER_OF(ordered_value)::Commit();
-            ADAPTER_OF(unordered_value)::Commit();
-            if (!adapt_profile && !ig.random(0, 99)) {
-                switch (ig.random(0, 0)) {
-                    case 0:
-                        if (ADAPTER_OF(ordered_value)::RecomputeSplit()) {
-                            std::cout << "Split changed to " << (int)ADAPTER_OF(ordered_value)::CurrentSplit() << std::endl;
-                        }
-                        break;
-                    case 1:
-                        ADAPTER_OF(unordered_value)::RecomputeSplit();
-                        break;
+            if (params.ordered) {
+                ADAPTER_OF(ordered_value)::Commit();
+            } else {
+                ADAPTER_OF(unordered_value)::Commit();
+            }
+            if (!params.profile && !ig.random(0, 99)) {
+                if (params.ordered) {
+                    if (ADAPTER_OF(ordered_value)::RecomputeSplit()) {
+                        std::cout << "Split changed to " << (int)ADAPTER_OF(ordered_value)::CurrentSplit() << std::endl;
+                    }
+                } else {
+                    if (ADAPTER_OF(unordered_value)::RecomputeSplit()) {
+                        std::cout << "Split changed to " << (int)ADAPTER_OF(unordered_value)::CurrentSplit() << std::endl;
+                    }
                 }
             }
         }
     }
 
     inline void adapters_treset() {
-        ADAPTER_OF(ordered_value)::ResetThread();
-        ADAPTER_OF(unordered_value)::ResetThread();
+        if (params.ordered) {
+            ADAPTER_OF(ordered_value)::ResetThread();
+        } else {
+            ADAPTER_OF(unordered_value)::ResetThread();
+        }
     }
 
-    inline void run_txn_read(uint64_t);
-    inline void run_txn_write(uint64_t);
+    inline void run_txn_ordered_read(uint64_t);
+    inline void run_txn_ordered_write(uint64_t);
+    inline void run_txn_unordered_read(uint64_t);
+    inline void run_txn_unordered_write(uint64_t);
 
 private:
     dynamic_input_generator ig;
     int64_t count;
     dynamic_db<DBParams>& db;
     int mix;
-    const bool adapt_profile;
-    const bool sample;
+    const Params params;
     int threshold;
     uint64_t tsc_threshold;
     int runner_id;
@@ -400,22 +408,46 @@ public:
             txn_type t = runner.next_transaction(curr_t - start_t);
             switch (t) {
                 case txn_type::read:
-                    runner.run_txn_read(0);
+                    if (params.ordered) {
+                        runner.run_txn_ordered_read(0);
+                    } else {
+                        runner.run_txn_unordered_read(0);
+                    }
                     break;
                 case txn_type::write:
-                    runner.run_txn_write(0);
+                    if (params.ordered) {
+                        runner.run_txn_ordered_write(0);
+                    } else {
+                        runner.run_txn_unordered_write(0);
+                    }
                     break;
                 case txn_type::read_medium:
-                    runner.run_txn_read(1);
+                    if (params.ordered) {
+                        runner.run_txn_ordered_read(1);
+                    } else {
+                        runner.run_txn_unordered_read(1);
+                    }
                     break;
                 case txn_type::write_medium:
-                    runner.run_txn_write(1);
+                    if (params.ordered) {
+                        runner.run_txn_ordered_write(1);
+                    } else {
+                        runner.run_txn_unordered_write(1);
+                    }
                     break;
                 case txn_type::read_heavy:
-                    runner.run_txn_read(2);
+                    if (params.ordered) {
+                        runner.run_txn_ordered_read(2);
+                    } else {
+                        runner.run_txn_unordered_read(2);
+                    }
                     break;
                 case txn_type::write_heavy:
-                    runner.run_txn_write(2);
+                    if (params.ordered) {
+                        runner.run_txn_ordered_write(2);
+                    } else {
+                        runner.run_txn_unordered_write(2);
+                    }
                     break;
                 default:
                     fprintf(stderr, "r:%d unknown txn type\n", runner_id);
@@ -462,15 +494,16 @@ public:
 
         bool spawn_perf = false;
         bool counter_mode = false;
-        int threshold = 1000;
         int num_threads = 1;
-        int mix = 0;
         double time_limit = 10.0;
         bool enable_gc = false;
         unsigned gc_rate = Transaction::get_epoch_cycle();
-        bool sample = false;
-        bool profile = false;
         bool verbose = false;
+
+        typename dynamic_runner<DBParams>::Params params {
+            0 /*mix*/, 1000 /*threshold*/, false /*ordered*/, false /*profile*/,
+            false /*sample*/
+        };
 
         Clp_Parser *clp = Clp_NewParser(argc, argv, noptions, options);
 
@@ -481,7 +514,7 @@ public:
                 case opt_dbid:
                     break;
                 case opt_thld:
-                    threshold = clp->val.i;
+                    params.threshold = clp->val.i;
                     break;
                 case opt_nthrs:
                     num_threads = clp->val.i;
@@ -507,19 +540,22 @@ public:
                     break;
                 case opt_ada:
                     break;
+                case opt_ordr:
+                    params.ordered = !clp->negated;
+                    break;
                 case opt_samp:
-                    sample = !clp->negated;
+                    params.sample = !clp->negated;
                     break;
                 case opt_prof:
-                    profile = !clp->negated;
+                    params.profile = !clp->negated;
                     break;
                 case opt_verb:
                     verbose = !clp->negated;
                     break;
                 case opt_mix:
-                    mix = clp->val.i;
-                    if (mix > 2 || mix < 0) {
-                        mix = 0;
+                    params.mix = clp->val.i;
+                    if (params.mix > 2 || params.mix < 0) {
+                        params.mix = 0;
                     }
                     break;
                 default:
@@ -534,7 +570,7 @@ public:
         if (ret != 0)
             return ret;
 
-        std::cout << "Selected workload mix: " << std::string(workload_mix_names[mix]) << std::endl;
+        std::cout << "Selected workload mix: " << std::string(workload_mix_names[params.mix]) << std::endl;
 
         auto profiler_mode = counter_mode ?
                              Profiler::perf_mode::counters : Profiler::perf_mode::record;
@@ -570,18 +606,17 @@ public:
         }
         std::cout << std::endl << std::flush;
 
-        typename dynamic_runner<DBParams>::Params params {
-            mix, threshold, profile, sample
-        };
-
         prof.start(profiler_mode);
         auto num_trans = run_benchmark(db, prof, num_threads, time_limit, params, verbose);
         prof.finish(num_trans);
 
         Transaction::rcu_release_all(advancer, num_threads);
 
-        ADAPTER_OF(ordered_value)::PrintStats();
-        //ADAPTER_OF(unordered_value)::PrintStats();
+        if (params.ordered) {
+            ADAPTER_OF(ordered_value)::PrintStats();
+        } else {
+            ADAPTER_OF(unordered_value)::PrintStats();
+        }
 
 
         return 0;
