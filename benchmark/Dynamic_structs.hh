@@ -24,6 +24,10 @@ struct ordered_key {
     ordered_key(uint64_t id) {
         o_id = bswap(id);
     }
+    ordered_key(const lcdf::Str& mt_key) {
+        assert(mt_key.length() == sizeof(*this));
+        memcpy(this, mt_key.data(), sizeof(*this));
+    }
     bool operator==(const ordered_key& other) const {
         return o_id == other.o_id;
     }

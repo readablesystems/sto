@@ -33,34 +33,27 @@ if constexpr (!DBParams::MVCC) {
     ++starts;
 
     const auto start_key = ig.random(db.keymin(), db.keymax());
-    for (auto index = 0; index < 500; ++index) {
-        auto key = (start_key + index) % (db.keymax() - db.keymin() + 1) + db.keymin();
-    //for (const auto key : ig.nrandom(db.keymin(), db.keymax(), 1000)) {
-        ordered_key ok(key);
-        std::vector<o_table_access> accesses;
-        std::vector<uint64_t> ro_indices;
-        std::vector<uint64_t> rw_indices;
-        if (params.sample) {
-            ro_indices = ig.nrandom(ov_nc::ro, ov_nc::rw - 1, 4);
-            rw_indices = ig.nrandom(
-                    ov_nc::rw - ov_nc::rw, range_end - ov_nc::rw - 1, 16);
-            for (auto index : ro_indices) {
-                accesses.push_back({ov_nc::ro + index, AccessType::read});
-            }
-            for (auto index : rw_indices) {
-                accesses.push_back({ov_nc::rw + index, AccessType::read});
-            }
-        } else {
-            for (auto ca = ov_nc::ro; ca < range_end; ca += 1) {
-                accesses.push_back({ca, AccessType::read});
-            }
+    const auto end_key = (start_key + 500) % (db.keymax() - db.keymin() + 1) + db.keymin();
+    std::vector<o_table_access> accesses;
+    std::vector<uint64_t> ro_indices;
+    std::vector<uint64_t> rw_indices;
+    if (params.sample) {
+        ro_indices = ig.nrandom(ov_nc::ro, ov_nc::rw - 1, 4);
+        rw_indices = ig.nrandom(
+                ov_nc::rw - ov_nc::rw, range_end - ov_nc::rw - 1, 16);
+        for (auto index : ro_indices) {
+            accesses.push_back({ov_nc::ro + index, AccessType::read});
         }
-        auto [abort, result, row, value] = db.tbl_ordered().select_row(
-                ok, accesses);
-        (void)row; (void)result;
-        CHK(abort);
-        assert(result);
+        for (auto index : rw_indices) {
+            accesses.push_back({ov_nc::rw + index, AccessType::read});
+        }
+    } else {
+        for (auto ca = ov_nc::ro; ca < range_end; ca += 1) {
+            accesses.push_back({ca, AccessType::read});
+        }
+    }
 
+    auto scan_callback = [&] (const ordered_key&, const auto& value) -> bool {
         if (params.sample) {
             for (auto index : ro_indices) {
                 (void) value->ro[index];
@@ -76,6 +69,25 @@ if constexpr (!DBParams::MVCC) {
                 (void) value->rw[index];
             }
         }
+        return true;
+    };
+
+    bool scan_success;
+
+    if (start_key < end_key) {
+        scan_success = db.tbl_ordered()
+                .template range_scan<decltype(scan_callback), false/*reverse*/>(
+                        start_key, end_key, scan_callback, accesses);
+        CHK(scan_success);
+    } else {
+        scan_success = db.tbl_ordered()
+                .template range_scan<decltype(scan_callback), false/*reverse*/>(
+                        start_key, db.keymax(), scan_callback, accesses);
+        CHK(scan_success);
+        scan_success = db.tbl_ordered()
+                .template range_scan<decltype(scan_callback), false/*reverse*/>(
+                        db.keymin(), end_key, scan_callback, accesses);
+        CHK(scan_success);
     }
 
 

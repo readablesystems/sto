@@ -468,22 +468,25 @@ public:
 
     template <typename Callback, bool Reverse>
     bool range_scan(const key_type& begin, const key_type& end, Callback callback,
-                    std::initializer_list<column_access_t> accesses, bool phantom_protection = true, int limit = -1) {
+                    std::vector<ColumnAccess> accesses, bool phantom_protection = true, int limit = -1) {
         assert((limit == -1) || (limit > 0));
         auto node_callback = [&] (leaf_type* node,
             typename unlocked_cursor_type::nodeversion_value_type version) {
             return ((!phantom_protection) || scan_track_node_version(node, version));
         };
 
-        auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
+        //auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
                                                       : Sto::fresh_item(this, item_key_t::row_item_key(e));
 
+            auto cell_accesses = e->row_container.split_accesses(accesses);
+
             bool any_has_write;
             std::array<TransItem*, value_container_type::num_versions> cell_items {};
-            std::tie(any_has_write, cell_items) = extract_item_list<value_container_type>(cell_accesses, this, e);
+            std::tie(any_has_write, cell_items) = extract_items<value_container_type>(cell_accesses, this, e);
+
 
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
@@ -500,9 +503,10 @@ public:
                 }
             }
 
-            bool ok = access_all(cell_accesses, cell_items, e->row_container);
+            bool ok = e->row_container.template access<item_key_t>(cell_accesses, cell_items, row_cell_bit);
             if (!ok)
                 return false;
+
             //bool ok = item.observe(e->version);
             //if (Adaptive) {
             //    ok = item.observe(e->version, true/*force occ*/);
