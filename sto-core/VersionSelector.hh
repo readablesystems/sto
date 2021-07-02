@@ -186,7 +186,7 @@ public:
             split_accesses[split] |= colaccess.access;
         }
         */
-        const auto current_split = ::sto::Adapter<RowType, typename RowType::NamedColumn>::CurrentSplit();
+        const auto current_split = ::sto::GlobalAdapter<RowType, typename RowType::NamedColumn>::CurrentSplit();
         for (auto colaccess : accesses) {
             const auto split = colaccess.column < current_split;
             split_accesses[split] |= colaccess.access;
