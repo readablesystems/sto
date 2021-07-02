@@ -7,8 +7,6 @@
 #include "TPCC_txns.hh"
 #include "PlatformFeatures.hh"
 
-bool sto::AdapterConfig::GlobalEnabled = false;
-
 namespace tpcc {
 
 INITIALIZE_ADAPTER(ADAPTER_OF(warehouse_value));
@@ -165,7 +163,9 @@ int main(int argc, const char *const *argv) {
     if (ret_code != 0)
         return ret_code;
 
-    sto::AdapterConfig::GlobalEnabled = enable_adapt;
+    if (enable_adapt) {
+        sto::AdapterConfig::Enable(sto::AdapterConfig::Global);
+    }
 
     switch (dbid) {
     case db_params_id::Default:

@@ -409,12 +409,12 @@ const auto split_of(NamedColumn index) const {lbrace}
     def convert_members(self):
         '''Output the member variables.'''
 
-        self.writeln('NamedColumn splitindex_ = DEFAULT_SPLIT;')
-
         for member in self.sdata:
             member, _, count = Output.extract_member_type(member)
             self.writeln(
                     'accessor<NamedColumn::{member}> {member};', member=member)
+
+        self.writeln('NamedColumn splitindex_ = DEFAULT_SPLIT;')
 
     def convert_resplitter(self):
         '''Output the resplitting functionality.'''

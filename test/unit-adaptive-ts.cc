@@ -10,8 +10,6 @@ using bench::mvcc_unordered_index;
 using bench::RowAccess;
 using bench::access_t;
 
-bool sto::AdapterConfig::GlobalEnabled = true;
-
 struct index_key {
     index_key() = default;
     index_key(int32_t k1, int32_t k2)
@@ -686,6 +684,8 @@ void AdaptiveTester::SomeWritesSplitTest() {
 }
 
 int main() {
+    sto::AdapterConfig::Enable(sto::AdapterConfig::Global);
+
     {
         AdaptiveIndexTester<true> tester;
         tester.RunTests();

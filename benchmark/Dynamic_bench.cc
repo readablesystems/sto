@@ -7,8 +7,6 @@
 #include "Dynamic_txns.hh"
 #include "PlatformFeatures.hh"
 
-bool sto::AdapterConfig::GlobalEnabled = false;
-
 namespace dynamic {
 
 /*
@@ -160,7 +158,10 @@ int main(int argc, const char *const *argv) {
 
     (void) node_tracking;
 
-    sto::AdapterConfig::GlobalEnabled = enable_adapt;
+    if (enable_adapt) {
+        sto::AdapterConfig::Enable(sto::AdapterConfig::Global);
+    }
+
 
     switch (dbid) {
     case db_params_id::Default:

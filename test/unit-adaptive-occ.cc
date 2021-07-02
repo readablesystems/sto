@@ -11,8 +11,6 @@ using bench::unordered_index;
 using bench::RowAccess;
 using bench::access_t;
 
-bool sto::AdapterConfig::GlobalEnabled = true;
-
 template <bool Ordered>
 class Tester {
 public:
@@ -133,6 +131,8 @@ void Tester<Ordered>::ResplitInflightTest() {
 }
 
 int main() {
+    sto::AdapterConfig::Enable(sto::AdapterConfig::Global);
+
     {
         Tester<true> tester;
         tester.RunTests();
