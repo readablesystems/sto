@@ -74,8 +74,6 @@ struct accessor;
 
 struct ordered_value;
 
-DEFINE_ADAPTER(ordered_value, NamedColumn);
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -102,7 +100,7 @@ struct accessor_info<NamedColumn::wo> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(ordered_value);
+    using adapter_type = ::sto::GlobalAdapter<ordered_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -374,7 +372,6 @@ inline const accessor<NamedColumn::wo>& ordered_value::get<NamedColumn::wo + 1>(
 };  // namespace ordered_value_datatypes
 
 using ordered_value = ordered_value_datatypes::ordered_value;
-using ADAPTER_OF(ordered_value) = ADAPTER_OF(ordered_value_datatypes::ordered_value);
 
 namespace unordered_value_datatypes {
 
@@ -445,8 +442,6 @@ struct accessor;
 
 struct unordered_value;
 
-DEFINE_ADAPTER(unordered_value, NamedColumn);
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -473,7 +468,7 @@ struct accessor_info<NamedColumn::wo> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(unordered_value);
+    using adapter_type = ::sto::GlobalAdapter<unordered_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -745,5 +740,4 @@ inline const accessor<NamedColumn::wo>& unordered_value::get<NamedColumn::wo + 1
 };  // namespace unordered_value_datatypes
 
 using unordered_value = unordered_value_datatypes::unordered_value;
-using ADAPTER_OF(unordered_value) = ADAPTER_OF(unordered_value_datatypes::unordered_value);
 

@@ -23,6 +23,10 @@ inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 }
 
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
     return nc;
@@ -40,9 +44,17 @@ inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -81,8 +93,6 @@ template <NamedColumn Column>
 struct accessor;
 
 struct warehouse_value;
-
-DEFINE_ADAPTER(warehouse_value, NamedColumn);
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -145,7 +155,7 @@ struct accessor_info<NamedColumn::w_ytd> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(warehouse_value);
+    using adapter_type = ::sto::GlobalAdapter<warehouse_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -241,6 +251,7 @@ struct accessor {
 
 struct warehouse_value {
     using NamedColumn = warehouse_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit warehouse_value() = default;
@@ -268,7 +279,7 @@ struct warehouse_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::w_name> w_name;
     accessor<NamedColumn::w_street_1> w_street_1;
     accessor<NamedColumn::w_street_2> w_street_2;
@@ -381,14 +392,6 @@ inline const accessor<NamedColumn::w_ytd>& warehouse_value::get<NamedColumn::w_y
 };  // namespace warehouse_value_datatypes
 
 using warehouse_value = warehouse_value_datatypes::warehouse_value;
-using ADAPTER_OF(warehouse_value) = ADAPTER_OF(warehouse_value_datatypes::warehouse_value);
-
-#pragma once
-
-#include <type_traits>
-
-#include "Adapter.hh"
-#include "Sto.hh"
 
 namespace district_value_datatypes {
 
@@ -408,6 +411,10 @@ inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 }
 
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
     return nc;
@@ -425,9 +432,17 @@ inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -466,8 +481,6 @@ template <NamedColumn Column>
 struct accessor;
 
 struct district_value;
-
-DEFINE_ADAPTER(district_value, NamedColumn);
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -530,7 +543,7 @@ struct accessor_info<NamedColumn::d_ytd> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(district_value);
+    using adapter_type = ::sto::GlobalAdapter<district_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -626,6 +639,7 @@ struct accessor {
 
 struct district_value {
     using NamedColumn = district_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit district_value() = default;
@@ -653,7 +667,7 @@ struct district_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::d_name> d_name;
     accessor<NamedColumn::d_street_1> d_street_1;
     accessor<NamedColumn::d_street_2> d_street_2;
@@ -766,14 +780,6 @@ inline const accessor<NamedColumn::d_ytd>& district_value::get<NamedColumn::d_yt
 };  // namespace district_value_datatypes
 
 using district_value = district_value_datatypes::district_value;
-using ADAPTER_OF(district_value) = ADAPTER_OF(district_value_datatypes::district_value);
-
-#pragma once
-
-#include <type_traits>
-
-#include "Adapter.hh"
-#include "Sto.hh"
 
 namespace customer_idx_value_datatypes {
 
@@ -784,6 +790,10 @@ enum class NamedColumn : int {
 
 inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
 }
 
 inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
@@ -803,9 +813,17 @@ inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -824,8 +842,6 @@ struct accessor;
 
 struct customer_idx_value;
 
-DEFINE_ADAPTER(customer_idx_value, NamedColumn);
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -838,7 +854,7 @@ struct accessor_info<NamedColumn::c_ids> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(customer_idx_value);
+    using adapter_type = ::sto::GlobalAdapter<customer_idx_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -934,6 +950,7 @@ struct accessor {
 
 struct customer_idx_value {
     using NamedColumn = customer_idx_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit customer_idx_value() = default;
@@ -961,7 +978,7 @@ struct customer_idx_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::c_ids> c_ids;
 };
 
@@ -997,14 +1014,6 @@ inline const accessor<NamedColumn::c_ids>& customer_idx_value::get<NamedColumn::
 };  // namespace customer_idx_value_datatypes
 
 using customer_idx_value = customer_idx_value_datatypes::customer_idx_value;
-using ADAPTER_OF(customer_idx_value) = ADAPTER_OF(customer_idx_value_datatypes::customer_idx_value);
-
-#pragma once
-
-#include <type_traits>
-
-#include "Adapter.hh"
-#include "Sto.hh"
 
 namespace customer_value_datatypes {
 
@@ -1034,6 +1043,10 @@ inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 }
 
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
     return nc;
@@ -1051,9 +1064,17 @@ inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -1122,8 +1143,6 @@ template <NamedColumn Column>
 struct accessor;
 
 struct customer_value;
-
-DEFINE_ADAPTER(customer_value, NamedColumn);
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -1256,7 +1275,7 @@ struct accessor_info<NamedColumn::c_data> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(customer_value);
+    using adapter_type = ::sto::GlobalAdapter<customer_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -1352,6 +1371,7 @@ struct accessor {
 
 struct customer_value {
     using NamedColumn = customer_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit customer_value() = default;
@@ -1379,7 +1399,7 @@ struct customer_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::c_first> c_first;
     accessor<NamedColumn::c_middle> c_middle;
     accessor<NamedColumn::c_last> c_last;
@@ -1602,14 +1622,6 @@ inline const accessor<NamedColumn::c_data>& customer_value::get<NamedColumn::c_d
 };  // namespace customer_value_datatypes
 
 using customer_value = customer_value_datatypes::customer_value;
-using ADAPTER_OF(customer_value) = ADAPTER_OF(customer_value_datatypes::customer_value);
-
-#pragma once
-
-#include <type_traits>
-
-#include "Adapter.hh"
-#include "Sto.hh"
 
 namespace history_value_datatypes {
 
@@ -1629,6 +1641,10 @@ inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 }
 
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
     return nc;
@@ -1646,9 +1662,17 @@ inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -1687,8 +1711,6 @@ template <NamedColumn Column>
 struct accessor;
 
 struct history_value;
-
-DEFINE_ADAPTER(history_value, NamedColumn);
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -1751,7 +1773,7 @@ struct accessor_info<NamedColumn::h_data> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(history_value);
+    using adapter_type = ::sto::GlobalAdapter<history_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -1847,6 +1869,7 @@ struct accessor {
 
 struct history_value {
     using NamedColumn = history_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit history_value() = default;
@@ -1874,7 +1897,7 @@ struct history_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::h_c_id> h_c_id;
     accessor<NamedColumn::h_c_d_id> h_c_d_id;
     accessor<NamedColumn::h_c_w_id> h_c_w_id;
@@ -1987,14 +2010,6 @@ inline const accessor<NamedColumn::h_data>& history_value::get<NamedColumn::h_da
 };  // namespace history_value_datatypes
 
 using history_value = history_value_datatypes::history_value;
-using ADAPTER_OF(history_value) = ADAPTER_OF(history_value_datatypes::history_value);
-
-#pragma once
-
-#include <type_traits>
-
-#include "Adapter.hh"
-#include "Sto.hh"
 
 namespace order_value_datatypes {
 
@@ -2009,6 +2024,10 @@ enum class NamedColumn : int {
 
 inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
 }
 
 inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
@@ -2028,9 +2047,17 @@ inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -2060,8 +2087,6 @@ template <NamedColumn Column>
 struct accessor;
 
 struct order_value;
-
-DEFINE_ADAPTER(order_value, NamedColumn);
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -2103,7 +2128,7 @@ struct accessor_info<NamedColumn::o_carrier_id> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(order_value);
+    using adapter_type = ::sto::GlobalAdapter<order_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -2199,6 +2224,7 @@ struct accessor {
 
 struct order_value {
     using NamedColumn = order_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit order_value() = default;
@@ -2226,7 +2252,7 @@ struct order_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::o_c_id> o_c_id;
     accessor<NamedColumn::o_entry_d> o_entry_d;
     accessor<NamedColumn::o_ol_cnt> o_ol_cnt;
@@ -2306,14 +2332,6 @@ inline const accessor<NamedColumn::o_carrier_id>& order_value::get<NamedColumn::
 };  // namespace order_value_datatypes
 
 using order_value = order_value_datatypes::order_value;
-using ADAPTER_OF(order_value) = ADAPTER_OF(order_value_datatypes::order_value);
-
-#pragma once
-
-#include <type_traits>
-
-#include "Adapter.hh"
-#include "Sto.hh"
 
 namespace orderline_value_datatypes {
 
@@ -2329,6 +2347,10 @@ enum class NamedColumn : int {
 
 inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
 }
 
 inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
@@ -2348,9 +2370,17 @@ inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -2383,8 +2413,6 @@ template <NamedColumn Column>
 struct accessor;
 
 struct orderline_value;
-
-DEFINE_ADAPTER(orderline_value, NamedColumn);
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -2433,7 +2461,7 @@ struct accessor_info<NamedColumn::ol_delivery_d> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(orderline_value);
+    using adapter_type = ::sto::GlobalAdapter<orderline_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -2529,6 +2557,7 @@ struct accessor {
 
 struct orderline_value {
     using NamedColumn = orderline_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit orderline_value() = default;
@@ -2556,7 +2585,7 @@ struct orderline_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::ol_i_id> ol_i_id;
     accessor<NamedColumn::ol_supply_w_id> ol_supply_w_id;
     accessor<NamedColumn::ol_quantity> ol_quantity;
@@ -2647,14 +2676,6 @@ inline const accessor<NamedColumn::ol_delivery_d>& orderline_value::get<NamedCol
 };  // namespace orderline_value_datatypes
 
 using orderline_value = orderline_value_datatypes::orderline_value;
-using ADAPTER_OF(orderline_value) = ADAPTER_OF(orderline_value_datatypes::orderline_value);
-
-#pragma once
-
-#include <type_traits>
-
-#include "Adapter.hh"
-#include "Sto.hh"
 
 namespace item_value_datatypes {
 
@@ -2668,6 +2689,10 @@ enum class NamedColumn : int {
 
 inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
 }
 
 inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
@@ -2687,9 +2712,17 @@ inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -2716,8 +2749,6 @@ template <NamedColumn Column>
 struct accessor;
 
 struct item_value;
-
-DEFINE_ADAPTER(item_value, NamedColumn);
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -2752,7 +2783,7 @@ struct accessor_info<NamedColumn::i_data> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(item_value);
+    using adapter_type = ::sto::GlobalAdapter<item_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -2848,6 +2879,7 @@ struct accessor {
 
 struct item_value {
     using NamedColumn = item_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit item_value() = default;
@@ -2875,7 +2907,7 @@ struct item_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::i_im_id> i_im_id;
     accessor<NamedColumn::i_price> i_price;
     accessor<NamedColumn::i_name> i_name;
@@ -2944,14 +2976,6 @@ inline const accessor<NamedColumn::i_data>& item_value::get<NamedColumn::i_data>
 };  // namespace item_value_datatypes
 
 using item_value = item_value_datatypes::item_value;
-using ADAPTER_OF(item_value) = ADAPTER_OF(item_value_datatypes::item_value);
-
-#pragma once
-
-#include <type_traits>
-
-#include "Adapter.hh"
-#include "Sto.hh"
 
 namespace stock_value_datatypes {
 
@@ -2967,6 +2991,10 @@ enum class NamedColumn : int {
 
 inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
+}
+
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
 }
 
 inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
@@ -2986,9 +3014,17 @@ inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<Na
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
 inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
+}
+
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
 }
 
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
@@ -3021,8 +3057,6 @@ template <NamedColumn Column>
 struct accessor;
 
 struct stock_value;
-
-DEFINE_ADAPTER(stock_value, NamedColumn);
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -3071,7 +3105,7 @@ struct accessor_info<NamedColumn::s_remote_cnt> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(stock_value);
+    using adapter_type = ::sto::GlobalAdapter<stock_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -3167,6 +3201,7 @@ struct accessor {
 
 struct stock_value {
     using NamedColumn = stock_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit stock_value() = default;
@@ -3194,7 +3229,7 @@ struct stock_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::s_dists> s_dists;
     accessor<NamedColumn::s_data> s_data;
     accessor<NamedColumn::s_quantity> s_quantity;
@@ -3375,5 +3410,4 @@ inline const accessor<NamedColumn::s_remote_cnt>& stock_value::get<NamedColumn::
 };  // namespace stock_value_datatypes
 
 using stock_value = stock_value_datatypes::stock_value;
-using ADAPTER_OF(stock_value) = ADAPTER_OF(stock_value_datatypes::stock_value);
 

@@ -48,6 +48,10 @@ inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColu
     return nc;
 }
 
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
+}
+
 inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
     out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
     return out;
@@ -69,8 +73,6 @@ template <NamedColumn Column>
 struct accessor;
 
 struct index_value;
-
-DEFINE_ADAPTER(index_value, NamedColumn);
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -98,7 +100,7 @@ struct accessor_info<NamedColumn::flagged> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(index_value);
+    using adapter_type = ::sto::GlobalAdapter<index_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -290,5 +292,4 @@ inline const accessor<NamedColumn::flagged>& index_value::get<NamedColumn::flagg
 };  // namespace index_value_datatypes
 
 using index_value = index_value_datatypes::index_value;
-using ADAPTER_OF(index_value) = ADAPTER_OF(index_value_datatypes::index_value);
 

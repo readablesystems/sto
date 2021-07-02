@@ -7,7 +7,7 @@
 #include "TPCC_txns.hh"
 #include "PlatformFeatures.hh"
 
-bool sto::AdapterConfig::Enabled = false;
+bool sto::AdapterConfig::GlobalEnabled = false;
 
 namespace tpcc {
 
@@ -165,7 +165,7 @@ int main(int argc, const char *const *argv) {
     if (ret_code != 0)
         return ret_code;
 
-    sto::AdapterConfig::Enabled = enable_adapt;
+    sto::AdapterConfig::GlobalEnabled = enable_adapt;
 
     switch (dbid) {
     case db_params_id::Default:

@@ -15,33 +15,45 @@ enum class NamedColumn : int {
     COLCOUNT = 10
 };
 
-constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+inline constexpr NamedColumn operator+(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
 }
 
-NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+inline constexpr NamedColumn operator+(NamedColumn nc, NamedColumn off) {
+    return nc + static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
+inline NamedColumn& operator+=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) + index);
     return nc;
 }
 
-NamedColumn& operator++(NamedColumn& nc) {
+inline NamedColumn& operator++(NamedColumn& nc) {
     return nc += 1;
 }
 
-NamedColumn& operator++(NamedColumn& nc, int) {
+inline NamedColumn& operator++(NamedColumn& nc, int) {
     return nc += 1;
 }
 
-constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
+inline constexpr NamedColumn operator-(NamedColumn nc, std::underlying_type_t<NamedColumn> index) {
     return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
 }
 
-NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
+inline constexpr NamedColumn operator-(NamedColumn nc, NamedColumn off) {
+    return nc - static_cast<std::underlying_type_t<NamedColumn>>(off);
+}
+
+inline NamedColumn& operator-=(NamedColumn& nc, std::underlying_type_t<NamedColumn> index) {
     nc = static_cast<NamedColumn>(static_cast<std::underlying_type_t<NamedColumn>>(nc) - index);
     return nc;
 }
 
-std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
+inline constexpr NamedColumn operator/(NamedColumn nc, std::underlying_type_t<NamedColumn> denom) {
+    return NamedColumn(static_cast<std::underlying_type_t<NamedColumn>>(nc) / denom);
+}
+
+inline std::ostream& operator<<(std::ostream& out, NamedColumn& nc) {
     out << static_cast<std::underlying_type_t<NamedColumn>>(nc);
     return out;
 }
@@ -59,8 +71,6 @@ template <NamedColumn Column>
 struct accessor;
 
 struct ycsb_value;
-
-DEFINE_ADAPTER(ycsb_value, NamedColumn);
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -81,7 +91,7 @@ struct accessor_info<NamedColumn::odd_columns> {
 
 template <NamedColumn Column>
 struct accessor {
-    using adapter_type = ADAPTER_OF(ycsb_value);
+    using adapter_type = ::sto::GlobalAdapter<ycsb_value, NamedColumn>;
     using type = typename accessor_info<Column>::type;
     using value_type = typename accessor_info<Column>::value_type;
 
@@ -177,6 +187,7 @@ struct accessor {
 
 struct ycsb_value {
     using NamedColumn = ycsb_value_datatypes::NamedColumn;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit ycsb_value() = default;
@@ -186,6 +197,12 @@ struct ycsb_value {
 
     template <NamedColumn Column>
     static inline void copy_data(ycsb_value& newvalue, const ycsb_value& oldvalue);
+
+    inline void init(const ycsb_value* oldvalue = nullptr) {
+        if (oldvalue) {
+            ycsb_value::resplit(*this, *oldvalue, ADAPTER_OF(ycsb_value)::CurrentSplit());
+        }
+    }
 
     template <NamedColumn Column>
     inline accessor<RoundedNamedColumn<Column>()>& get();
@@ -198,7 +215,7 @@ struct ycsb_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = NamedColumn::COLCOUNT;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::even_columns> even_columns;
     accessor<NamedColumn::odd_columns> odd_columns;
 };
@@ -206,8 +223,10 @@ struct ycsb_value {
 inline void ycsb_value::resplit(
         ycsb_value& newvalue, const ycsb_value& oldvalue, NamedColumn index) {
     assert(NamedColumn(0) < index && index <= NamedColumn::COLCOUNT);
-    memcpy(&newvalue, &oldvalue, sizeof newvalue);
-    //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    if (&newvalue != &oldvalue) {
+        memcpy(&newvalue, &oldvalue, sizeof newvalue);
+        //copy_data<NamedColumn(0)>(newvalue, oldvalue);
+    }
     newvalue.splitindex_ = index;
 }
 
@@ -323,7 +342,6 @@ inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::od
 };  // namespace ycsb_value_datatypes
 
 using ycsb_value = ycsb_value_datatypes::ycsb_value;
-using ADAPTER_OF(ycsb_value) = ADAPTER_OF(ycsb_value_datatypes::ycsb_value);
 
 };  // namespace ycsb
 

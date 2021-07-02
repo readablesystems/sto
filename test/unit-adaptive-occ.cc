@@ -11,7 +11,7 @@ using bench::unordered_index;
 using bench::RowAccess;
 using bench::access_t;
 
-bool sto::AdapterConfig::Enabled = true;
+bool sto::AdapterConfig::GlobalEnabled = true;
 
 template <bool Ordered>
 class Tester {

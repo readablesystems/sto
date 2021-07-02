@@ -10,7 +10,8 @@ namespace sto {
 template <typename T, typename IndexType> class GlobalAdapter;
 
 struct AdapterConfig {
-    static bool Enabled;
+    static bool GlobalEnabled;
+    static bool InlineEnabled;
 };
 
 template <typename T, typename IndexType>
@@ -50,7 +51,7 @@ public:
     }
 
     inline void Commit(size_t threadid) {
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             for (size_t i = 0; i < NCOUNTERS; i++) {
                 global_counters.read_counters[i].fetch_add(
                         thread_counters[threadid].read_counters[i], std::memory_order::memory_order_relaxed);
@@ -136,7 +137,7 @@ public:
 
     inline void CountRead(const Index index, const counter_type count) {
         assert(index < Index::COLCOUNT);
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             auto numindex = static_cast<std::underlying_type_t<Index>>(index);
             thread_counters[TThread::id()].read_counters[numindex] += count;
         }
@@ -150,7 +151,7 @@ public:
             const Index start, const Index end, const counter_type count) {
         assert(start < end);
         assert(end <= Index::COLCOUNT);
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             for (auto index = start; index < end; index++) {
                 auto numindex =
                     static_cast<std::underlying_type_t<Index>>(index);
@@ -165,7 +166,7 @@ public:
 
     inline void CountWrite(const Index index, const counter_type count) {
         assert(index < Index::COLCOUNT);
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             auto numindex = static_cast<std::underlying_type_t<Index>>(index);
             thread_counters[TThread::id()].write_counters[numindex] += count;
         }
@@ -179,7 +180,7 @@ public:
             const Index start, const Index end, const counter_type count) {
         assert(start < end);
         assert(end <= Index::COLCOUNT);
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             for (auto index = start; index < end; index++) {
                 auto numindex =
                     static_cast<std::underlying_type_t<Index>>(index);
@@ -200,7 +201,7 @@ public:
     }
 
     inline counter_type GetRead(const Index index) {
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             auto numindex = static_cast<std::underlying_type_t<Index>>(index);
             return global_counters.read_counters[numindex]
                 .load(std::memory_order::memory_order_relaxed);
@@ -209,7 +210,7 @@ public:
     }
 
     inline counter_type GetWrite(const Index index) {
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             auto numindex = static_cast<std::underlying_type_t<Index>>(index);
             return global_counters.write_counters[numindex]
                 .load(std::memory_order::memory_order_relaxed);
@@ -232,7 +233,7 @@ public:
     }
 
     inline bool RecomputeSplit() {
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             auto split = ComputeSplitIndex();
             ResetGlobal();
             auto next_split = Index(split);
@@ -248,13 +249,13 @@ public:
     }
 
     inline void ResetGlobal() {
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             global_counters.template Reset<true>();
         }
     };
 
     inline void ResetThread() {
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             thread_counters[TThread::id()].template Reset<false>();
         }
     };
@@ -272,7 +273,7 @@ public:
     }
 
     inline counter_type TGetRead(const size_t threadid, const Index index) {
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             return thread_counters[threadid].read_counters[
                 static_cast<std::underlying_type_t<Index>>(index)];
         }
@@ -284,7 +285,7 @@ public:
     }
 
     inline counter_type TGetWrite(const size_t threadid, const Index index) {
-        if (AdapterConfig::Enabled) {
+        if (AdapterConfig::GlobalEnabled) {
             return thread_counters[threadid].write_counters[
                 static_cast<std::underlying_type_t<Index>>(index)];
         }
@@ -404,15 +405,15 @@ public:
 };
 
 #ifndef ADAPTER_OF
-#define ADAPTER_OF(Type) Type##Adapter
+#define ADAPTER_OF(Type) ::sto::GlobalAdapter<Type, typename Type::NamedColumn>
 #endif
 
+/*
 #ifndef DEFINE_ADAPTER
 #define DEFINE_ADAPTER(Type, IndexType) \
     using ADAPTER_OF(Type) = ::sto::GlobalAdapter<Type, IndexType>;
 #endif
 
-/*
 #ifndef INITIALIZE_ADAPTER
 #define INITIALIZE_ADAPTER(Type) \
     template <> \
@@ -422,12 +423,12 @@ public:
     template <> \
     std::array<Type::CounterSet<Type::counter_type>, MAX_THREADS> Type::thread_counters = {};
 #endif
-*/
 
 #ifndef CREATE_ADAPTER
 #define CREATE_ADAPTER(Type, IndexType) \
-    DEFINE_ADAPTER(Type, IndexType); /*\
-    INITIALIZE_ADAPTER(ADAPTER_OF(Type));*/
+    DEFINE_ADAPTER(Type, IndexType); \
+    INITIALIZE_ADAPTER(ADAPTER_OF(Type));
 #endif
+*/
 
 }  // namespace sto;

@@ -56,9 +56,9 @@ struct split_value;
 template <NamedColumn SplitIndex>
 struct unified_value;
 
-struct index_value;
-
-DEFINE_ADAPTER(index_value, NamedColumn);
+struct index_value {
+    using NamedColumn = NamedColumn;
+};
 
 template <NamedColumn Column>
 struct accessor_info;

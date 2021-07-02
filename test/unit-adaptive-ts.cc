@@ -10,7 +10,7 @@ using bench::mvcc_unordered_index;
 using bench::RowAccess;
 using bench::access_t;
 
-bool sto::AdapterConfig::Enabled = true;
+bool sto::AdapterConfig::GlobalEnabled = true;
 
 struct index_key {
     index_key() = default;
@@ -46,7 +46,6 @@ index_value::NamedColumn& operator++(
     return nc;
 };
 
-CREATE_ADAPTER(index_value, index_value::NamedColumn);
 using Adapter = ADAPTER_OF(index_value);
 
 struct index_value_part1 {

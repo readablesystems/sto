@@ -111,8 +111,6 @@ template <NamedColumn Column>
 struct {accessorstruct};
 
 struct {struct};
-
-DEFINE_ADAPTER({struct}, NamedColumn);
 ''')
 
         self.convert_column_accessors()
@@ -163,7 +161,6 @@ inline const accessor<RoundedNamedColumn<Column>()>& get() const;
 {rbrace};  // namespace {ns}
 
 using {struct} = {ns}::{struct};
-using ADAPTER_OF({struct}) = ADAPTER_OF({ns}::{struct});
 ''')
 
         for ns in self._namespaces:
@@ -301,7 +298,7 @@ struct {accessorstruct} {lbrace}\
         self.indent()
 
         self.writelns('''\
-using adapter_type = ADAPTER_OF({struct});
+using adapter_type = ::sto::GlobalAdapter<{struct}, NamedColumn>;
 using type = typename {infostruct}<Column>::type;
 using value_type = typename {infostruct}<Column>::value_type;
 

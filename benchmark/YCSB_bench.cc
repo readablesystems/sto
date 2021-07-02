@@ -7,7 +7,7 @@
 #include "PlatformFeatures.hh"
 #include "DB_profiler.hh"
 
-bool sto::AdapterConfig::Enabled = false;
+bool sto::AdapterConfig::GlobalEnabled = false;
 
 namespace ycsb {
 
@@ -382,7 +382,7 @@ int main(int argc, const char *const *argv) {
     else
         constants::processor_tsc_frequency = cpu_freq;
 
-    sto::AdapterConfig::Enabled = enable_adapt;
+    sto::AdapterConfig::GlobalEnabled = enable_adapt;
 
     switch (dbid) {
     case db_params_id::Default:
