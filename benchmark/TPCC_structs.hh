@@ -9,6 +9,7 @@
 #include "xxhash.h"
 #include "str.hh" // lcdf::Str
 #include "Adapter.hh"
+#include "Accessor.hh"
 
 #define NUM_DISTRICTS_PER_WAREHOUSE 10
 #define NUM_CUSTOMERS_PER_DISTRICT  3000

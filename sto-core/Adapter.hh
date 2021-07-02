@@ -7,6 +7,8 @@
 
 namespace sto {
 
+namespace adapter {
+
 template <typename T, typename IndexType> class GlobalAdapter;
 
 class AdapterConfig {
@@ -444,6 +446,14 @@ public:
     using Index = IndexType;
 
 };
+
+}  // namespace adapter
+
+using adapter::AdapterConfig;
+
+using adapter::Adapter;
+using sto::adapter::GlobalAdapter;
+using adapter::InlineAdapter;
 
 #ifndef ADAPTER_OF
 #define ADAPTER_OF(Type) ::sto::GlobalAdapter<Type, typename Type::NamedColumn>

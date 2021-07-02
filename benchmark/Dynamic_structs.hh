@@ -9,6 +9,7 @@
 #include "xxhash.h"
 #include "str.hh" // lcdf::Str
 #include "Adapter.hh"
+#include "Accessor.hh"
 
 #ifndef TABLE_FINE_GRAINED
 #define TABLE_FINE_GRAINED 0

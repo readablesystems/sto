@@ -2,9 +2,6 @@
 
 #include <type_traits>
 
-#include "Adapter.hh"
-#include "Sto.hh"
-
 namespace warehouse_value_datatypes {
 
 enum class NamedColumn : int {
@@ -102,6 +99,7 @@ struct accessor_info<NamedColumn::w_name> {
     using type = var_string<10>;
     using value_type = var_string<10>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -109,6 +107,7 @@ struct accessor_info<NamedColumn::w_street_1> {
     using type = var_string<20>;
     using value_type = var_string<20>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -116,6 +115,7 @@ struct accessor_info<NamedColumn::w_street_2> {
     using type = var_string<20>;
     using value_type = var_string<20>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -123,6 +123,7 @@ struct accessor_info<NamedColumn::w_city> {
     using type = var_string<20>;
     using value_type = var_string<20>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -130,6 +131,7 @@ struct accessor_info<NamedColumn::w_state> {
     using type = fix_string<2>;
     using value_type = fix_string<2>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -137,6 +139,7 @@ struct accessor_info<NamedColumn::w_zip> {
     using type = fix_string<9>;
     using value_type = fix_string<9>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -144,6 +147,7 @@ struct accessor_info<NamedColumn::w_tax> {
     using type = int64_t;
     using value_type = int64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -151,6 +155,7 @@ struct accessor_info<NamedColumn::w_ytd> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -264,7 +269,14 @@ struct warehouse_value {
 
     inline void init(const warehouse_value* oldvalue = nullptr) {
         if (oldvalue) {
-            warehouse_value::resplit(*this, *oldvalue, ADAPTER_OF(warehouse_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(warehouse_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            warehouse_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -279,7 +291,6 @@ struct warehouse_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::w_name> w_name;
     accessor<NamedColumn::w_street_1> w_street_1;
     accessor<NamedColumn::w_street_2> w_street_2;
@@ -288,6 +299,7 @@ struct warehouse_value {
     accessor<NamedColumn::w_zip> w_zip;
     accessor<NamedColumn::w_tax> w_tax;
     accessor<NamedColumn::w_ytd> w_ytd;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void warehouse_value::resplit(
@@ -307,6 +319,54 @@ inline void warehouse_value::copy_data(warehouse_value& newvalue, const warehous
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::w_name>::offset() {
+    warehouse_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->w_name) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::w_street_1>::offset() {
+    warehouse_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->w_street_1) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::w_street_2>::offset() {
+    warehouse_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->w_street_2) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::w_city>::offset() {
+    warehouse_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->w_city) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::w_state>::offset() {
+    warehouse_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->w_state) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::w_zip>::offset() {
+    warehouse_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->w_zip) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::w_tax>::offset() {
+    warehouse_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->w_tax) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::w_ytd>::offset() {
+    warehouse_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->w_ytd) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>
@@ -490,6 +550,7 @@ struct accessor_info<NamedColumn::d_name> {
     using type = var_string<10>;
     using value_type = var_string<10>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -497,6 +558,7 @@ struct accessor_info<NamedColumn::d_street_1> {
     using type = var_string<20>;
     using value_type = var_string<20>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -504,6 +566,7 @@ struct accessor_info<NamedColumn::d_street_2> {
     using type = var_string<20>;
     using value_type = var_string<20>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -511,6 +574,7 @@ struct accessor_info<NamedColumn::d_city> {
     using type = var_string<20>;
     using value_type = var_string<20>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -518,6 +582,7 @@ struct accessor_info<NamedColumn::d_state> {
     using type = fix_string<2>;
     using value_type = fix_string<2>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -525,6 +590,7 @@ struct accessor_info<NamedColumn::d_zip> {
     using type = fix_string<9>;
     using value_type = fix_string<9>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -532,6 +598,7 @@ struct accessor_info<NamedColumn::d_tax> {
     using type = int64_t;
     using value_type = int64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -539,6 +606,7 @@ struct accessor_info<NamedColumn::d_ytd> {
     using type = int64_t;
     using value_type = int64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -652,7 +720,14 @@ struct district_value {
 
     inline void init(const district_value* oldvalue = nullptr) {
         if (oldvalue) {
-            district_value::resplit(*this, *oldvalue, ADAPTER_OF(district_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(district_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            district_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -667,7 +742,6 @@ struct district_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::d_name> d_name;
     accessor<NamedColumn::d_street_1> d_street_1;
     accessor<NamedColumn::d_street_2> d_street_2;
@@ -676,6 +750,7 @@ struct district_value {
     accessor<NamedColumn::d_zip> d_zip;
     accessor<NamedColumn::d_tax> d_tax;
     accessor<NamedColumn::d_ytd> d_ytd;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void district_value::resplit(
@@ -695,6 +770,54 @@ inline void district_value::copy_data(district_value& newvalue, const district_v
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::d_name>::offset() {
+    district_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->d_name) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::d_street_1>::offset() {
+    district_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->d_street_1) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::d_street_2>::offset() {
+    district_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->d_street_2) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::d_city>::offset() {
+    district_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->d_city) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::d_state>::offset() {
+    district_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->d_state) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::d_zip>::offset() {
+    district_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->d_zip) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::d_tax>::offset() {
+    district_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->d_tax) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::d_ytd>::offset() {
+    district_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->d_ytd) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>
@@ -850,6 +973,7 @@ struct accessor_info<NamedColumn::c_ids> {
     using type = std::list<uint64_t>;
     using value_type = std::list<uint64_t>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -963,7 +1087,14 @@ struct customer_idx_value {
 
     inline void init(const customer_idx_value* oldvalue = nullptr) {
         if (oldvalue) {
-            customer_idx_value::resplit(*this, *oldvalue, ADAPTER_OF(customer_idx_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(customer_idx_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            customer_idx_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -978,8 +1109,8 @@ struct customer_idx_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::c_ids> c_ids;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void customer_idx_value::resplit(
@@ -999,6 +1130,12 @@ inline void customer_idx_value::copy_data(customer_idx_value& newvalue, const cu
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::c_ids>::offset() {
+    customer_idx_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_ids) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>
@@ -1152,6 +1289,7 @@ struct accessor_info<NamedColumn::c_first> {
     using type = var_string<16>;
     using value_type = var_string<16>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1159,6 +1297,7 @@ struct accessor_info<NamedColumn::c_middle> {
     using type = fix_string<2>;
     using value_type = fix_string<2>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1166,6 +1305,7 @@ struct accessor_info<NamedColumn::c_last> {
     using type = var_string<16>;
     using value_type = var_string<16>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1173,6 +1313,7 @@ struct accessor_info<NamedColumn::c_street_1> {
     using type = var_string<20>;
     using value_type = var_string<20>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1180,6 +1321,7 @@ struct accessor_info<NamedColumn::c_street_2> {
     using type = var_string<20>;
     using value_type = var_string<20>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1187,6 +1329,7 @@ struct accessor_info<NamedColumn::c_city> {
     using type = var_string<20>;
     using value_type = var_string<20>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1194,6 +1337,7 @@ struct accessor_info<NamedColumn::c_state> {
     using type = fix_string<2>;
     using value_type = fix_string<2>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1201,6 +1345,7 @@ struct accessor_info<NamedColumn::c_zip> {
     using type = fix_string<9>;
     using value_type = fix_string<9>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1208,6 +1353,7 @@ struct accessor_info<NamedColumn::c_phone> {
     using type = fix_string<16>;
     using value_type = fix_string<16>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1215,6 +1361,7 @@ struct accessor_info<NamedColumn::c_since> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1222,6 +1369,7 @@ struct accessor_info<NamedColumn::c_credit> {
     using type = fix_string<2>;
     using value_type = fix_string<2>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1229,6 +1377,7 @@ struct accessor_info<NamedColumn::c_credit_lim> {
     using type = int64_t;
     using value_type = int64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1236,6 +1385,7 @@ struct accessor_info<NamedColumn::c_discount> {
     using type = int64_t;
     using value_type = int64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1243,6 +1393,7 @@ struct accessor_info<NamedColumn::c_balance> {
     using type = int64_t;
     using value_type = int64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1250,6 +1401,7 @@ struct accessor_info<NamedColumn::c_ytd_payment> {
     using type = int64_t;
     using value_type = int64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1257,6 +1409,7 @@ struct accessor_info<NamedColumn::c_payment_cnt> {
     using type = uint16_t;
     using value_type = uint16_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1264,6 +1417,7 @@ struct accessor_info<NamedColumn::c_delivery_cnt> {
     using type = uint16_t;
     using value_type = uint16_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1271,6 +1425,7 @@ struct accessor_info<NamedColumn::c_data> {
     using type = fix_string<500>;
     using value_type = fix_string<500>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -1384,7 +1539,14 @@ struct customer_value {
 
     inline void init(const customer_value* oldvalue = nullptr) {
         if (oldvalue) {
-            customer_value::resplit(*this, *oldvalue, ADAPTER_OF(customer_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(customer_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            customer_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -1399,7 +1561,6 @@ struct customer_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::c_first> c_first;
     accessor<NamedColumn::c_middle> c_middle;
     accessor<NamedColumn::c_last> c_last;
@@ -1418,6 +1579,7 @@ struct customer_value {
     accessor<NamedColumn::c_payment_cnt> c_payment_cnt;
     accessor<NamedColumn::c_delivery_cnt> c_delivery_cnt;
     accessor<NamedColumn::c_data> c_data;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void customer_value::resplit(
@@ -1437,6 +1599,114 @@ inline void customer_value::copy_data(customer_value& newvalue, const customer_v
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::c_first>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_first) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_middle>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_middle) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_last>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_last) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_street_1>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_street_1) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_street_2>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_street_2) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_city>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_city) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_state>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_state) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_zip>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_zip) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_phone>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_phone) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_since>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_since) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_credit>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_credit) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_credit_lim>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_credit_lim) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_discount>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_discount) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_balance>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_balance) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_ytd_payment>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_ytd_payment) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_payment_cnt>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_payment_cnt) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_delivery_cnt>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_delivery_cnt) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::c_data>::offset() {
+    customer_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->c_data) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>
@@ -1720,6 +1990,7 @@ struct accessor_info<NamedColumn::h_c_id> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1727,6 +1998,7 @@ struct accessor_info<NamedColumn::h_c_d_id> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1734,6 +2006,7 @@ struct accessor_info<NamedColumn::h_c_w_id> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1741,6 +2014,7 @@ struct accessor_info<NamedColumn::h_d_id> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1748,6 +2022,7 @@ struct accessor_info<NamedColumn::h_w_id> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1755,6 +2030,7 @@ struct accessor_info<NamedColumn::h_date> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1762,6 +2038,7 @@ struct accessor_info<NamedColumn::h_amount> {
     using type = int64_t;
     using value_type = int64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -1769,6 +2046,7 @@ struct accessor_info<NamedColumn::h_data> {
     using type = var_string<24>;
     using value_type = var_string<24>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -1882,7 +2160,14 @@ struct history_value {
 
     inline void init(const history_value* oldvalue = nullptr) {
         if (oldvalue) {
-            history_value::resplit(*this, *oldvalue, ADAPTER_OF(history_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(history_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            history_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -1897,7 +2182,6 @@ struct history_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::h_c_id> h_c_id;
     accessor<NamedColumn::h_c_d_id> h_c_d_id;
     accessor<NamedColumn::h_c_w_id> h_c_w_id;
@@ -1906,6 +2190,7 @@ struct history_value {
     accessor<NamedColumn::h_date> h_date;
     accessor<NamedColumn::h_amount> h_amount;
     accessor<NamedColumn::h_data> h_data;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void history_value::resplit(
@@ -1925,6 +2210,54 @@ inline void history_value::copy_data(history_value& newvalue, const history_valu
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::h_c_id>::offset() {
+    history_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->h_c_id) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::h_c_d_id>::offset() {
+    history_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->h_c_d_id) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::h_c_w_id>::offset() {
+    history_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->h_c_w_id) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::h_d_id>::offset() {
+    history_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->h_d_id) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::h_w_id>::offset() {
+    history_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->h_w_id) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::h_date>::offset() {
+    history_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->h_date) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::h_amount>::offset() {
+    history_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->h_amount) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::h_data>::offset() {
+    history_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->h_data) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>
@@ -2096,6 +2429,7 @@ struct accessor_info<NamedColumn::o_c_id> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2103,6 +2437,7 @@ struct accessor_info<NamedColumn::o_entry_d> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2110,6 +2445,7 @@ struct accessor_info<NamedColumn::o_ol_cnt> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2117,6 +2453,7 @@ struct accessor_info<NamedColumn::o_all_local> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2124,6 +2461,7 @@ struct accessor_info<NamedColumn::o_carrier_id> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -2237,7 +2575,14 @@ struct order_value {
 
     inline void init(const order_value* oldvalue = nullptr) {
         if (oldvalue) {
-            order_value::resplit(*this, *oldvalue, ADAPTER_OF(order_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(order_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            order_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -2252,12 +2597,12 @@ struct order_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::o_c_id> o_c_id;
     accessor<NamedColumn::o_entry_d> o_entry_d;
     accessor<NamedColumn::o_ol_cnt> o_ol_cnt;
     accessor<NamedColumn::o_all_local> o_all_local;
     accessor<NamedColumn::o_carrier_id> o_carrier_id;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void order_value::resplit(
@@ -2277,6 +2622,36 @@ inline void order_value::copy_data(order_value& newvalue, const order_value& old
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::o_c_id>::offset() {
+    order_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->o_c_id) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::o_entry_d>::offset() {
+    order_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->o_entry_d) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::o_ol_cnt>::offset() {
+    order_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->o_ol_cnt) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::o_all_local>::offset() {
+    order_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->o_all_local) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::o_carrier_id>::offset() {
+    order_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->o_carrier_id) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>
@@ -2422,6 +2797,7 @@ struct accessor_info<NamedColumn::ol_i_id> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2429,6 +2805,7 @@ struct accessor_info<NamedColumn::ol_supply_w_id> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2436,6 +2813,7 @@ struct accessor_info<NamedColumn::ol_quantity> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2443,6 +2821,7 @@ struct accessor_info<NamedColumn::ol_amount> {
     using type = int32_t;
     using value_type = int32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2450,6 +2829,7 @@ struct accessor_info<NamedColumn::ol_dist_info> {
     using type = fix_string<24>;
     using value_type = fix_string<24>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2457,6 +2837,7 @@ struct accessor_info<NamedColumn::ol_delivery_d> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -2570,7 +2951,14 @@ struct orderline_value {
 
     inline void init(const orderline_value* oldvalue = nullptr) {
         if (oldvalue) {
-            orderline_value::resplit(*this, *oldvalue, ADAPTER_OF(orderline_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(orderline_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            orderline_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -2585,13 +2973,13 @@ struct orderline_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::ol_i_id> ol_i_id;
     accessor<NamedColumn::ol_supply_w_id> ol_supply_w_id;
     accessor<NamedColumn::ol_quantity> ol_quantity;
     accessor<NamedColumn::ol_amount> ol_amount;
     accessor<NamedColumn::ol_dist_info> ol_dist_info;
     accessor<NamedColumn::ol_delivery_d> ol_delivery_d;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void orderline_value::resplit(
@@ -2611,6 +2999,42 @@ inline void orderline_value::copy_data(orderline_value& newvalue, const orderlin
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::ol_i_id>::offset() {
+    orderline_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->ol_i_id) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::ol_supply_w_id>::offset() {
+    orderline_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->ol_supply_w_id) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::ol_quantity>::offset() {
+    orderline_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->ol_quantity) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::ol_amount>::offset() {
+    orderline_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->ol_amount) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::ol_dist_info>::offset() {
+    orderline_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->ol_dist_info) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::ol_delivery_d>::offset() {
+    orderline_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->ol_delivery_d) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>
@@ -2758,6 +3182,7 @@ struct accessor_info<NamedColumn::i_im_id> {
     using type = uint64_t;
     using value_type = uint64_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2765,6 +3190,7 @@ struct accessor_info<NamedColumn::i_price> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2772,6 +3198,7 @@ struct accessor_info<NamedColumn::i_name> {
     using type = var_string<24>;
     using value_type = var_string<24>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -2779,6 +3206,7 @@ struct accessor_info<NamedColumn::i_data> {
     using type = var_string<50>;
     using value_type = var_string<50>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -2892,7 +3320,14 @@ struct item_value {
 
     inline void init(const item_value* oldvalue = nullptr) {
         if (oldvalue) {
-            item_value::resplit(*this, *oldvalue, ADAPTER_OF(item_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(item_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            item_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -2907,11 +3342,11 @@ struct item_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::i_im_id> i_im_id;
     accessor<NamedColumn::i_price> i_price;
     accessor<NamedColumn::i_name> i_name;
     accessor<NamedColumn::i_data> i_data;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void item_value::resplit(
@@ -2931,6 +3366,30 @@ inline void item_value::copy_data(item_value& newvalue, const item_value& oldval
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::i_im_id>::offset() {
+    item_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->i_im_id) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::i_price>::offset() {
+    item_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->i_price) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::i_name>::offset() {
+    item_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->i_name) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::i_data>::offset() {
+    item_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->i_data) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>
@@ -3066,6 +3525,7 @@ struct accessor_info<NamedColumn::s_dists> {
     using type = fix_string<24>;
     using value_type = std::array<fix_string<24>, 10>;
     static constexpr bool is_array = true;
+    static inline size_t offset();
 };
 
 template <>
@@ -3073,6 +3533,7 @@ struct accessor_info<NamedColumn::s_data> {
     using type = var_string<50>;
     using value_type = var_string<50>;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -3080,6 +3541,7 @@ struct accessor_info<NamedColumn::s_quantity> {
     using type = int32_t;
     using value_type = int32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -3087,6 +3549,7 @@ struct accessor_info<NamedColumn::s_ytd> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -3094,6 +3557,7 @@ struct accessor_info<NamedColumn::s_order_cnt> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -3101,6 +3565,7 @@ struct accessor_info<NamedColumn::s_remote_cnt> {
     using type = uint32_t;
     using value_type = uint32_t;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -3214,7 +3679,14 @@ struct stock_value {
 
     inline void init(const stock_value* oldvalue = nullptr) {
         if (oldvalue) {
-            stock_value::resplit(*this, *oldvalue, ADAPTER_OF(stock_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(stock_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            stock_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -3229,13 +3701,13 @@ struct stock_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::s_dists> s_dists;
     accessor<NamedColumn::s_data> s_data;
     accessor<NamedColumn::s_quantity> s_quantity;
     accessor<NamedColumn::s_ytd> s_ytd;
     accessor<NamedColumn::s_order_cnt> s_order_cnt;
     accessor<NamedColumn::s_remote_cnt> s_remote_cnt;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void stock_value::resplit(
@@ -3255,6 +3727,42 @@ inline void stock_value::copy_data(stock_value& newvalue, const stock_value& old
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::s_dists>::offset() {
+    stock_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->s_dists) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::s_data>::offset() {
+    stock_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->s_data) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::s_quantity>::offset() {
+    stock_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->s_quantity) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::s_ytd>::offset() {
+    stock_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->s_ytd) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::s_order_cnt>::offset() {
+    stock_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->s_order_cnt) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::s_remote_cnt>::offset() {
+    stock_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->s_remote_cnt) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>

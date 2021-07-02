@@ -2,9 +2,6 @@
 
 #include <type_traits>
 
-#include "Adapter.hh"
-#include "Sto.hh"
-
 namespace ycsb {
 
 namespace ycsb_value_datatypes {
@@ -80,6 +77,7 @@ struct accessor_info<NamedColumn::even_columns> {
     using type = ::bench::fix_string<COL_WIDTH>;
     using value_type = std::array<::bench::fix_string<COL_WIDTH>, 5>;
     static constexpr bool is_array = true;
+    static inline size_t offset();
 };
 
 template <>
@@ -87,6 +85,7 @@ struct accessor_info<NamedColumn::odd_columns> {
     using type = ::bench::fix_string<COL_WIDTH>;
     using value_type = std::array<::bench::fix_string<COL_WIDTH>, 5>;
     static constexpr bool is_array = true;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -200,7 +199,14 @@ struct ycsb_value {
 
     inline void init(const ycsb_value* oldvalue = nullptr) {
         if (oldvalue) {
-            ycsb_value::resplit(*this, *oldvalue, ADAPTER_OF(ycsb_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(ycsb_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            ycsb_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -215,9 +221,9 @@ struct ycsb_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::even_columns> even_columns;
     accessor<NamedColumn::odd_columns> odd_columns;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void ycsb_value::resplit(
@@ -237,6 +243,18 @@ inline void ycsb_value::copy_data(ycsb_value& newvalue, const ycsb_value& oldval
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::even_columns>::offset() {
+    ycsb_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->even_columns) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::odd_columns>::offset() {
+    ycsb_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->odd_columns) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>

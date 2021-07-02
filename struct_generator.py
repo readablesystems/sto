@@ -94,9 +94,6 @@ class Output:
 #pragma once
 
 #include <type_traits>
-
-#include "Adapter.hh"
-#include "Sto.hh"
 ''')
 
         for ns in self._namespaces:
@@ -134,7 +131,14 @@ static inline void copy_data({struct}& newvalue, const {struct}& oldvalue);
 
 inline void init(const {struct}* oldvalue = nullptr) {lbrace}
 {indent}if (oldvalue) {lbrace}
-{indent}{indent}{struct}::resplit(*this, *oldvalue, ADAPTER_OF({struct})::CurrentSplit());
+{indent}{indent}auto split = oldvalue->splitindex_;
+{indent}{indent}if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {lbrace}
+{indent}{indent}{indent}split = ADAPTER_OF({struct})::CurrentSplit();
+{indent}{indent}{rbrace}
+{indent}{indent}if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {lbrace}
+{indent}{indent}{indent}split = split;
+{indent}{indent}{rbrace}
+{indent}{indent}{struct}::resplit(*this, *oldvalue, split);
 {indent}{rbrace}
 {rbrace}
 
@@ -154,6 +158,8 @@ inline const accessor<RoundedNamedColumn<Column>()>& get() const;
         self.writeln('{rbrace};')
 
         self.convert_resplitter()
+
+        self.convert_offsets()
 
         self.convert_indexed_accessors()
 
@@ -285,6 +291,7 @@ struct {infostruct}<NamedColumn::{member}> {lbrace}
 {indent}using type = {ctype};
 {indent}using value_type = {vtype};
 {indent}static constexpr bool is_array = {isarray};
+{indent}static inline size_t offset();
 {rbrace};
 ''', ctype=ctype, isarray=isarray, member=member, vtype=vtype)
 
@@ -439,6 +446,20 @@ inline void {struct}::copy_data({struct}& newvalue, const {struct}& oldvalue) {l
 {indent}{rbrace}
 {rbrace}\
 ''')
+
+    def convert_offsets(self):
+        '''Output the offset computation functions.'''
+
+        fmtstring = '''
+inline size_t {infostruct}<NamedColumn::{member}>::offset() {lbrace}
+{indent}{struct}* ptr = nullptr;
+{indent}return static_cast<size_t>(
+{indent}{indent}reinterpret_cast<uintptr_t>(&ptr->{member}) - reinterpret_cast<uintptr_t>(ptr));
+{rbrace}\
+'''
+        for member in self.sdata:
+            member, _, count = Output.extract_member_type(member)
+            self.writelns(fmtstring, member=member)
 
     def convert_indexed_accessors(self):
         '''Output the indexed accessor wrappers.'''

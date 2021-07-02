@@ -2,9 +2,6 @@
 
 #include <type_traits>
 
-#include "Adapter.hh"
-#include "Sto.hh"
-
 namespace index_value_datatypes {
 
 enum class NamedColumn : int {
@@ -82,6 +79,7 @@ struct accessor_info<NamedColumn::data> {
     using type = double;
     using value_type = std::array<double, 2>;
     static constexpr bool is_array = true;
+    static inline size_t offset();
 };
 
 template <>
@@ -89,6 +87,7 @@ struct accessor_info<NamedColumn::label> {
     using type = std::string;
     using value_type = std::string;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <>
@@ -96,6 +95,7 @@ struct accessor_info<NamedColumn::flagged> {
     using type = bool;
     using value_type = bool;
     static constexpr bool is_array = false;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -209,7 +209,14 @@ struct index_value {
 
     inline void init(const index_value* oldvalue = nullptr) {
         if (oldvalue) {
-            index_value::resplit(*this, *oldvalue, ADAPTER_OF(index_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(index_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            index_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -224,10 +231,10 @@ struct index_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::data> data;
     accessor<NamedColumn::label> label;
     accessor<NamedColumn::flagged> flagged;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void index_value::resplit(
@@ -247,6 +254,24 @@ inline void index_value::copy_data(index_value& newvalue, const index_value& old
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::data>::offset() {
+    index_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->data) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::label>::offset() {
+    index_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->label) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::flagged>::offset() {
+    index_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->flagged) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>

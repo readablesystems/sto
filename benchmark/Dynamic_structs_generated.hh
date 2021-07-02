@@ -2,9 +2,6 @@
 
 #include <type_traits>
 
-#include "Adapter.hh"
-#include "Sto.hh"
-
 namespace ordered_value_datatypes {
 
 enum class NamedColumn : int {
@@ -82,6 +79,7 @@ struct accessor_info<NamedColumn::ro> {
     using type = uint64_t;
     using value_type = std::array<uint64_t, 2>;
     static constexpr bool is_array = true;
+    static inline size_t offset();
 };
 
 template <>
@@ -89,6 +87,7 @@ struct accessor_info<NamedColumn::rw> {
     using type = uint64_t;
     using value_type = std::array<uint64_t, 8>;
     static constexpr bool is_array = true;
+    static inline size_t offset();
 };
 
 template <>
@@ -96,6 +95,7 @@ struct accessor_info<NamedColumn::wo> {
     using type = uint64_t;
     using value_type = std::array<uint64_t, 2>;
     static constexpr bool is_array = true;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -209,7 +209,14 @@ struct ordered_value {
 
     inline void init(const ordered_value* oldvalue = nullptr) {
         if (oldvalue) {
-            ordered_value::resplit(*this, *oldvalue, ADAPTER_OF(ordered_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(ordered_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            ordered_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -224,10 +231,10 @@ struct ordered_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::ro> ro;
     accessor<NamedColumn::rw> rw;
     accessor<NamedColumn::wo> wo;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void ordered_value::resplit(
@@ -247,6 +254,24 @@ inline void ordered_value::copy_data(ordered_value& newvalue, const ordered_valu
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::ro>::offset() {
+    ordered_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->ro) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::rw>::offset() {
+    ordered_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->rw) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::wo>::offset() {
+    ordered_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->wo) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>
@@ -450,6 +475,7 @@ struct accessor_info<NamedColumn::ro> {
     using type = uint64_t;
     using value_type = std::array<uint64_t, 2>;
     static constexpr bool is_array = true;
+    static inline size_t offset();
 };
 
 template <>
@@ -457,6 +483,7 @@ struct accessor_info<NamedColumn::rw> {
     using type = uint64_t;
     using value_type = std::array<uint64_t, 8>;
     static constexpr bool is_array = true;
+    static inline size_t offset();
 };
 
 template <>
@@ -464,6 +491,7 @@ struct accessor_info<NamedColumn::wo> {
     using type = uint64_t;
     using value_type = std::array<uint64_t, 2>;
     static constexpr bool is_array = true;
+    static inline size_t offset();
 };
 
 template <NamedColumn Column>
@@ -577,7 +605,14 @@ struct unordered_value {
 
     inline void init(const unordered_value* oldvalue = nullptr) {
         if (oldvalue) {
-            unordered_value::resplit(*this, *oldvalue, ADAPTER_OF(unordered_value)::CurrentSplit());
+            auto split = oldvalue->splitindex_;
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Global)) {
+                split = ADAPTER_OF(unordered_value)::CurrentSplit();
+            }
+            if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
+                split = split;
+            }
+            unordered_value::resplit(*this, *oldvalue, split);
         }
     }
 
@@ -592,10 +627,10 @@ struct unordered_value {
         return index < splitindex_ ? 0 : 1;
     }
 
-    NamedColumn splitindex_ = DEFAULT_SPLIT;
     accessor<NamedColumn::ro> ro;
     accessor<NamedColumn::rw> rw;
     accessor<NamedColumn::wo> wo;
+    NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
 inline void unordered_value::resplit(
@@ -615,6 +650,24 @@ inline void unordered_value::copy_data(unordered_value& newvalue, const unordere
     if constexpr (Column + 1 < NamedColumn::COLCOUNT) {
         copy_data<Column + 1>(newvalue, oldvalue);
     }
+}
+
+inline size_t accessor_info<NamedColumn::ro>::offset() {
+    unordered_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->ro) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::rw>::offset() {
+    unordered_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->rw) - reinterpret_cast<uintptr_t>(ptr));
+}
+
+inline size_t accessor_info<NamedColumn::wo>::offset() {
+    unordered_value* ptr = nullptr;
+    return static_cast<size_t>(
+        reinterpret_cast<uintptr_t>(&ptr->wo) - reinterpret_cast<uintptr_t>(ptr));
 }
 
 template <>
