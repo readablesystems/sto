@@ -77,7 +77,7 @@ class Output:
 
         self.colcount = Output.count_columns(self.sdata.keys())
         self._data = {
-                'accessorstruct': 'accessor',
+                'accessorstruct': '::sto::adapter::Accessor',
                 'colcount': self.colcount,
                 'infostruct': 'accessor_info',
                 'lbrace': '{',
@@ -104,9 +104,6 @@ class Output:
         self.convert_namedcolumns()
 
         self.writelns('''\
-template <NamedColumn Column>
-struct {accessorstruct};
-
 struct {struct};
 ''')
 
@@ -143,10 +140,10 @@ inline void init(const {struct}* oldvalue = nullptr) {lbrace}
 {rbrace}
 
 template <NamedColumn Column>
-inline accessor<RoundedNamedColumn<Column>()>& get();
+inline {accessorstruct}<{infostruct}<RoundedNamedColumn<Column>()>>& get();
 
 template <NamedColumn Column>
-inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+inline const {accessorstruct}<{infostruct}<RoundedNamedColumn<Column>()>>& get() const;
 ''', defaultsplit=self.mdata.get('split', 'COLCOUNT'))
 
         self.convert_accessors()
@@ -288,8 +285,11 @@ struct {infostruct};
             self.writelns('''\
 template <>
 struct {infostruct}<NamedColumn::{member}> {lbrace}
+{indent}using NamedColumn = {ns}::NamedColumn;
+{indent}using struct_type = {struct};
 {indent}using type = {ctype};
 {indent}using value_type = {vtype};
+{indent}static constexpr NamedColumn Column = NamedColumn::{member};
 {indent}static constexpr bool is_array = {isarray};
 {indent}static inline size_t offset();
 {rbrace};
@@ -298,111 +298,11 @@ struct {infostruct}<NamedColumn::{member}> {lbrace}
             index += count
 
         self.writelns('''\
-template <NamedColumn Column>
-struct {accessorstruct} {lbrace}\
-''')
-
-        self.indent()
-
-        self.writelns('''\
-using adapter_type = ::sto::GlobalAdapter<{struct}, NamedColumn>;
-using type = typename {infostruct}<Column>::type;
-using value_type = typename {infostruct}<Column>::value_type;
-
-{accessorstruct}() = default;
-template <typename... Args>
-explicit {accessorstruct}(Args&&... args) : value_(std::forward<Args>(args)...) {lbrace}{rbrace}
-
-operator const value_type() const {lbrace}
-{indent}if constexpr ({infostruct}<Column>::is_array) {lbrace}
-{indent}{indent}adapter_type::CountReads(Column, Column + value_.size());
-{indent}{rbrace} else {lbrace}
-{indent}{indent}adapter_type::CountRead(Column);
-{indent}{rbrace}
-{indent}return value_;
-{rbrace}
-
-value_type operator =(const value_type& other) {lbrace}
-{indent}if constexpr ({infostruct}<Column>::is_array) {lbrace}
-{indent}{indent}adapter_type::CountWrites(Column, Column + value_.size());
-{indent}{rbrace} else {lbrace}
-{indent}{indent}adapter_type::CountWrite(Column);
-{indent}{rbrace}
-{indent}return value_ = other;
-{rbrace}
-
-value_type operator =({accessorstruct}<Column>& other) {lbrace}
-{indent}if constexpr ({infostruct}<Column>::is_array) {lbrace}
-{indent}{indent}adapter_type::CountReads(Column, Column + other.value_.size());
-{indent}{indent}adapter_type::CountWrites(Column, Column + value_.size());
-{indent}{rbrace} else {lbrace}
-{indent}{indent}adapter_type::CountRead(Column);
-{indent}{indent}adapter_type::CountWrite(Column);
-{indent}{rbrace}
-{indent}return value_ = other.value_;
-{rbrace}
-
-template <NamedColumn OtherColumn>
-value_type operator =(const {accessorstruct}<OtherColumn>& other) {lbrace}
-{indent}if constexpr ({infostruct}<Column>::is_array && {infostruct}<OtherColumn>::is_array) {lbrace}
-{indent}{indent}adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
-{indent}{indent}adapter_type::CountWrites(Column, Column + value_.size());
-{indent}{rbrace} else {lbrace}
-{indent}{indent}adapter_type::CountRead(OtherColumn);
-{indent}{indent}adapter_type::CountWrite(Column);
-{indent}{rbrace}
-{indent}return value_ = other.value_;
-{rbrace}
-
-template <bool is_array = {infostruct}<Column>::is_array>
-std::enable_if_t<is_array, void>
-operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {lbrace}
-{indent}adapter_type::CountWrite(Column + index);
-{indent}value_[index] = value;
-{rbrace}
-
-template <bool is_array = {infostruct}<Column>::is_array>
-std::enable_if_t<is_array, type&>
-operator ()(const std::underlying_type_t<NamedColumn>& index) {lbrace}
-{indent}adapter_type::CountWrite(Column + index);
-{indent}return value_[index];
-{rbrace}
-
-template <bool is_array = {infostruct}<Column>::is_array>
-std::enable_if_t<is_array, type>
-operator [](const std::underlying_type_t<NamedColumn>& index) {lbrace}
-{indent}adapter_type::CountRead(Column + index);
-{indent}return value_[index];
-{rbrace}
-
-template <bool is_array = {infostruct}<Column>::is_array>
-std::enable_if_t<is_array, const type&>
-operator [](const std::underlying_type_t<NamedColumn>& index) const {lbrace}
-{indent}adapter_type::CountRead(Column + index);
-{indent}return value_[index];
-{rbrace}
-
-template <bool is_array = {infostruct}<Column>::is_array>
-std::enable_if_t<!is_array, type&>
-operator *() {lbrace}
-{indent}adapter_type::CountWrite(Column);
-{indent}return value_;
-{rbrace}
-
-template <bool is_array = {infostruct}<Column>::is_array>
-std::enable_if_t<!is_array, type*>
-operator ->() {lbrace}
-{indent}adapter_type::CountWrite(Column);
-{indent}return &value_;
-{rbrace}
-
-value_type value_;\
-''')
-
-        self.unindent()
-
-        self.writeln('{rbrace};')
-        self.writeln()
+template <NamedColumn ColumnValue>
+struct {infostruct} : {infostruct}<RoundedNamedColumn<ColumnValue>()> {lbrace}
+{indent}static constexpr NamedColumn Column = ColumnValue;
+{rbrace};
+''', ctype=ctype, isarray=isarray, member=member, vtype=vtype)
 
     def convert_accessors(self):
         '''Output the accessors.'''
@@ -419,7 +319,8 @@ const auto split_of(NamedColumn index) const {lbrace}
         for member in self.sdata:
             member, _, count = Output.extract_member_type(member)
             self.writeln(
-                    'accessor<NamedColumn::{member}> {member};', member=member)
+                    '{accessorstruct}<{infostruct}<NamedColumn::{member}>> {member};',
+                    member=member)
 
         self.writeln('NamedColumn splitindex_ = DEFAULT_SPLIT;')
 
@@ -466,7 +367,7 @@ inline size_t {infostruct}<NamedColumn::{member}>::offset() {lbrace}
 
         fmtstring = '''
 template <>
-inline {const}accessor<NamedColumn::{member}>& {struct}::get<NamedColumn::{member}{offindex}>() {const}{lbrace}
+inline {const}{accessorstruct}<{infostruct}<NamedColumn::{member}>>& {struct}::get<NamedColumn::{member}{offindex}>() {const}{lbrace}
 {indent}return {member};
 {rbrace}\
 '''

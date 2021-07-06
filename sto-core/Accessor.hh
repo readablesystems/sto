@@ -9,10 +9,11 @@ namespace adapter {
 template <typename InfoType>
 struct Accessor {
     using NamedColumn = typename InfoType::NamedColumn;
+    using struct_type = typename InfoType::struct_type;
     using type = typename InfoType::type;
     using value_type = typename InfoType::value_type;
 
-    using adapter_type = GlobalAdapter<type, NamedColumn>;
+    using adapter_type = GlobalAdapter<struct_type, NamedColumn>;
 
     static constexpr auto Column = InfoType::Column;
 

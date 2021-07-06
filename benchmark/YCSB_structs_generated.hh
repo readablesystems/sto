@@ -64,9 +64,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::odd_columns;
 }
 
-template <NamedColumn Column>
-struct accessor;
-
 struct ycsb_value;
 
 template <NamedColumn Column>
@@ -74,114 +71,29 @@ struct accessor_info;
 
 template <>
 struct accessor_info<NamedColumn::even_columns> {
+    using NamedColumn = ycsb_value_datatypes::NamedColumn;
+    using struct_type = ycsb_value;
     using type = ::bench::fix_string<COL_WIDTH>;
     using value_type = std::array<::bench::fix_string<COL_WIDTH>, 5>;
+    static constexpr NamedColumn Column = NamedColumn::even_columns;
     static constexpr bool is_array = true;
     static inline size_t offset();
 };
 
 template <>
 struct accessor_info<NamedColumn::odd_columns> {
+    using NamedColumn = ycsb_value_datatypes::NamedColumn;
+    using struct_type = ycsb_value;
     using type = ::bench::fix_string<COL_WIDTH>;
     using value_type = std::array<::bench::fix_string<COL_WIDTH>, 5>;
+    static constexpr NamedColumn Column = NamedColumn::odd_columns;
     static constexpr bool is_array = true;
     static inline size_t offset();
 };
 
-template <NamedColumn Column>
-struct accessor {
-    using adapter_type = ::sto::GlobalAdapter<ycsb_value, NamedColumn>;
-    using type = typename accessor_info<Column>::type;
-    using value_type = typename accessor_info<Column>::value_type;
-
-    accessor() = default;
-    template <typename... Args>
-    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
-
-    operator const value_type() const {
-        if constexpr (accessor_info<Column>::is_array) {
-            adapter_type::CountReads(Column, Column + value_.size());
-        } else {
-            adapter_type::CountRead(Column);
-        }
-        return value_;
-    }
-
-    value_type operator =(const value_type& other) {
-        if constexpr (accessor_info<Column>::is_array) {
-            adapter_type::CountWrites(Column, Column + value_.size());
-        } else {
-            adapter_type::CountWrite(Column);
-        }
-        return value_ = other;
-    }
-
-    value_type operator =(accessor<Column>& other) {
-        if constexpr (accessor_info<Column>::is_array) {
-            adapter_type::CountReads(Column, Column + other.value_.size());
-            adapter_type::CountWrites(Column, Column + value_.size());
-        } else {
-            adapter_type::CountRead(Column);
-            adapter_type::CountWrite(Column);
-        }
-        return value_ = other.value_;
-    }
-
-    template <NamedColumn OtherColumn>
-    value_type operator =(const accessor<OtherColumn>& other) {
-        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
-            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
-            adapter_type::CountWrites(Column, Column + value_.size());
-        } else {
-            adapter_type::CountRead(OtherColumn);
-            adapter_type::CountWrite(Column);
-        }
-        return value_ = other.value_;
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, void>
-    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
-        adapter_type::CountWrite(Column + index);
-        value_[index] = value;
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, type&>
-    operator ()(const std::underlying_type_t<NamedColumn>& index) {
-        adapter_type::CountWrite(Column + index);
-        return value_[index];
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, type>
-    operator [](const std::underlying_type_t<NamedColumn>& index) {
-        adapter_type::CountRead(Column + index);
-        return value_[index];
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, const type&>
-    operator [](const std::underlying_type_t<NamedColumn>& index) const {
-        adapter_type::CountRead(Column + index);
-        return value_[index];
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<!is_array, type&>
-    operator *() {
-        adapter_type::CountWrite(Column);
-        return value_;
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<!is_array, type*>
-    operator ->() {
-        adapter_type::CountWrite(Column);
-        return &value_;
-    }
-
-    value_type value_;
+template <NamedColumn ColumnValue>
+struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
+    static constexpr NamedColumn Column = ColumnValue;
 };
 
 struct ycsb_value {
@@ -211,18 +123,18 @@ struct ycsb_value {
     }
 
     template <NamedColumn Column>
-    inline accessor<RoundedNamedColumn<Column>()>& get();
+    inline ::sto::adapter::Accessor<accessor_info<RoundedNamedColumn<Column>()>>& get();
 
     template <NamedColumn Column>
-    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+    inline const ::sto::adapter::Accessor<accessor_info<RoundedNamedColumn<Column>()>>& get() const;
 
 
     const auto split_of(NamedColumn index) const {
         return index < splitindex_ ? 0 : 1;
     }
 
-    accessor<NamedColumn::even_columns> even_columns;
-    accessor<NamedColumn::odd_columns> odd_columns;
+    ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>> even_columns;
+    ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>> odd_columns;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
@@ -258,102 +170,102 @@ inline size_t accessor_info<NamedColumn::odd_columns>::offset() {
 }
 
 template <>
-inline accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 0>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>>& ycsb_value::get<NamedColumn::even_columns + 0>() {
     return even_columns;
 }
 
 template <>
-inline const accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 0>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>>& ycsb_value::get<NamedColumn::even_columns + 0>() const {
     return even_columns;
 }
 
 template <>
-inline accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 1>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>>& ycsb_value::get<NamedColumn::even_columns + 1>() {
     return even_columns;
 }
 
 template <>
-inline const accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 1>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>>& ycsb_value::get<NamedColumn::even_columns + 1>() const {
     return even_columns;
 }
 
 template <>
-inline accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 2>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>>& ycsb_value::get<NamedColumn::even_columns + 2>() {
     return even_columns;
 }
 
 template <>
-inline const accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 2>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>>& ycsb_value::get<NamedColumn::even_columns + 2>() const {
     return even_columns;
 }
 
 template <>
-inline accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 3>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>>& ycsb_value::get<NamedColumn::even_columns + 3>() {
     return even_columns;
 }
 
 template <>
-inline const accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 3>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>>& ycsb_value::get<NamedColumn::even_columns + 3>() const {
     return even_columns;
 }
 
 template <>
-inline accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 4>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>>& ycsb_value::get<NamedColumn::even_columns + 4>() {
     return even_columns;
 }
 
 template <>
-inline const accessor<NamedColumn::even_columns>& ycsb_value::get<NamedColumn::even_columns + 4>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>>& ycsb_value::get<NamedColumn::even_columns + 4>() const {
     return even_columns;
 }
 
 template <>
-inline accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 0>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>>& ycsb_value::get<NamedColumn::odd_columns + 0>() {
     return odd_columns;
 }
 
 template <>
-inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 0>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>>& ycsb_value::get<NamedColumn::odd_columns + 0>() const {
     return odd_columns;
 }
 
 template <>
-inline accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 1>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>>& ycsb_value::get<NamedColumn::odd_columns + 1>() {
     return odd_columns;
 }
 
 template <>
-inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 1>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>>& ycsb_value::get<NamedColumn::odd_columns + 1>() const {
     return odd_columns;
 }
 
 template <>
-inline accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 2>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>>& ycsb_value::get<NamedColumn::odd_columns + 2>() {
     return odd_columns;
 }
 
 template <>
-inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 2>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>>& ycsb_value::get<NamedColumn::odd_columns + 2>() const {
     return odd_columns;
 }
 
 template <>
-inline accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 3>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>>& ycsb_value::get<NamedColumn::odd_columns + 3>() {
     return odd_columns;
 }
 
 template <>
-inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 3>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>>& ycsb_value::get<NamedColumn::odd_columns + 3>() const {
     return odd_columns;
 }
 
 template <>
-inline accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 4>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>>& ycsb_value::get<NamedColumn::odd_columns + 4>() {
     return odd_columns;
 }
 
 template <>
-inline const accessor<NamedColumn::odd_columns>& ycsb_value::get<NamedColumn::odd_columns + 4>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>>& ycsb_value::get<NamedColumn::odd_columns + 4>() const {
     return odd_columns;
 }
 

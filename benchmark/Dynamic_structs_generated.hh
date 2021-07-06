@@ -66,9 +66,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::wo;
 }
 
-template <NamedColumn Column>
-struct accessor;
-
 struct ordered_value;
 
 template <NamedColumn Column>
@@ -76,122 +73,40 @@ struct accessor_info;
 
 template <>
 struct accessor_info<NamedColumn::ro> {
+    using NamedColumn = ordered_value_datatypes::NamedColumn;
+    using struct_type = ordered_value;
     using type = uint64_t;
     using value_type = std::array<uint64_t, 2>;
+    static constexpr NamedColumn Column = NamedColumn::ro;
     static constexpr bool is_array = true;
     static inline size_t offset();
 };
 
 template <>
 struct accessor_info<NamedColumn::rw> {
+    using NamedColumn = ordered_value_datatypes::NamedColumn;
+    using struct_type = ordered_value;
     using type = uint64_t;
     using value_type = std::array<uint64_t, 8>;
+    static constexpr NamedColumn Column = NamedColumn::rw;
     static constexpr bool is_array = true;
     static inline size_t offset();
 };
 
 template <>
 struct accessor_info<NamedColumn::wo> {
+    using NamedColumn = ordered_value_datatypes::NamedColumn;
+    using struct_type = ordered_value;
     using type = uint64_t;
     using value_type = std::array<uint64_t, 2>;
+    static constexpr NamedColumn Column = NamedColumn::wo;
     static constexpr bool is_array = true;
     static inline size_t offset();
 };
 
-template <NamedColumn Column>
-struct accessor {
-    using adapter_type = ::sto::GlobalAdapter<ordered_value, NamedColumn>;
-    using type = typename accessor_info<Column>::type;
-    using value_type = typename accessor_info<Column>::value_type;
-
-    accessor() = default;
-    template <typename... Args>
-    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
-
-    operator const value_type() const {
-        if constexpr (accessor_info<Column>::is_array) {
-            adapter_type::CountReads(Column, Column + value_.size());
-        } else {
-            adapter_type::CountRead(Column);
-        }
-        return value_;
-    }
-
-    value_type operator =(const value_type& other) {
-        if constexpr (accessor_info<Column>::is_array) {
-            adapter_type::CountWrites(Column, Column + value_.size());
-        } else {
-            adapter_type::CountWrite(Column);
-        }
-        return value_ = other;
-    }
-
-    value_type operator =(accessor<Column>& other) {
-        if constexpr (accessor_info<Column>::is_array) {
-            adapter_type::CountReads(Column, Column + other.value_.size());
-            adapter_type::CountWrites(Column, Column + value_.size());
-        } else {
-            adapter_type::CountRead(Column);
-            adapter_type::CountWrite(Column);
-        }
-        return value_ = other.value_;
-    }
-
-    template <NamedColumn OtherColumn>
-    value_type operator =(const accessor<OtherColumn>& other) {
-        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
-            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
-            adapter_type::CountWrites(Column, Column + value_.size());
-        } else {
-            adapter_type::CountRead(OtherColumn);
-            adapter_type::CountWrite(Column);
-        }
-        return value_ = other.value_;
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, void>
-    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
-        adapter_type::CountWrite(Column + index);
-        value_[index] = value;
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, type&>
-    operator ()(const std::underlying_type_t<NamedColumn>& index) {
-        adapter_type::CountWrite(Column + index);
-        return value_[index];
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, type>
-    operator [](const std::underlying_type_t<NamedColumn>& index) {
-        adapter_type::CountRead(Column + index);
-        return value_[index];
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, const type&>
-    operator [](const std::underlying_type_t<NamedColumn>& index) const {
-        adapter_type::CountRead(Column + index);
-        return value_[index];
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<!is_array, type&>
-    operator *() {
-        adapter_type::CountWrite(Column);
-        return value_;
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<!is_array, type*>
-    operator ->() {
-        adapter_type::CountWrite(Column);
-        return &value_;
-    }
-
-    value_type value_;
+template <NamedColumn ColumnValue>
+struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
+    static constexpr NamedColumn Column = ColumnValue;
 };
 
 struct ordered_value {
@@ -221,19 +136,19 @@ struct ordered_value {
     }
 
     template <NamedColumn Column>
-    inline accessor<RoundedNamedColumn<Column>()>& get();
+    inline ::sto::adapter::Accessor<accessor_info<RoundedNamedColumn<Column>()>>& get();
 
     template <NamedColumn Column>
-    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+    inline const ::sto::adapter::Accessor<accessor_info<RoundedNamedColumn<Column>()>>& get() const;
 
 
     const auto split_of(NamedColumn index) const {
         return index < splitindex_ ? 0 : 1;
     }
 
-    accessor<NamedColumn::ro> ro;
-    accessor<NamedColumn::rw> rw;
-    accessor<NamedColumn::wo> wo;
+    ::sto::adapter::Accessor<accessor_info<NamedColumn::ro>> ro;
+    ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>> rw;
+    ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>> wo;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
@@ -275,122 +190,122 @@ inline size_t accessor_info<NamedColumn::wo>::offset() {
 }
 
 template <>
-inline accessor<NamedColumn::ro>& ordered_value::get<NamedColumn::ro + 0>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::ro>>& ordered_value::get<NamedColumn::ro + 0>() {
     return ro;
 }
 
 template <>
-inline const accessor<NamedColumn::ro>& ordered_value::get<NamedColumn::ro + 0>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::ro>>& ordered_value::get<NamedColumn::ro + 0>() const {
     return ro;
 }
 
 template <>
-inline accessor<NamedColumn::ro>& ordered_value::get<NamedColumn::ro + 1>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::ro>>& ordered_value::get<NamedColumn::ro + 1>() {
     return ro;
 }
 
 template <>
-inline const accessor<NamedColumn::ro>& ordered_value::get<NamedColumn::ro + 1>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::ro>>& ordered_value::get<NamedColumn::ro + 1>() const {
     return ro;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 0>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 0>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 0>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 0>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 1>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 1>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 1>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 1>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 2>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 2>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 2>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 2>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 3>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 3>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 3>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 3>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 4>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 4>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 4>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 4>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 5>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 5>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 5>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 5>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 6>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 6>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 6>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 6>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 7>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 7>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& ordered_value::get<NamedColumn::rw + 7>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& ordered_value::get<NamedColumn::rw + 7>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::wo>& ordered_value::get<NamedColumn::wo + 0>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>>& ordered_value::get<NamedColumn::wo + 0>() {
     return wo;
 }
 
 template <>
-inline const accessor<NamedColumn::wo>& ordered_value::get<NamedColumn::wo + 0>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>>& ordered_value::get<NamedColumn::wo + 0>() const {
     return wo;
 }
 
 template <>
-inline accessor<NamedColumn::wo>& ordered_value::get<NamedColumn::wo + 1>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>>& ordered_value::get<NamedColumn::wo + 1>() {
     return wo;
 }
 
 template <>
-inline const accessor<NamedColumn::wo>& ordered_value::get<NamedColumn::wo + 1>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>>& ordered_value::get<NamedColumn::wo + 1>() const {
     return wo;
 }
 
@@ -462,9 +377,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::wo;
 }
 
-template <NamedColumn Column>
-struct accessor;
-
 struct unordered_value;
 
 template <NamedColumn Column>
@@ -472,122 +384,40 @@ struct accessor_info;
 
 template <>
 struct accessor_info<NamedColumn::ro> {
+    using NamedColumn = unordered_value_datatypes::NamedColumn;
+    using struct_type = unordered_value;
     using type = uint64_t;
     using value_type = std::array<uint64_t, 2>;
+    static constexpr NamedColumn Column = NamedColumn::ro;
     static constexpr bool is_array = true;
     static inline size_t offset();
 };
 
 template <>
 struct accessor_info<NamedColumn::rw> {
+    using NamedColumn = unordered_value_datatypes::NamedColumn;
+    using struct_type = unordered_value;
     using type = uint64_t;
     using value_type = std::array<uint64_t, 8>;
+    static constexpr NamedColumn Column = NamedColumn::rw;
     static constexpr bool is_array = true;
     static inline size_t offset();
 };
 
 template <>
 struct accessor_info<NamedColumn::wo> {
+    using NamedColumn = unordered_value_datatypes::NamedColumn;
+    using struct_type = unordered_value;
     using type = uint64_t;
     using value_type = std::array<uint64_t, 2>;
+    static constexpr NamedColumn Column = NamedColumn::wo;
     static constexpr bool is_array = true;
     static inline size_t offset();
 };
 
-template <NamedColumn Column>
-struct accessor {
-    using adapter_type = ::sto::GlobalAdapter<unordered_value, NamedColumn>;
-    using type = typename accessor_info<Column>::type;
-    using value_type = typename accessor_info<Column>::value_type;
-
-    accessor() = default;
-    template <typename... Args>
-    explicit accessor(Args&&... args) : value_(std::forward<Args>(args)...) {}
-
-    operator const value_type() const {
-        if constexpr (accessor_info<Column>::is_array) {
-            adapter_type::CountReads(Column, Column + value_.size());
-        } else {
-            adapter_type::CountRead(Column);
-        }
-        return value_;
-    }
-
-    value_type operator =(const value_type& other) {
-        if constexpr (accessor_info<Column>::is_array) {
-            adapter_type::CountWrites(Column, Column + value_.size());
-        } else {
-            adapter_type::CountWrite(Column);
-        }
-        return value_ = other;
-    }
-
-    value_type operator =(accessor<Column>& other) {
-        if constexpr (accessor_info<Column>::is_array) {
-            adapter_type::CountReads(Column, Column + other.value_.size());
-            adapter_type::CountWrites(Column, Column + value_.size());
-        } else {
-            adapter_type::CountRead(Column);
-            adapter_type::CountWrite(Column);
-        }
-        return value_ = other.value_;
-    }
-
-    template <NamedColumn OtherColumn>
-    value_type operator =(const accessor<OtherColumn>& other) {
-        if constexpr (accessor_info<Column>::is_array && accessor_info<OtherColumn>::is_array) {
-            adapter_type::CountReads(OtherColumn, OtherColumn + other.value_.size());
-            adapter_type::CountWrites(Column, Column + value_.size());
-        } else {
-            adapter_type::CountRead(OtherColumn);
-            adapter_type::CountWrite(Column);
-        }
-        return value_ = other.value_;
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, void>
-    operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
-        adapter_type::CountWrite(Column + index);
-        value_[index] = value;
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, type&>
-    operator ()(const std::underlying_type_t<NamedColumn>& index) {
-        adapter_type::CountWrite(Column + index);
-        return value_[index];
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, type>
-    operator [](const std::underlying_type_t<NamedColumn>& index) {
-        adapter_type::CountRead(Column + index);
-        return value_[index];
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<is_array, const type&>
-    operator [](const std::underlying_type_t<NamedColumn>& index) const {
-        adapter_type::CountRead(Column + index);
-        return value_[index];
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<!is_array, type&>
-    operator *() {
-        adapter_type::CountWrite(Column);
-        return value_;
-    }
-
-    template <bool is_array = accessor_info<Column>::is_array>
-    std::enable_if_t<!is_array, type*>
-    operator ->() {
-        adapter_type::CountWrite(Column);
-        return &value_;
-    }
-
-    value_type value_;
+template <NamedColumn ColumnValue>
+struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
+    static constexpr NamedColumn Column = ColumnValue;
 };
 
 struct unordered_value {
@@ -617,19 +447,19 @@ struct unordered_value {
     }
 
     template <NamedColumn Column>
-    inline accessor<RoundedNamedColumn<Column>()>& get();
+    inline ::sto::adapter::Accessor<accessor_info<RoundedNamedColumn<Column>()>>& get();
 
     template <NamedColumn Column>
-    inline const accessor<RoundedNamedColumn<Column>()>& get() const;
+    inline const ::sto::adapter::Accessor<accessor_info<RoundedNamedColumn<Column>()>>& get() const;
 
 
     const auto split_of(NamedColumn index) const {
         return index < splitindex_ ? 0 : 1;
     }
 
-    accessor<NamedColumn::ro> ro;
-    accessor<NamedColumn::rw> rw;
-    accessor<NamedColumn::wo> wo;
+    ::sto::adapter::Accessor<accessor_info<NamedColumn::ro>> ro;
+    ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>> rw;
+    ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>> wo;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
 };
 
@@ -671,122 +501,122 @@ inline size_t accessor_info<NamedColumn::wo>::offset() {
 }
 
 template <>
-inline accessor<NamedColumn::ro>& unordered_value::get<NamedColumn::ro + 0>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::ro>>& unordered_value::get<NamedColumn::ro + 0>() {
     return ro;
 }
 
 template <>
-inline const accessor<NamedColumn::ro>& unordered_value::get<NamedColumn::ro + 0>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::ro>>& unordered_value::get<NamedColumn::ro + 0>() const {
     return ro;
 }
 
 template <>
-inline accessor<NamedColumn::ro>& unordered_value::get<NamedColumn::ro + 1>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::ro>>& unordered_value::get<NamedColumn::ro + 1>() {
     return ro;
 }
 
 template <>
-inline const accessor<NamedColumn::ro>& unordered_value::get<NamedColumn::ro + 1>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::ro>>& unordered_value::get<NamedColumn::ro + 1>() const {
     return ro;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 0>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 0>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 0>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 0>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 1>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 1>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 1>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 1>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 2>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 2>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 2>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 2>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 3>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 3>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 3>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 3>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 4>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 4>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 4>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 4>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 5>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 5>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 5>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 5>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 6>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 6>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 6>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 6>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 7>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 7>() {
     return rw;
 }
 
 template <>
-inline const accessor<NamedColumn::rw>& unordered_value::get<NamedColumn::rw + 7>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>>& unordered_value::get<NamedColumn::rw + 7>() const {
     return rw;
 }
 
 template <>
-inline accessor<NamedColumn::wo>& unordered_value::get<NamedColumn::wo + 0>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>>& unordered_value::get<NamedColumn::wo + 0>() {
     return wo;
 }
 
 template <>
-inline const accessor<NamedColumn::wo>& unordered_value::get<NamedColumn::wo + 0>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>>& unordered_value::get<NamedColumn::wo + 0>() const {
     return wo;
 }
 
 template <>
-inline accessor<NamedColumn::wo>& unordered_value::get<NamedColumn::wo + 1>() {
+inline ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>>& unordered_value::get<NamedColumn::wo + 1>() {
     return wo;
 }
 
 template <>
-inline const accessor<NamedColumn::wo>& unordered_value::get<NamedColumn::wo + 1>() const {
+inline const ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>>& unordered_value::get<NamedColumn::wo + 1>() const {
     return wo;
 }
 
