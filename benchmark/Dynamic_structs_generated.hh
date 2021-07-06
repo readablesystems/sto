@@ -116,6 +116,12 @@ struct ordered_value {
 
     explicit ordered_value() = default;
 
+    template <NamedColumn Column>
+    static inline ordered_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<ordered_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
+
     static inline void resplit(
             ordered_value& newvalue, const ordered_value& oldvalue, NamedColumn index);
 
@@ -426,6 +432,12 @@ struct unordered_value {
     static constexpr auto MAX_SPLITS = 2;
 
     explicit unordered_value() = default;
+
+    template <NamedColumn Column>
+    static inline unordered_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<unordered_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
 
     static inline void resplit(
             unordered_value& newvalue, const unordered_value& oldvalue, NamedColumn index);

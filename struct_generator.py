@@ -120,6 +120,12 @@ static constexpr auto MAX_SPLITS = 2;
 
 explicit {struct}() = default;
 
+template <NamedColumn Column>
+static inline {struct}& of({accessorstruct}<{infostruct}<Column>>& accessor) {lbrace}
+{indent}return *reinterpret_cast<{struct}*>(
+{indent}{indent}reinterpret_cast<uintptr_t>(&accessor) - {infostruct}<Column>::offset());
+{rbrace}
+
 static inline void resplit(
 {indent}{indent}{struct}& newvalue, const {struct}& oldvalue, NamedColumn index);
 
@@ -302,7 +308,7 @@ template <NamedColumn ColumnValue>
 struct {infostruct} : {infostruct}<RoundedNamedColumn<ColumnValue>()> {lbrace}
 {indent}static constexpr NamedColumn Column = ColumnValue;
 {rbrace};
-''', ctype=ctype, isarray=isarray, member=member, vtype=vtype)
+''')
 
     def convert_accessors(self):
         '''Output the accessors.'''

@@ -103,6 +103,12 @@ struct ycsb_value {
 
     explicit ycsb_value() = default;
 
+    template <NamedColumn Column>
+    static inline ycsb_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<ycsb_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
+
     static inline void resplit(
             ycsb_value& newvalue, const ycsb_value& oldvalue, NamedColumn index);
 

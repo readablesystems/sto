@@ -116,6 +116,12 @@ struct index_value {
 
     explicit index_value() = default;
 
+    template <NamedColumn Column>
+    static inline index_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<index_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
+
     static inline void resplit(
             index_value& newvalue, const index_value& oldvalue, NamedColumn index);
 

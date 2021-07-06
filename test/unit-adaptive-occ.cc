@@ -3,6 +3,7 @@
 #include "DB_params.hh"
 #include "DB_index.hh"
 #include "Adapter.hh"
+#include "Accessor.hh"
 #include "unit-adaptive-structs.hh"
 
 using bench::split_version_helpers;
@@ -31,6 +32,7 @@ private:
     void CounterTest();
     void ResplittingTest();
     void ResplitInflightTest();
+    void StructOfTest();
 };
 
 template <bool Ordered>
@@ -42,6 +44,7 @@ void Tester<Ordered>::RunTests() {
     }
 
     CounterTest();
+    StructOfTest();
     ResplittingTest();
     ResplitInflightTest();
 }
@@ -128,6 +131,31 @@ void Tester<Ordered>::ResplitInflightTest() {
     }
 
     printf("Test pass: ResplitInflightTest\n");
+}
+
+template <bool Ordered>
+void Tester<Ordered>::StructOfTest() {
+    {
+        value_type v;
+        assert(&v == &value_type::of(v.data));
+        assert(&v == &value_type::of(v.label));
+        assert(&v == &value_type::of(v.flagged));
+
+        value_type v2;
+        assert(&v2 != &value_type::of(v.data));
+        assert(&v2 != &value_type::of(v.label));
+        assert(&v2 != &value_type::of(v.flagged));
+
+        assert(&v != &value_type::of(v2.data));
+        assert(&v != &value_type::of(v2.label));
+        assert(&v != &value_type::of(v2.flagged));
+
+        assert(&v2 == &value_type::of(v2.data));
+        assert(&v2 == &value_type::of(v2.label));
+        assert(&v2 == &value_type::of(v2.flagged));
+    }
+
+    printf("Test pass: StructOfTest\n");
 }
 
 int main() {

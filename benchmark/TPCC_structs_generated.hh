@@ -191,6 +191,12 @@ struct warehouse_value {
 
     explicit warehouse_value() = default;
 
+    template <NamedColumn Column>
+    static inline warehouse_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<warehouse_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
+
     static inline void resplit(
             warehouse_value& newvalue, const warehouse_value& oldvalue, NamedColumn index);
 
@@ -572,6 +578,12 @@ struct district_value {
 
     explicit district_value() = default;
 
+    template <NamedColumn Column>
+    static inline district_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<district_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
+
     static inline void resplit(
             district_value& newvalue, const district_value& oldvalue, NamedColumn index);
 
@@ -847,6 +859,12 @@ struct customer_idx_value {
     static constexpr auto MAX_SPLITS = 2;
 
     explicit customer_idx_value() = default;
+
+    template <NamedColumn Column>
+    static inline customer_idx_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<customer_idx_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
 
     static inline void resplit(
             customer_idx_value& newvalue, const customer_idx_value& oldvalue, NamedColumn index);
@@ -1259,6 +1277,12 @@ struct customer_value {
     static constexpr auto MAX_SPLITS = 2;
 
     explicit customer_value() = default;
+
+    template <NamedColumn Column>
+    static inline customer_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<customer_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
 
     static inline void resplit(
             customer_value& newvalue, const customer_value& oldvalue, NamedColumn index);
@@ -1811,6 +1835,12 @@ struct history_value {
 
     explicit history_value() = default;
 
+    template <NamedColumn Column>
+    static inline history_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<history_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
+
     static inline void resplit(
             history_value& newvalue, const history_value& oldvalue, NamedColumn index);
 
@@ -2147,6 +2177,12 @@ struct order_value {
 
     explicit order_value() = default;
 
+    template <NamedColumn Column>
+    static inline order_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<order_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
+
     static inline void resplit(
             order_value& newvalue, const order_value& oldvalue, NamedColumn index);
 
@@ -2447,6 +2483,12 @@ struct orderline_value {
 
     explicit orderline_value() = default;
 
+    template <NamedColumn Column>
+    static inline orderline_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<orderline_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
+
     static inline void resplit(
             orderline_value& newvalue, const orderline_value& oldvalue, NamedColumn index);
 
@@ -2734,6 +2776,12 @@ struct item_value {
 
     explicit item_value() = default;
 
+    template <NamedColumn Column>
+    static inline item_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<item_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
+
     static inline void resplit(
             item_value& newvalue, const item_value& oldvalue, NamedColumn index);
 
@@ -3016,6 +3064,12 @@ struct stock_value {
     static constexpr auto MAX_SPLITS = 2;
 
     explicit stock_value() = default;
+
+    template <NamedColumn Column>
+    static inline stock_value& of(::sto::adapter::Accessor<accessor_info<Column>>& accessor) {
+        return *reinterpret_cast<stock_value*>(
+            reinterpret_cast<uintptr_t>(&accessor) - accessor_info<Column>::offset());
+    }
 
     static inline void resplit(
             stock_value& newvalue, const stock_value& oldvalue, NamedColumn index);
