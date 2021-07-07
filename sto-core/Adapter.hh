@@ -445,6 +445,16 @@ public:
     typedef std::atomic<counter_type> atomic_counter_type;
     using Index = IndexType;
 
+    // More detailed counters for contended records
+    struct DetailedCounters {
+        std::atomic<int64_t> global_score;
+        std::array<int64_t, MAX_THREADS> thread_scores;
+    };
+
+    std::atomic<Index> current_split = T::DEFAULT_SPLIT;
+    std::atomic<uint64_t> aborts = 0;
+    std::atomic<uint64_t> commits = 0;
+    DetailedCounters* counters = nullptr;
 };
 
 }  // namespace adapter

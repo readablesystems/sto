@@ -26,6 +26,9 @@ public:
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
     }
+    virtual void collect(TransItem& item, bool committed) {
+        (void) item, (void) committed;
+    }
     virtual void print(std::ostream& w, const TransItem& item) const;
 };
 

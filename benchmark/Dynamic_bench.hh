@@ -34,8 +34,7 @@
 // @section: clp parser definitions
 enum {
     opt_dbid = 1, opt_thld, opt_nthrs, opt_time, opt_perf, opt_pfcnt, opt_gc,
-    opt_gr, opt_node, opt_comm, opt_verb, opt_mix, opt_ordr, opt_ada, opt_samp,
-    opt_prof
+    opt_gr, opt_node, opt_comm, opt_verb, opt_mix, opt_ordr, opt_ada, opt_samp
 };
 
 extern const char* workload_mix_names[];
@@ -500,6 +499,8 @@ public:
         unsigned gc_rate = Transaction::get_epoch_cycle();
         bool verbose = false;
 
+        db_params_adapter adapter_type = db_params_adapter::None;
+
         typename dynamic_runner<DBParams>::Params params {
             0 /*mix*/, 1000 /*threshold*/, false /*ordered*/, false /*profile*/,
             false /*sample*/
@@ -539,15 +540,13 @@ public:
                 case opt_comm:
                     break;
                 case opt_ada:
+                    adapter_type = parse_adapter(clp->val.s);
                     break;
                 case opt_ordr:
                     params.ordered = !clp->negated;
                     break;
                 case opt_samp:
                     params.sample = !clp->negated;
-                    break;
-                case opt_prof:
-                    params.profile = !clp->negated;
                     break;
                 case opt_verb:
                     verbose = !clp->negated;
@@ -571,6 +570,15 @@ public:
             return ret;
 
         std::cout << "Selected workload mix: " << std::string(workload_mix_names[params.mix]) << std::endl;
+
+        switch (adapter_type) {
+            case db_params_adapter::Profile:
+                params.profile = true;
+                break;
+            default:
+                break;
+        }
+
 
         auto profiler_mode = counter_mode ?
                              Profiler::perf_mode::counters : Profiler::perf_mode::record;
@@ -612,10 +620,13 @@ public:
 
         Transaction::rcu_release_all(advancer, num_threads);
 
-        if (params.ordered) {
-            ADAPTER_OF(ordered_value)::PrintStats();
-        } else {
-            ADAPTER_OF(unordered_value)::PrintStats();
+        if (adapter_type == db_params_adapter::Global ||
+                adapter_type == db_params_adapter::Profile) {
+            if (params.ordered) {
+                ADAPTER_OF(ordered_value)::PrintStats();
+            } else {
+                ADAPTER_OF(unordered_value)::PrintStats();
+            }
         }
 
 

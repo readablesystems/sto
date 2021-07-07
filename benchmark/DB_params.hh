@@ -31,6 +31,32 @@ inline db_params_id parse_dbid(const char *id_string) {
     return db_params_id::None;
 }
 
+// Adapter parameters
+constexpr const char*db_params_adapter_names[] = {
+    "none", "profile", "global", "inline"};
+
+enum class db_params_adapter : int {
+    None = 0, Profile, Global, Inline
+};
+
+inline std::ostream &operator<<(std::ostream &os, const db_params_adapter &adapter) {
+    os << db_params_adapter_names[static_cast<int>(adapter)];
+    return os;
+}
+
+inline db_params_adapter parse_adapter(const char *adapter_string) {
+    if (adapter_string == nullptr || (*adapter_string) == '\0')
+        return db_params_adapter::None;
+    for (size_t i = 0; i < sizeof(db_params_adapter_names); ++i) {
+        if (strcmp(adapter_string, db_params_adapter_names[i]) == 0) {
+            auto selected = static_cast<db_params_adapter>(i);
+            std::cout << "Selected \"" << selected << "\" for adaptive timestamp splitting." << std::endl;
+            return selected;
+        }
+    }
+    return db_params_adapter::None;
+}
+
 class db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::Default;

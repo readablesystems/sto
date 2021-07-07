@@ -6,6 +6,7 @@
 #include <sys/resource.h>
 #include <sys/time.h>
 
+#include "Adapter.hh"
 #include "MVCC.hh"
 
 Transaction::testing_type Transaction::testing;
@@ -222,6 +223,15 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
     TXP_ACCOUNT(txp_total_transbuffer, buf_.buffer_size());
 
     TransItem* it;
+
+    if (::sto::adapter::AdapterConfig::IsEnabled(::sto::adapter::AdapterConfig::Inline)) {
+        it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
+        for (unsigned tidx = tset_size_; tidx != 0; --tidx) {
+            it = (tidx % tset_chunk ? it - 1 : &tset_[(tidx - 1) / tset_chunk][tset_chunk - 1]);
+            it->owner()->collect(*it, committed);
+        }
+    }
+
     if (!any_writes_)
         goto unlock_all;
 

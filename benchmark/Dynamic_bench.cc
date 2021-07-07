@@ -34,9 +34,8 @@ const Clp_Option options[] = {
         { "verbose",      'v', opt_verb,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "mix",          'm', opt_mix,   Clp_ValInt,    Clp_Optional },
         { "ordered",      'o', opt_ordr,  Clp_ValInt,    Clp_Optional },
-        { "adapt",        'a', opt_ada,   Clp_NoVal,     Clp_Negate| Clp_Optional },
+        { "adapt",        'a', opt_ada,   Clp_ValString, Clp_Optional },
         { "sample",       's', opt_samp,  Clp_NoVal,     Clp_Negate| Clp_Optional },
-        { "profile",      'f', opt_prof,  Clp_NoVal,     Clp_Negate| Clp_Optional },
 };
 
 const char* workload_mix_names[] = { "Full", "NO-only", "NO+P-only" };
@@ -66,10 +65,9 @@ void print_usage(const char *argv_0) {
        << "    Enable garbage collection (default false)." << std::endl
        << "  --gc-rate=<NUM> (or -r<NUM>)" << std::endl
        << "    Number of microseconds between GC epochs. Defaults to 100000." << std::endl
-       << "  --adapt (or -a)" << std::endl
-       << "    Enable adaptive optimizations (default false)." << std::endl
-       << "  --profile (or -f)" << std::endl
-       << "    Profile adaptive optimizations, implies -a (default false)." << std::endl
+       << "  --adapt=<STRING> (or -a<STRING>)" << std::endl
+       << "    Specify the type of workload adapter to use. Can be one of the following:" << std::endl
+       << "      none (default), profile, global, inline" << std::endl
        << "  --sample (or -s)" << std::endl
        << "    Sample record columns instead of scanning all columns (default false)." << std::endl
        << "  --node (or -n)" << std::endl
@@ -124,7 +122,9 @@ int main(int argc, const char *const *argv) {
     bool clp_stop = false;
     bool node_tracking = false;
     bool enable_commute = false;
-    bool enable_adapt = false;
+
+    db_params_adapter adapter_type = db_params_adapter::None;
+
     while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
         switch (opt) {
         case opt_dbid:
@@ -144,8 +144,7 @@ int main(int argc, const char *const *argv) {
             enable_commute = !clp->negated;
             break;
         case opt_ada:
-        case opt_prof:
-            enable_adapt |= !clp->negated;
+            adapter_type = parse_adapter(clp->val.s);
             break;
         default:
             break;
@@ -158,10 +157,17 @@ int main(int argc, const char *const *argv) {
 
     (void) node_tracking;
 
-    if (enable_adapt) {
-        sto::AdapterConfig::Enable(sto::AdapterConfig::Global);
+    switch (adapter_type) {
+        case db_params_adapter::Profile:
+        case db_params_adapter::Global:
+            sto::AdapterConfig::Enable(sto::AdapterConfig::Global);
+            break;
+        case db_params_adapter::Inline:
+            sto::AdapterConfig::Enable(sto::AdapterConfig::Inline);
+            break;
+        default:
+            break;
     }
-
 
     switch (dbid) {
     case db_params_id::Default:

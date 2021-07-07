@@ -775,6 +775,28 @@ public:
         }
     }
 
+    void collect(TransItem& item, bool committed) override {
+        if (!is_internode(item)) {
+            auto key = item.key<item_key_t>();
+            internal_elem *e = key.internal_elem_ptr();
+            if (committed) {
+                e->row_container.adapter().commits.fetch_add(
+                        1, std::memory_order::memory_order_relaxed);
+            } else {
+                e->row_container.adapter().aborts.fetch_add(
+                        1, std::memory_order::memory_order_relaxed);
+            }
+            auto aborts = e->row_container.adapter().aborts.load(
+                    std::memory_order::memory_order_relaxed);
+            auto commits = e->row_container.adapter().commits.load(
+                    std::memory_order::memory_order_relaxed);
+
+            // Do stuff here
+            if (aborts > commits / 4) {
+            }
+        }
+    }
+
 protected:
     template <typename NodeCallback, typename ValueCallback, bool Reverse>
     class range_scanner {

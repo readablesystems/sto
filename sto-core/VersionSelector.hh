@@ -195,6 +195,10 @@ public:
         return split_accesses;
     }
 
+    auto& adapter() {
+        return inline_adapter;
+    }
+
     void install(const comm_type& comm) {
         comm.operate(*read_row);
     }
@@ -248,6 +252,7 @@ private:
     }
 
     std::array<version_type, num_versions> versions_;
+    ::sto::adapter::InlineAdapter<RowType, nc> inline_adapter;
 };
 
 /////////////////////////////
