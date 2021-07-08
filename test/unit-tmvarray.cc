@@ -106,6 +106,7 @@ void testModifyingIter() {
 
     {
         TransactionGuard t;
+        Sto::mvcc_rw_upgrade();
         std::replace(f.begin(), f.end(), 4, 6);
     }
 
@@ -113,6 +114,7 @@ void testModifyingIter() {
 
     {
         TransactionGuard t1;
+        Sto::mvcc_rw_upgrade();
         int v = f[4];
         assert(v == 6);
     }
@@ -132,6 +134,7 @@ void testConflictingModifyIter1() {
         std::replace(f.begin(), f.end(), 4, 6);
 
         TestTransaction t1(2);
+        Sto::mvcc_rw_upgrade();
         f[4] = 10;
 
         assert(t1.try_commit());
@@ -142,6 +145,7 @@ void testConflictingModifyIter1() {
 
     {
         TransactionGuard t2;
+        Sto::mvcc_rw_upgrade();
         int v = f[4];
         assert(v == 10);
     }
@@ -172,6 +176,7 @@ void testConflictingModifyIter2() {
 
     {
         TransactionGuard t2;
+        Sto::mvcc_rw_upgrade();
         int v = f[4];
         assert(v == 10);
     }
@@ -203,6 +208,7 @@ void testConflictingModifyIter3() {
 
     {
         TransactionGuard t2;
+        Sto::mvcc_rw_upgrade();
         int v = f[4];
         assert(v == 6);
     }
@@ -239,6 +245,7 @@ void testOpacity1() {
 
     {
         TransactionGuard t2;
+        Sto::mvcc_rw_upgrade();
         int v = f[4];
         assert(v == 6);
     }
@@ -293,6 +300,7 @@ void benchArray64() {
             
 
             TRANSACTION_E {
+                Sto::mvcc_rw_upgrade();
                 for (int i = 0; i < 64; ++i)
                     a[i] = a[i] + i;
             } RETRY_E(true);
@@ -318,5 +326,8 @@ int main() {
     testMvInline();
 #endif
     benchArray64();
+
+    std::thread advancer;  // empty thread because we have no advancer thread
+    Transaction::rcu_release_all(advancer, 3);
     return 0;
 }

@@ -256,5 +256,8 @@ int main() {
     testOpacity1();
     testNoOpacity1();
     //testStringWrapper();
+
+    std::thread advancer;  // empty thread because we have no advancer thread
+    Transaction::rcu_release_all(advancer, 2);
     return 0;
 }
