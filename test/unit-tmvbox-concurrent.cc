@@ -91,4 +91,8 @@ int main() {
         thrs[i].join();
     }
     std::cout << "Test pass!" << std::endl;
+
+    Transaction::epoch_advance_once();
+    Transaction::epoch_advance_once();
+    Transaction::rcu_release_all(epoch_advancer, NUM_WRITER_THREADS + 2);
 }

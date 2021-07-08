@@ -353,5 +353,8 @@ int main() {
     testNoOpacity1();
     benchArray64();
     testRWLock1();
+
+    std::thread advancer;  // empty thread because we have no advancer thread
+    Transaction::rcu_release_all(advancer, 2);
     return 0;
 }

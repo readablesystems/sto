@@ -60,6 +60,7 @@ void testConcurrentInt() {
         assert(match);
 
         TestTransaction t2(2);
+        Sto::mvcc_rw_upgrade();
         ib = 1;
         assert(t2.try_commit());
         assert(t1.try_commit());
@@ -69,9 +70,11 @@ void testConcurrentInt() {
 
     {
         TestTransaction t1(1);
+        Sto::mvcc_rw_upgrade();
         ib = 1;
 
         TestTransaction t2(2);
+        Sto::mvcc_rw_upgrade();
         ib = 2;
         assert(t2.try_commit());
         assert(t1.try_commit());
@@ -84,16 +87,19 @@ void testConcurrentInt() {
 
     {
         TestTransaction t1(1);
+        Sto::mvcc_rw_upgrade();
         match = ib == 2;
         assert(match);
 
         TestTransaction t2(2);
+        Sto::mvcc_rw_upgrade();
         ib = 0;
         assert(t2.try_commit());
 
         
 
         TestTransaction t3(3);
+        Sto::mvcc_rw_upgrade();
         ib = 2;
         assert(t3.try_commit());
         assert(t1.try_commit());
@@ -127,6 +133,7 @@ void testOpacity1() {
 
     {
         TransactionGuard t2;
+        Sto::mvcc_rw_upgrade();
         int v = f;
         assert(v == 2);
     }
@@ -163,9 +170,11 @@ void testMvReads() {
     // Later reads also don't validate earlier writes
     {
         TestTransaction t1(1);
+        Sto::mvcc_rw_upgrade();
         g = g + f;
 
         TestTransaction t2(2);
+        Sto::mvcc_rw_upgrade();
         int x = f + g;
         assert(x == 1);
 
@@ -184,9 +193,11 @@ void testMvReads() {
     // later transactions
     {
         TestTransaction t1(1);
+        Sto::mvcc_rw_upgrade();
         int x = f + g;
 
         TestTransaction t2(2);
+        Sto::mvcc_rw_upgrade();
         f = f + 2 * g;
 
         t1.use();
@@ -207,6 +218,7 @@ void testMvReads() {
     // Read-my-writes support
     {
         TestTransaction t(1);
+        Sto::mvcc_rw_upgrade();
         f = f + 2 * g;
         g = f;
         f = f + g;
@@ -247,9 +259,11 @@ void testMvWrites() {
     // Later reads in RW-transactions should invalidate concurrent writes
     {
         TestTransaction t1(1);
+        Sto::mvcc_rw_upgrade();
         f = 0;
 
         TestTransaction t2(2);
+        Sto::mvcc_rw_upgrade();
         g = f;
 
         t2.use();
@@ -266,9 +280,11 @@ void testMvWrites() {
     // Earlier reads in RW-transactions should not invalidate concurrent writes
     {
         TestTransaction t1(1);
+        Sto::mvcc_rw_upgrade();
         f = g;
 
         TestTransaction t2(2);
+        Sto::mvcc_rw_upgrade();
         g = 1;
 
         t1.use();
@@ -287,10 +303,12 @@ void testMvCommute1() {
 
     {
         TestTransaction t1(1);
+        Sto::mvcc_rw_upgrade();
         box.increment(1);
 
         TestTransaction t2(2);
         t2.use();
+        Sto::mvcc_rw_upgrade();
         box.increment(2);
         assert(t2.try_commit());
 
@@ -299,6 +317,7 @@ void testMvCommute1() {
 
         TestTransaction t3(3);
         t3.use();
+        Sto::mvcc_rw_upgrade();
         auto v = static_cast<int>(box);
         assert(v == 3);
         assert(t3.try_commit());
@@ -312,13 +331,16 @@ void testMvCommute2() {
 
     {
         TestTransaction t1(1);
+        Sto::mvcc_rw_upgrade();
         box.increment(1);
         assert(t1.try_commit());
 
         TestTransaction t2(2);
+        Sto::mvcc_rw_upgrade();
         box.increment(2);
 
         TestTransaction t3(3);
+        Sto::mvcc_rw_upgrade();
         auto v = static_cast<int>(box);
         assert(v == 1);
         assert(t3.try_commit());
@@ -393,6 +415,7 @@ void testCommuteGC() {
     MvHistory<int64_t> *h = nullptr;
     {
         TestTransaction t(5);
+        Sto::mvcc_rw_upgrade();
         h = TMvBoxAccess::head(box);  // Needs to be called in a transaction
         assert(t.try_commit());
         assert(h);
@@ -410,6 +433,7 @@ void testCommuteGC() {
 
     {
         TestTransaction t(6);
+        Sto::mvcc_rw_upgrade();
         auto hh = TMvBoxAccess::head(box);
         assert(t.try_commit());
         assert(h == hh);
@@ -437,5 +461,8 @@ int main() {
 #if MVCC_INLINING
     testMvInline();
 #endif
+
+    std::thread advancer;  // empty thread because we have no advancer thread
+    Transaction::rcu_release_all(advancer, 7);
     return 0;
 }

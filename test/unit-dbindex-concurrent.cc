@@ -418,6 +418,8 @@ void IndexTester<MVCC, Ordered>::RunTests() {
     }
 
     std::cout << "Test pass!" << std::endl;
+
+    Transaction::rcu_release_all(epoch_advancer_thread, num_writers + num_readers);
 }
 
 int main() {

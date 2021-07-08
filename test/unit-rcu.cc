@@ -86,6 +86,8 @@ int main(int argc, char* argv[]) {
     for (unsigned i = 0; i < nthreads; ++i)
         pthread_join(tids[i], NULL);
 
+    Transaction::rcu_release_all(advancer, nthreads);
+
     auto nfreed_before = nfreed;
     for (unsigned i = 0; i < nthreads; ++i)
         Transaction::tinfo[i].rcu_set.~TRcuSet();
@@ -93,7 +95,6 @@ int main(int argc, char* argv[]) {
     always_assert(nallocated == nfreed, "rcu check");
     always_assert(nfreed_before > 0, "rcu check");
     printf("created %" PRIu64 ", deleted %" PRIu64 ", finally deleted %" PRIu64 "\n", nallocated, nfreed_before, nfreed);
-    advancer.join();
     printf("Test pass.\n");
     return 0;
 }
