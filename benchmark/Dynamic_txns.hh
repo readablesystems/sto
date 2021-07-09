@@ -6,6 +6,127 @@
 namespace dynamic {
 
 template <typename DBParams>
+void dynamic_runner<DBParams>::run_txn_ordered_per_record(uint64_t count) {
+if constexpr (!DBParams::MVCC) {
+    typedef ordered_value::NamedColumn ov_nc;
+
+    bool reader = ig.random(0, 1);
+    bool writer = !reader;
+
+    size_t starts = 0;
+
+    adapters_treset();
+
+    // begin txn
+    RWTXN {
+    if (starts) {
+        adapters_commit();
+        adapters_treset();
+    }
+    ++starts;
+
+    for (const auto key : ig.nrandom(db.keymin(), db.keymax(), count)) {
+        ordered_key ok(key);
+        auto range_boundary = static_cast<ov_nc>(
+                key % static_cast<uint64_t>(ov_nc::COLCOUNT));
+        std::vector<o_table_access> accesses;
+        std::vector<uint64_t> read_indices;
+        std::vector<uint64_t> write_indices;
+        if (params.sample) {
+            if (reader) {
+                read_indices = ig.nrandom(
+                        0, range_boundary,
+                        static_cast<uint64_t>(range_boundary + 1) / 2);
+            }
+            if (writer) {
+                write_indices = ig.nrandom(
+                        range_boundary + 1, ov_nc::COLCOUNT - 1,
+                        static_cast<uint64_t>(ov_nc::COLCOUNT - range_boundary) / 2);
+            }
+            for (auto index : read_indices) {
+                accesses.push_back({static_cast<ov_nc>(index), AccessType::read});
+            }
+            for (auto index : write_indices) {
+                accesses.push_back({static_cast<ov_nc>(index), AccessType::update});
+            }
+        } else {
+            for (auto ca = static_cast<ov_nc>(0); ca < ov_nc::COLCOUNT; ca += 1) {
+                auto access = ca <= range_boundary ? AccessType::read : AccessType::update;
+                if ((reader && access == AccessType::read)
+                        || (writer && access == AccessType::update)) {
+                    accesses.push_back({ca, access});
+                }
+            }
+        }
+        auto [abort, result, row, value] = db.tbl_ordered().select_row(
+                ok, accesses);
+        (void)result;
+        CHK(abort);
+        assert(result);
+
+        ordered_value* new_val = Sto::tx_alloc<ordered_value>();
+        new (new_val) ordered_value();
+        new_val->init(value);
+        if (params.sample) {
+            if (reader) {
+                for (auto int_index : write_indices) {
+                    auto index = static_cast<ov_nc>(int_index);
+                    if (index < ov_nc::rw) {
+                        (void) new_val->ro[static_cast<uint64_t>(index - ov_nc::ro)];
+                    } else if (index < ov_nc::wo) {
+                        (void) new_val->rw[static_cast<uint64_t>(index - ov_nc::rw)];
+                    } else if (index < ov_nc::COLCOUNT) {
+                        (void) new_val->wo[static_cast<uint64_t>(index - ov_nc::wo)];
+                    }
+                }
+            }
+            if (writer) {
+                for (auto int_index : write_indices) {
+                    auto index = static_cast<ov_nc>(int_index);
+                    if (index < ov_nc::rw) {
+                        new_val->ro(static_cast<uint64_t>(index - ov_nc::ro)) = ig.gen_value();
+                    } else if (index < ov_nc::wo) {
+                        new_val->rw(static_cast<uint64_t>(index - ov_nc::rw)) = ig.gen_value();
+                    } else if (index < ov_nc::COLCOUNT) {
+                        new_val->wo(static_cast<uint64_t>(index - ov_nc::wo)) = ig.gen_value();
+                    }
+                }
+            }
+        } else {
+            for (auto index = static_cast<ov_nc>(0); index < ov_nc::COLCOUNT; ++index) {
+                if (reader && index <= range_boundary) {
+                    if (index < ov_nc::rw) {
+                        (void) new_val->ro[static_cast<uint64_t>(index - ov_nc::ro)];
+                    } else if (index < ov_nc::wo) {
+                        (void) new_val->rw[static_cast<uint64_t>(index - ov_nc::rw)];
+                    } else if (index < ov_nc::COLCOUNT) {
+                        (void) new_val->wo[static_cast<uint64_t>(index - ov_nc::wo)];
+                    }
+                }
+                if (writer && index > range_boundary) {
+                    if (index < ov_nc::rw) {
+                        new_val->ro(static_cast<uint64_t>(index - ov_nc::ro)) = ig.gen_value();
+                    } else if (index < ov_nc::wo) {
+                        new_val->rw(static_cast<uint64_t>(index - ov_nc::rw)) = ig.gen_value();
+                    } else if (index < ov_nc::COLCOUNT) {
+                        new_val->wo(static_cast<uint64_t>(index - ov_nc::wo)) = ig.gen_value();
+                    }
+                }
+            }
+        }
+        db.tbl_ordered().update_row(row, new_val);
+    }
+
+
+    // commit txn
+    // retry until commits
+    } TEND(true);
+    adapters_treset();
+} else {
+}
+}
+
+template <typename DBParams>
 void dynamic_runner<DBParams>::run_txn_ordered_read(uint64_t depth) {
 if constexpr (!DBParams::MVCC) {
     typedef ordered_value::NamedColumn ov_nc;
@@ -209,6 +330,127 @@ if constexpr (!DBParams::MVCC) {
             TXP_ACCOUNT(txp_dyn_wh_aborts, starts - 1);
             break;
     }
+} else {
+}
+}
+
+template <typename DBParams>
+void dynamic_runner<DBParams>::run_txn_unordered_per_record(uint64_t count) {
+if constexpr (!DBParams::MVCC) {
+    typedef unordered_value::NamedColumn uv_nc;
+
+    bool reader = ig.random(0, 1);
+    bool writer = !reader;
+
+    size_t starts = 0;
+
+    adapters_treset();
+
+    // begin txn
+    RWTXN {
+    if (starts) {
+        adapters_commit();
+        adapters_treset();
+    }
+    ++starts;
+
+    for (const auto key : ig.nrandom(db.keymin(), db.keymax(), count)) {
+        unordered_key ok(key);
+        auto range_boundary = static_cast<uv_nc>(
+                key % static_cast<uint64_t>(uv_nc::COLCOUNT));
+        std::vector<u_table_access> accesses;
+        std::vector<uint64_t> read_indices;
+        std::vector<uint64_t> write_indices;
+        if (params.sample) {
+            if (reader) {
+                read_indices = ig.nrandom(
+                        0, range_boundary,
+                        static_cast<uint64_t>(range_boundary + 1) / 2);
+            }
+            if (writer) {
+                write_indices = ig.nrandom(
+                        range_boundary + 1, uv_nc::COLCOUNT - 1,
+                        static_cast<uint64_t>(uv_nc::COLCOUNT - range_boundary) / 2);
+            }
+            for (auto index : read_indices) {
+                accesses.push_back({static_cast<uv_nc>(index), AccessType::read});
+            }
+            for (auto index : write_indices) {
+                accesses.push_back({static_cast<uv_nc>(index), AccessType::update});
+            }
+        } else {
+            for (auto ca = static_cast<uv_nc>(0); ca < uv_nc::COLCOUNT; ca += 1) {
+                auto access = ca <= range_boundary ? AccessType::read : AccessType::update;
+                if ((reader && access == AccessType::read)
+                        || (writer && access == AccessType::update)) {
+                    accesses.push_back({ca, access});
+                }
+            }
+        }
+        auto [abort, result, row, value] = db.tbl_unordered().select_row(
+                ok, accesses);
+        (void)result;
+        CHK(abort);
+        assert(result);
+
+        unordered_value* new_val = Sto::tx_alloc<unordered_value>();
+        new (new_val) unordered_value();
+        new_val->init(value);
+        if (params.sample) {
+            if (reader) {
+                for (auto int_index : write_indices) {
+                    auto index = static_cast<uv_nc>(int_index);
+                    if (index < uv_nc::rw) {
+                        (void) new_val->ro[static_cast<uint64_t>(index - uv_nc::ro)];
+                    } else if (index < uv_nc::wo) {
+                        (void) new_val->rw[static_cast<uint64_t>(index - uv_nc::rw)];
+                    } else if (index < uv_nc::COLCOUNT) {
+                        (void) new_val->wo[static_cast<uint64_t>(index - uv_nc::wo)];
+                    }
+                }
+            }
+            if (writer) {
+                for (auto int_index : write_indices) {
+                    auto index = static_cast<uv_nc>(int_index);
+                    if (index < uv_nc::rw) {
+                        new_val->ro(static_cast<uint64_t>(index - uv_nc::ro)) = ig.gen_value();
+                    } else if (index < uv_nc::wo) {
+                        new_val->rw(static_cast<uint64_t>(index - uv_nc::rw)) = ig.gen_value();
+                    } else if (index < uv_nc::COLCOUNT) {
+                        new_val->wo(static_cast<uint64_t>(index - uv_nc::wo)) = ig.gen_value();
+                    }
+                }
+            }
+        } else {
+            for (auto index = static_cast<uv_nc>(0); index < uv_nc::COLCOUNT; ++index) {
+                if (reader && index <= range_boundary) {
+                    if (index < uv_nc::rw) {
+                        (void) new_val->ro[static_cast<uint64_t>(index - uv_nc::ro)];
+                    } else if (index < uv_nc::wo) {
+                        (void) new_val->rw[static_cast<uint64_t>(index - uv_nc::rw)];
+                    } else if (index < uv_nc::COLCOUNT) {
+                        (void) new_val->wo[static_cast<uint64_t>(index - uv_nc::wo)];
+                    }
+                }
+                if (writer && index > range_boundary) {
+                    if (index < uv_nc::rw) {
+                        new_val->ro(static_cast<uint64_t>(index - uv_nc::ro)) = ig.gen_value();
+                    } else if (index < uv_nc::wo) {
+                        new_val->rw(static_cast<uint64_t>(index - uv_nc::rw)) = ig.gen_value();
+                    } else if (index < uv_nc::COLCOUNT) {
+                        new_val->wo(static_cast<uint64_t>(index - uv_nc::wo)) = ig.gen_value();
+                    }
+                }
+            }
+        }
+        db.tbl_unordered().update_row(row, new_val);
+    }
+
+
+    // commit txn
+    // retry until commits
+    } TEND(true);
+    adapters_treset();
 } else {
 }
 }

@@ -38,7 +38,7 @@ const Clp_Option options[] = {
         { "sample",       's', opt_samp,  Clp_NoVal,     Clp_Negate| Clp_Optional },
 };
 
-const char* workload_mix_names[] = { "Full", "NO-only", "NO+P-only" };
+const char* workload_mix_names[] = { "Uniform global", "Per-record" };
 
 const size_t noptions = arraysize(options);
 
@@ -80,9 +80,8 @@ void print_usage(const char *argv_0) {
        << "    Execute using an ordered index (default false)." << std::endl
        << "  --mix=<NUM> or -m<NUM>" << std::endl
        << "    Specify workload mix:" << std::endl
-       << "    0. Full mix (default)" << std::endl
-       << "    1. New-order only" << std::endl
-       << "    2. New-order plus Payment only" << std::endl;
+       << "    0. Uniform global (default)" << std::endl
+       << "    1. Per-record" << std::endl;
 
     std::cout << ss.str() << std::flush;
 }

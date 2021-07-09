@@ -510,6 +510,7 @@ public:
                         static_cast<int64_t>(prev_split) + score / 2,
                         static_cast<int64_t>(Index::COLCOUNT)),
                         static_cast<int64_t>(1)));
+                    //printf("Prev, global, next: %ld, %ld, %ld\n", prev_split, score, next_split);
                     if (next_split == prev_split) {
                         break;
                     }

@@ -145,7 +145,8 @@ public:
         read_medium,
         write_medium,
         read_heavy,
-        write_heavy
+        write_heavy,
+        per_record
     };
 
     struct Params {
@@ -201,6 +202,8 @@ public:
             }
             prev_workload = next_workload;
             return txn;
+        } else if (mix == 1) {
+            return txn_type::per_record;
         }
         assert(false);
         return txn_type::read;
@@ -235,8 +238,10 @@ public:
         }
     }
 
+    inline void run_txn_ordered_per_record(uint64_t);
     inline void run_txn_ordered_read(uint64_t);
     inline void run_txn_ordered_write(uint64_t);
+    inline void run_txn_unordered_per_record(uint64_t);
     inline void run_txn_unordered_read(uint64_t);
     inline void run_txn_unordered_write(uint64_t);
 
@@ -448,6 +453,13 @@ public:
                         runner.run_txn_unordered_write(2);
                     }
                     break;
+                case txn_type::per_record:
+                    if (params.ordered) {
+                        runner.run_txn_ordered_per_record(100);
+                    } else {
+                        runner.run_txn_unordered_per_record(100);
+                    }
+                    break;
                 default:
                     fprintf(stderr, "r:%d unknown txn type\n", runner_id);
                     assert(false);
@@ -457,7 +469,9 @@ public:
             ++local_cnt;
         }
 
-        printf("Switches: %d\n", runner.switches);
+        if (runner.switches) {
+            printf("Switches: %d\n", runner.switches);
+        }
 
         txn_cnt = local_cnt;
     }
