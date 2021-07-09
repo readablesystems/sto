@@ -6,12 +6,10 @@
 namespace dynamic {
 
 template <typename DBParams>
-void dynamic_runner<DBParams>::run_txn_ordered_per_record(uint64_t count) {
+void dynamic_runner<DBParams>::run_txn_ordered_per_record(
+        uint64_t count, bool reader, bool writer) {
 if constexpr (!DBParams::MVCC) {
     typedef ordered_value::NamedColumn ov_nc;
-
-    bool reader = ig.random(0, 1);
-    bool writer = !reader;
 
     size_t starts = 0;
 
@@ -335,12 +333,10 @@ if constexpr (!DBParams::MVCC) {
 }
 
 template <typename DBParams>
-void dynamic_runner<DBParams>::run_txn_unordered_per_record(uint64_t count) {
+void dynamic_runner<DBParams>::run_txn_unordered_per_record(
+        uint64_t count, bool reader, bool writer) {
 if constexpr (!DBParams::MVCC) {
     typedef unordered_value::NamedColumn uv_nc;
-
-    bool reader = ig.random(0, 1);
-    bool writer = !reader;
 
     size_t starts = 0;
 

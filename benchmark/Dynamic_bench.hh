@@ -146,7 +146,9 @@ public:
         write_medium,
         read_heavy,
         write_heavy,
-        per_record
+        per_record,
+        per_record_read,
+        per_record_write
     };
 
     struct Params {
@@ -204,6 +206,8 @@ public:
             return txn;
         } else if (mix == 1) {
             return txn_type::per_record;
+        } else if (mix == 2) {
+            return ig.random(0, 1) ? txn_type::per_record_read : txn_type::per_record_write;
         }
         assert(false);
         return txn_type::read;
@@ -238,10 +242,10 @@ public:
         }
     }
 
-    inline void run_txn_ordered_per_record(uint64_t);
+    inline void run_txn_ordered_per_record(uint64_t, bool=true, bool=true);
     inline void run_txn_ordered_read(uint64_t);
     inline void run_txn_ordered_write(uint64_t);
-    inline void run_txn_unordered_per_record(uint64_t);
+    inline void run_txn_unordered_per_record(uint64_t, bool=true, bool=true);
     inline void run_txn_unordered_read(uint64_t);
     inline void run_txn_unordered_write(uint64_t);
 
@@ -458,6 +462,20 @@ public:
                         runner.run_txn_ordered_per_record(100);
                     } else {
                         runner.run_txn_unordered_per_record(100);
+                    }
+                    break;
+                case txn_type::per_record_read:
+                    if (params.ordered) {
+                        runner.run_txn_ordered_per_record(100, true, false);
+                    } else {
+                        runner.run_txn_unordered_per_record(100, true, false);
+                    }
+                    break;
+                case txn_type::per_record_write:
+                    if (params.ordered) {
+                        runner.run_txn_ordered_per_record(100, false, true);
+                    } else {
+                        runner.run_txn_unordered_per_record(100, false, true);
                     }
                     break;
                 default:

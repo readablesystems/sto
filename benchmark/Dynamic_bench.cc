@@ -38,7 +38,7 @@ const Clp_Option options[] = {
         { "sample",       's', opt_samp,  Clp_NoVal,     Clp_Negate| Clp_Optional },
 };
 
-const char* workload_mix_names[] = { "Uniform global", "Per-record" };
+const char* workload_mix_names[] = { "Uniform global", "Per-record (r+w)", "Per-record (r^w)" };
 
 const size_t noptions = arraysize(options);
 
@@ -81,7 +81,8 @@ void print_usage(const char *argv_0) {
        << "  --mix=<NUM> or -m<NUM>" << std::endl
        << "    Specify workload mix:" << std::endl
        << "    0. Uniform global (default)" << std::endl
-       << "    1. Per-record" << std::endl;
+       << "    1. Per-record (read + write)" << std::endl
+       << "    2. Per-record (read xor write)" << std::endl;
 
     std::cout << ss.str() << std::flush;
 }
