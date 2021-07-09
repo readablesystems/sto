@@ -135,7 +135,9 @@ struct index_value {
                 split = ADAPTER_OF(index_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             index_value::resplit(*this, *oldvalue, split);
         }
@@ -156,6 +158,7 @@ struct index_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::label>> label;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::flagged>> flagged;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(index_value) *adapter_ = nullptr;
 };
 
 inline void index_value::resplit(

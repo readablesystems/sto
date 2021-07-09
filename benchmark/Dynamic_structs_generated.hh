@@ -135,7 +135,9 @@ struct ordered_value {
                 split = ADAPTER_OF(ordered_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = split;  //oldvalue->adapter_->currentSplit();
+                }
             }
             ordered_value::resplit(*this, *oldvalue, split);
         }
@@ -156,6 +158,7 @@ struct ordered_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>> rw;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>> wo;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(ordered_value) *adapter_ = nullptr;
 };
 
 inline void ordered_value::resplit(
@@ -452,7 +455,9 @@ struct unordered_value {
                 split = ADAPTER_OF(unordered_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             unordered_value::resplit(*this, *oldvalue, split);
         }
@@ -473,6 +478,7 @@ struct unordered_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::rw>> rw;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::wo>> wo;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(unordered_value) *adapter_ = nullptr;
 };
 
 inline void unordered_value::resplit(

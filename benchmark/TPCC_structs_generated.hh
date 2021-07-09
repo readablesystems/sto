@@ -210,7 +210,9 @@ struct warehouse_value {
                 split = ADAPTER_OF(warehouse_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             warehouse_value::resplit(*this, *oldvalue, split);
         }
@@ -236,6 +238,7 @@ struct warehouse_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::w_tax>> w_tax;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::w_ytd>> w_ytd;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(warehouse_value) *adapter_ = nullptr;
 };
 
 inline void warehouse_value::resplit(
@@ -597,7 +600,9 @@ struct district_value {
                 split = ADAPTER_OF(district_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             district_value::resplit(*this, *oldvalue, split);
         }
@@ -623,6 +628,7 @@ struct district_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::d_tax>> d_tax;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::d_ytd>> d_ytd;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(district_value) *adapter_ = nullptr;
 };
 
 inline void district_value::resplit(
@@ -879,7 +885,9 @@ struct customer_idx_value {
                 split = ADAPTER_OF(customer_idx_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             customer_idx_value::resplit(*this, *oldvalue, split);
         }
@@ -898,6 +906,7 @@ struct customer_idx_value {
 
     ::sto::adapter::Accessor<accessor_info<NamedColumn::c_ids>> c_ids;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(customer_idx_value) *adapter_ = nullptr;
 };
 
 inline void customer_idx_value::resplit(
@@ -1297,7 +1306,9 @@ struct customer_value {
                 split = ADAPTER_OF(customer_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             customer_value::resplit(*this, *oldvalue, split);
         }
@@ -1333,6 +1344,7 @@ struct customer_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::c_delivery_cnt>> c_delivery_cnt;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::c_data>> c_data;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(customer_value) *adapter_ = nullptr;
 };
 
 inline void customer_value::resplit(
@@ -1854,7 +1866,9 @@ struct history_value {
                 split = ADAPTER_OF(history_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             history_value::resplit(*this, *oldvalue, split);
         }
@@ -1880,6 +1894,7 @@ struct history_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::h_amount>> h_amount;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::h_data>> h_data;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(history_value) *adapter_ = nullptr;
 };
 
 inline void history_value::resplit(
@@ -2196,7 +2211,9 @@ struct order_value {
                 split = ADAPTER_OF(order_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             order_value::resplit(*this, *oldvalue, split);
         }
@@ -2219,6 +2236,7 @@ struct order_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::o_all_local>> o_all_local;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::o_carrier_id>> o_carrier_id;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(order_value) *adapter_ = nullptr;
 };
 
 inline void order_value::resplit(
@@ -2502,7 +2520,9 @@ struct orderline_value {
                 split = ADAPTER_OF(orderline_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             orderline_value::resplit(*this, *oldvalue, split);
         }
@@ -2526,6 +2546,7 @@ struct orderline_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::ol_dist_info>> ol_dist_info;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::ol_delivery_d>> ol_delivery_d;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(orderline_value) *adapter_ = nullptr;
 };
 
 inline void orderline_value::resplit(
@@ -2795,7 +2816,9 @@ struct item_value {
                 split = ADAPTER_OF(item_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             item_value::resplit(*this, *oldvalue, split);
         }
@@ -2817,6 +2840,7 @@ struct item_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::i_name>> i_name;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::i_data>> i_data;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(item_value) *adapter_ = nullptr;
 };
 
 inline void item_value::resplit(
@@ -3084,7 +3108,9 @@ struct stock_value {
                 split = ADAPTER_OF(stock_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             stock_value::resplit(*this, *oldvalue, split);
         }
@@ -3108,6 +3134,7 @@ struct stock_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::s_order_cnt>> s_order_cnt;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::s_remote_cnt>> s_remote_cnt;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(stock_value) *adapter_ = nullptr;
 };
 
 inline void stock_value::resplit(

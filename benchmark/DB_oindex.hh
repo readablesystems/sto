@@ -776,24 +776,34 @@ public:
     }
 
     void collect(TransItem& item, bool committed) override {
-        if (!is_internode(item)) {
+        if (::sto::adapter::AdapterConfig::IsEnabled(::sto::adapter::AdapterConfig::Inline)
+                && !is_internode(item)) {
             auto key = item.key<item_key_t>();
             internal_elem *e = key.internal_elem_ptr();
+            auto& adapter = e->row_container.adapter();
             if (committed) {
-                e->row_container.adapter().commits.fetch_add(
-                        1, std::memory_order::memory_order_relaxed);
+                adapter.commits.fetch_add(1, std::memory_order::memory_order_relaxed);
             } else {
-                e->row_container.adapter().aborts.fetch_add(
-                        1, std::memory_order::memory_order_relaxed);
+                adapter.aborts.fetch_add(1, std::memory_order::memory_order_relaxed);
             }
-            auto aborts = e->row_container.adapter().aborts.load(
-                    std::memory_order::memory_order_relaxed);
-            auto commits = e->row_container.adapter().commits.load(
-                    std::memory_order::memory_order_relaxed);
+            auto aborts = adapter.aborts.load(std::memory_order::memory_order_relaxed);
+            auto commits = adapter.commits.load(std::memory_order::memory_order_relaxed);
 
             // Do stuff here
-            if (aborts > commits / 4) {
+            if (aborts > commits && aborts > 10) {
+                auto counters = adapter.getCounters();
+                if (counters) {
+                    if (!committed && counters->thread_counts[TThread::id()]) {
+                        counters->global_score.fetch_add(
+                                counters->thread_scores[TThread::id()] /
+                                counters->thread_counts[TThread::id()],
+                                std::memory_order::memory_order_relaxed);
+                        adapter.recomputeSplit();
+                    }
+                }
             }
+
+            adapter.reset();
         }
     }
 

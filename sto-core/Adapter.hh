@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <random>
 
 #include "Sto.hh"
 #include <cxxabi.h>
@@ -447,14 +448,90 @@ public:
 
     // More detailed counters for contended records
     struct DetailedCounters {
-        std::atomic<int64_t> global_score;
-        std::array<int64_t, MAX_THREADS> thread_scores;
+        std::atomic<int64_t> global_score = 0;
+        std::array<int64_t, MAX_THREADS> thread_scores = {};
+        std::array<int64_t, MAX_THREADS> thread_counts = {};
     };
+
+    ~InlineAdapter() {
+        auto ptr = counters.load();
+        if (ptr) {
+            delete ptr;
+        }
+    }
+
+    inline void count(int64_t score) {
+        if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
+            auto ptr = counters.load(std::memory_order::memory_order_relaxed);
+            if (ptr) {
+                ptr->thread_scores[TThread::id()] += score;
+                ptr->thread_counts[TThread::id()]++;
+            }
+        }
+    }
+
+    inline Index currentSplit() const {
+        return current_split.load(std::memory_order::memory_order_relaxed);
+    }
+
+    inline DetailedCounters* getCounters() {
+        if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
+            auto ptr = counters.load(std::memory_order::memory_order_relaxed);
+            if (ptr) {
+                return ptr;
+            }
+
+            auto new_ptr = new DetailedCounters;
+            if (counters.compare_exchange_strong(ptr, new_ptr)) {
+                return new_ptr;
+            }
+            delete new_ptr;
+            return counters.load();
+        }
+        return nullptr;
+    }
+
+    inline static uint64_t rand(uint64_t min, uint64_t max) {
+        static auto generators = new std::array<std::mt19937, MAX_THREADS>;
+        return std::uniform_int_distribution<uint64_t>(min, max)((*generators)[TThread::id()]);
+    }
+
+    inline void recomputeSplit() {
+        if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
+            auto ptr = counters.load(std::memory_order::memory_order_relaxed);
+            if (ptr) {
+                int64_t score = ptr->global_score.load(std::memory_order::memory_order_relaxed);
+                ptr->global_score.fetch_add(-score, std::memory_order::memory_order_relaxed);
+                Index prev_split;
+                Index next_split;
+                do {
+                    prev_split = current_split.load(std::memory_order::memory_order_relaxed);
+                    next_split = static_cast<Index>(std::max(std::min(
+                        static_cast<int64_t>(prev_split) + score / 2,
+                        static_cast<int64_t>(Index::COLCOUNT)),
+                        static_cast<int64_t>(1)));
+                    if (next_split == prev_split) {
+                        break;
+                    }
+                } while (!current_split.compare_exchange_weak(prev_split, next_split));
+            }
+        }
+    }
+
+    inline void reset() {
+        if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
+            auto ptr = counters.load(std::memory_order::memory_order_relaxed);
+            if (ptr) {
+                ptr->thread_scores[TThread::id()] = 0;
+                ptr->thread_counts[TThread::id()] = 0;
+            }
+        }
+    }
 
     std::atomic<Index> current_split = T::DEFAULT_SPLIT;
     std::atomic<uint64_t> aborts = 0;
     std::atomic<uint64_t> commits = 0;
-    DetailedCounters* counters = nullptr;
+    std::atomic<DetailedCounters*> counters = nullptr;
 };
 
 }  // namespace adapter

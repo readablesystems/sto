@@ -139,7 +139,9 @@ inline void init(const {struct}* oldvalue = nullptr) {lbrace}
 {indent}{indent}{indent}split = ADAPTER_OF({struct})::CurrentSplit();
 {indent}{indent}{rbrace}
 {indent}{indent}if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {lbrace}
-{indent}{indent}{indent}split = split;
+{indent}{indent}{indent}if (oldvalue && oldvalue->adapter_) {lbrace}
+{indent}{indent}{indent}{indent}split = oldvalue->adapter_->currentSplit();
+{indent}{indent}{indent}{rbrace}
 {indent}{indent}{rbrace}
 {indent}{indent}{struct}::resplit(*this, *oldvalue, split);
 {indent}{rbrace}
@@ -329,6 +331,7 @@ const auto split_of(NamedColumn index) const {lbrace}
                     member=member)
 
         self.writeln('NamedColumn splitindex_ = DEFAULT_SPLIT;')
+        self.writeln('INLINE_ADAPTER_OF({struct}) *adapter_ = nullptr;')
 
     def convert_resplitter(self):
         '''Output the resplitting functionality.'''

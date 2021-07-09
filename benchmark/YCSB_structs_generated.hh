@@ -122,7 +122,9 @@ struct ycsb_value {
                 split = ADAPTER_OF(ycsb_value)::CurrentSplit();
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
-                split = split;
+                if (oldvalue && oldvalue->adapter_) {
+                    split = oldvalue->adapter_->currentSplit();
+                }
             }
             ycsb_value::resplit(*this, *oldvalue, split);
         }
@@ -142,6 +144,7 @@ struct ycsb_value {
     ::sto::adapter::Accessor<accessor_info<NamedColumn::even_columns>> even_columns;
     ::sto::adapter::Accessor<accessor_info<NamedColumn::odd_columns>> odd_columns;
     NamedColumn splitindex_ = DEFAULT_SPLIT;
+    INLINE_ADAPTER_OF(ycsb_value) *adapter_ = nullptr;
 };
 
 inline void ycsb_value::resplit(

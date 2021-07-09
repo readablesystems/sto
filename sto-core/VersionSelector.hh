@@ -144,9 +144,13 @@ public:
 
     AdaptiveValueContainer(type v, const RowType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v);
+        row.adapter_ = &adapter();
+        row2.adapter_ = &adapter();
     }
     AdaptiveValueContainer(type v, bool insert, const RowType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v, insert);
+        row.adapter_ = &adapter();
+        row2.adapter_ = &adapter();
     }
 
     template <typename KeyType>
@@ -196,7 +200,7 @@ public:
     }
 
     auto& adapter() {
-        return inline_adapter;
+        return inline_adapter_;
     }
 
     void install(const comm_type& comm) {
@@ -252,7 +256,7 @@ private:
     }
 
     std::array<version_type, num_versions> versions_;
-    ::sto::adapter::InlineAdapter<RowType, nc> inline_adapter;
+    ::sto::adapter::InlineAdapter<RowType, nc> inline_adapter_;
 };
 
 /////////////////////////////
