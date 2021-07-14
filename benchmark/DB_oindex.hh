@@ -781,28 +781,8 @@ public:
             auto key = item.key<item_key_t>();
             internal_elem *e = key.internal_elem_ptr();
             auto& adapter = e->row_container.adapter();
-            if (committed) {
-                adapter.commits.fetch_add(1, std::memory_order::memory_order_relaxed);
-            } else {
-                adapter.aborts.fetch_add(1, std::memory_order::memory_order_relaxed);
-            }
-            auto aborts = adapter.aborts.load(std::memory_order::memory_order_relaxed);
-            auto commits = adapter.commits.load(std::memory_order::memory_order_relaxed);
 
-            // Do stuff here
-            if (aborts > commits && aborts > 10) {
-                auto counters = adapter.getCounters();
-                if (counters) {
-                    if (!committed && counters->thread_counts[TThread::id()]) {
-                        counters->global_score.fetch_add(
-                                counters->thread_scores[TThread::id()] /
-                                counters->thread_counts[TThread::id()],
-                                std::memory_order::memory_order_relaxed);
-                        adapter.recomputeSplit();
-                    }
-                }
-            }
-
+            adapter.finish(committed);
             adapter.reset();
         }
     }

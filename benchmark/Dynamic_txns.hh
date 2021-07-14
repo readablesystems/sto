@@ -115,6 +115,7 @@ if constexpr (!DBParams::MVCC) {
         db.tbl_ordered().update_row(row, new_val);
     }
 
+    CHK(TThread::rng().chance(50));
 
     // commit txn
     // retry until commits

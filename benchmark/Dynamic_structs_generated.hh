@@ -111,7 +111,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 
 struct ordered_value {
     using NamedColumn = ordered_value_datatypes::NamedColumn;
-    static constexpr auto DEFAULT_SPLIT = NamedColumn::rw + 4;
+    static constexpr auto DEFAULT_SPLIT = NamedColumn::COLCOUNT;
     static constexpr auto MAX_SPLITS = 2;
 
     explicit ordered_value() = default;
@@ -136,7 +136,7 @@ struct ordered_value {
             }
             if (::sto::AdapterConfig::IsEnabled(::sto::AdapterConfig::Inline)) {
                 if (oldvalue && oldvalue->adapter_) {
-                    split = split;  //oldvalue->adapter_->currentSplit();
+                    split = oldvalue->adapter_->currentSplit();
                 }
             }
             ordered_value::resplit(*this, *oldvalue, split);

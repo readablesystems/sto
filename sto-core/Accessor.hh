@@ -9,7 +9,7 @@ namespace adapter {
 template <typename InfoType> struct Accessor;
 
 template <typename InfoType>
-void CountInline(const Accessor<InfoType>& accessor);
+typename InfoType::struct_type& GetStruct(const Accessor<InfoType>& accessor);
 
 template <typename InfoType>
 struct Accessor {
@@ -29,10 +29,16 @@ struct Accessor {
     operator const value_type() const {
         if constexpr (InfoType::is_array) {
             adapter_type::CountReads(Column, Column + value_.size());
-            CountInline(*this);
+            auto& s = GetStruct(*this);
+            if (s.adapter_) {
+                s.adapter_->countReads(Column, value_.size(), s.splitindex_);
+            }
         } else {
             adapter_type::CountRead(Column);
-            CountInline(*this);
+            auto& s = GetStruct(*this);
+            if (s.adapter_) {
+                s.adapter_->countRead(Column, s.splitindex_);
+            }
         }
         return value_;
     }
@@ -40,10 +46,16 @@ struct Accessor {
     value_type operator =(const value_type& other) {
         if constexpr (InfoType::is_array) {
             adapter_type::CountWrites(Column, Column + value_.size());
-            CountInline(*this);
+            auto& s = GetStruct(*this);
+            if (s.adapter_) {
+                s.adapter_->countWrites(Column, value_.size(), s.splitindex_);
+            }
         } else {
             adapter_type::CountWrite(Column);
-            CountInline(*this);
+            auto& s = GetStruct(*this);
+            if (s.adapter_) {
+                s.adapter_->countWrite(Column, s.splitindex_);
+            }
         }
         return value_ = other;
     }
@@ -52,11 +64,19 @@ struct Accessor {
         if constexpr (InfoType::is_array) {
             adapter_type::CountReads(Column, Column + other.value_.size());
             adapter_type::CountWrites(Column, Column + value_.size());
-            CountInline(*this);
+            auto& s = GetStruct(*this);
+            if (s.adapter_) {
+                s.adapter_->countReads(Column, value_.size(), s.splitindex_);
+                s.adapter_->countWrites(Column, value_.size(), s.splitindex_);
+            }
         } else {
             adapter_type::CountRead(Column);
             adapter_type::CountWrite(Column);
-            CountInline(*this);
+            auto& s = GetStruct(*this);
+            if (s.adapter_) {
+                s.adapter_->countRead(Column, s.splitindex_);
+                s.adapter_->countWrite(Column, s.splitindex_);
+            }
         }
         return value_ = other.value_;
     }
@@ -66,11 +86,19 @@ struct Accessor {
         if constexpr (InfoType::is_array && OtherInfoType::is_array) {
             adapter_type::CountReads(OtherInfoType::Column, OtherInfoType::Column + other.value_.size());
             adapter_type::CountWrites(Column, Column + value_.size());
-            CountInline(*this);
+            auto& s = GetStruct(*this);
+            if (s.adapter_) {
+                s.adapter_->countReads(Column, value_.size(), s.splitindex_);
+                s.adapter_->countWrites(Column, value_.size(), s.splitindex_);
+            }
         } else {
             adapter_type::CountRead(OtherInfoType::Column);
             adapter_type::CountWrite(Column);
-            CountInline(*this);
+            auto& s = GetStruct(*this);
+            if (s.adapter_) {
+                s.adapter_->countRead(Column, s.splitindex_);
+                s.adapter_->countWrite(Column, s.splitindex_);
+            }
         }
         return value_ = other.value_;
     }
@@ -79,7 +107,10 @@ struct Accessor {
     std::enable_if_t<is_array, void>
     operator ()(const std::underlying_type_t<NamedColumn>& index, const type& value) {
         adapter_type::CountWrite(Column + index);
-        CountInline(*this);
+        auto& s = GetStruct(*this);
+        if (s.adapter_) {
+            s.adapter_->countWrite(Column + index, s.splitindex_);
+        }
         value_[index] = value;
     }
 
@@ -87,7 +118,10 @@ struct Accessor {
     std::enable_if_t<is_array, type&>
     operator ()(const std::underlying_type_t<NamedColumn>& index) {
         adapter_type::CountWrite(Column + index);
-        CountInline(*this);
+        auto& s = GetStruct(*this);
+        if (s.adapter_) {
+            s.adapter_->countWrite(Column + index, s.splitindex_);
+        }
         return value_[index];
     }
 
@@ -95,7 +129,10 @@ struct Accessor {
     std::enable_if_t<is_array, type>
     operator [](const std::underlying_type_t<NamedColumn>& index) {
         adapter_type::CountRead(Column + index);
-        CountInline(*this);
+        auto& s = GetStruct(*this);
+        if (s.adapter_) {
+            s.adapter_->countRead(Column + index, s.splitindex_);
+        }
         return value_[index];
     }
 
@@ -103,7 +140,10 @@ struct Accessor {
     std::enable_if_t<is_array, const type&>
     operator [](const std::underlying_type_t<NamedColumn>& index) const {
         adapter_type::CountRead(Column + index);
-        CountInline(*this);
+        auto& s = GetStruct(*this);
+        if (s.adapter_) {
+            s.adapter_->countRead(Column + index, s.splitindex_);
+        }
         return value_[index];
     }
 
@@ -111,7 +151,10 @@ struct Accessor {
     std::enable_if_t<!is_array, type&>
     operator *() {
         adapter_type::CountWrite(Column);
-        CountInline(*this);
+        auto& s = GetStruct(*this);
+        if (s.adapter_) {
+            s.adapter_->countWrite(Column + index, s.splitindex_);
+        }
         return value_;
     }
 
@@ -119,7 +162,10 @@ struct Accessor {
     std::enable_if_t<!is_array, type*>
     operator ->() {
         adapter_type::CountWrite(Column);
-        CountInline(*this);
+        auto& s = GetStruct(*this);
+        if (s.adapter_) {
+            s.adapter_->countWrite(Column + index, s.splitindex_);
+        }
         return &value_;
     }
 
@@ -127,15 +173,11 @@ struct Accessor {
 };
 
 template <typename InfoType>
-void CountInline(const Accessor<InfoType>& accessor) {
+typename InfoType::struct_type& GetStruct(const Accessor<InfoType>& accessor) {
     using struct_type = typename InfoType::struct_type;
     struct_type* value = reinterpret_cast<struct_type*>(
             reinterpret_cast<uintptr_t>(&accessor) - InfoType::offset());
-    if (value->adapter_) {
-        int64_t score = static_cast<int64_t>(InfoType::Column)
-            - static_cast<int64_t>(value->splitindex_);
-        value->adapter_->count(score);
-    }
+    return *value;
 }
 
 }  // namespace adapter
