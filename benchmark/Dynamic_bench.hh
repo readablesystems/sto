@@ -459,21 +459,21 @@ public:
                     break;
                 case txn_type::per_record:
                     if (params.ordered) {
-                        runner.run_txn_ordered_per_record(1);
+                        runner.run_txn_ordered_per_record(100);
                     } else {
                         runner.run_txn_unordered_per_record(100);
                     }
                     break;
                 case txn_type::per_record_read:
                     if (params.ordered) {
-                        runner.run_txn_ordered_per_record(1, true, false);
+                        runner.run_txn_ordered_per_record(100, true, false);
                     } else {
                         runner.run_txn_unordered_per_record(100, true, false);
                     }
                     break;
                 case txn_type::per_record_write:
                     if (params.ordered) {
-                        runner.run_txn_ordered_per_record(1, false, true);
+                        runner.run_txn_ordered_per_record(100, false, true);
                     } else {
                         runner.run_txn_unordered_per_record(100, false, true);
                     }

@@ -233,6 +233,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
                 it->owner()->collect(*it, committed);
             }
         }
+        ::sto::adapter::InlineCounterPool::Reset();
     }
 
     if (!any_writes_)

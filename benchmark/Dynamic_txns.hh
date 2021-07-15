@@ -61,24 +61,26 @@ if constexpr (!DBParams::MVCC) {
         (void)result;
         CHK(abort);
         assert(result);
+        assert(value);
 
-        ordered_value* new_val = Sto::tx_alloc<ordered_value>();
-        new (new_val) ordered_value();
-        new_val->init(value);
         if (params.sample) {
             if (reader) {
                 for (auto int_index : write_indices) {
                     auto index = static_cast<ov_nc>(int_index);
                     if (index < ov_nc::rw) {
-                        (void) new_val->ro[static_cast<uint64_t>(index - ov_nc::ro)];
+                        (void) value->ro[static_cast<uint64_t>(index - ov_nc::ro)];
                     } else if (index < ov_nc::wo) {
-                        (void) new_val->rw[static_cast<uint64_t>(index - ov_nc::rw)];
+                        (void) value->rw[static_cast<uint64_t>(index - ov_nc::rw)];
                     } else if (index < ov_nc::COLCOUNT) {
-                        (void) new_val->wo[static_cast<uint64_t>(index - ov_nc::wo)];
+                        (void) value->wo[static_cast<uint64_t>(index - ov_nc::wo)];
                     }
                 }
             }
             if (writer) {
+                ordered_value* new_val = Sto::tx_alloc<ordered_value>();
+                new (new_val) ordered_value();
+                new_val->init(value);
+
                 for (auto int_index : write_indices) {
                     auto index = static_cast<ov_nc>(int_index);
                     if (index < ov_nc::rw) {
@@ -89,19 +91,25 @@ if constexpr (!DBParams::MVCC) {
                         new_val->wo(static_cast<uint64_t>(index - ov_nc::wo)) = ig.gen_value();
                     }
                 }
+                db.tbl_ordered().update_row(row, new_val);
             }
         } else {
-            for (auto index = static_cast<ov_nc>(0); index < ov_nc::COLCOUNT; ++index) {
-                if (reader && index <= range_boundary) {
+            if (reader) {
+                for (auto index = static_cast<ov_nc>(0); index < range_boundary; ++index) {
                     if (index < ov_nc::rw) {
-                        (void) new_val->ro[static_cast<uint64_t>(index - ov_nc::ro)];
+                        (void) value->ro[static_cast<uint64_t>(index - ov_nc::ro)];
                     } else if (index < ov_nc::wo) {
-                        (void) new_val->rw[static_cast<uint64_t>(index - ov_nc::rw)];
+                        (void) value->rw[static_cast<uint64_t>(index - ov_nc::rw)];
                     } else if (index < ov_nc::COLCOUNT) {
-                        (void) new_val->wo[static_cast<uint64_t>(index - ov_nc::wo)];
+                        (void) value->wo[static_cast<uint64_t>(index - ov_nc::wo)];
                     }
                 }
-                if (writer && index > range_boundary) {
+            }
+            if (writer) {
+                ordered_value* new_val = Sto::tx_alloc<ordered_value>();
+                new (new_val) ordered_value();
+                new_val->init(value);
+                for (auto index = range_boundary; index < ov_nc::COLCOUNT; ++index) {
                     if (index < ov_nc::rw) {
                         new_val->ro(static_cast<uint64_t>(index - ov_nc::ro)) = ig.gen_value();
                     } else if (index < ov_nc::wo) {
@@ -110,12 +118,11 @@ if constexpr (!DBParams::MVCC) {
                         new_val->wo(static_cast<uint64_t>(index - ov_nc::wo)) = ig.gen_value();
                     }
                 }
+                db.tbl_ordered().update_row(row, new_val);
             }
         }
-        db.tbl_ordered().update_row(row, new_val);
     }
 
-    CHK(TThread::rng().chance(50));
 
     // commit txn
     // retry until commits
