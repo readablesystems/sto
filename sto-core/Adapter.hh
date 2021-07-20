@@ -447,39 +447,78 @@ struct InlineCounterSet {
     int64_t write_score = 0;
     int32_t read_count = 0;
     int32_t write_count = 0;
+
+    inline void reset() {
+        memset(this, 0, sizeof *this);
+    }
 };
 
 struct InlineCounterPool {
+public:
     static constexpr size_t PoolSize = 4ULL << 20;  // 4MiB
     static constexpr size_t xxh_seed = 0xfeedf00d2cabba0e;
+    static constexpr size_t TableSize = PoolSize / sizeof (InlineCounterSet);
 
-    InlineCounterPool() : next(pool) {}
+private:
+    template <int Algorithm>
+    static inline uint64_t GetIndex(uint64_t x) {
+        static_assert(Algorithm < 3, "Invalid hashing algorithm specified.");
+        if constexpr (Algorithm == 0) {
+            return XXH64(&x, sizeof x, xxh_seed) % TableSize;
+        } else if constexpr (Algorithm == 1) {
+            return std::minstd_rand(x)() % TableSize;
+        } else if constexpr (Algorithm == 2) {
+            // xorshift algorithm from Wikipedia
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            return x % TableSize;
+        }
+    }
 
+public:
     static inline InlineCounterPool* Get() {
         thread_local static InlineCounterPool* pool = new InlineCounterPool;
         static_assert(sizeof pool->pool <= PoolSize);
         return pool;
     }
 
-    static inline InlineCounterSet* GetCounterSet() {
+    static inline auto GetCounterSet(void* ptr) {
+        return GetCounterSet(reinterpret_cast<uintptr_t>(ptr));
+    }
+
+    static inline InlineCounterSet* GetCounterSet(uintptr_t obj) {
         auto pool = Get();
-        // Bounds checking
-        if (reinterpret_cast<intptr_t>(pool->next) <
-                reinterpret_cast<intptr_t>(pool->pool) + sizeof *pool->pool) {
-            auto ptr = pool->next++;
-            memset(ptr, 0, sizeof *ptr);
-            return ptr;
+        InlineCounterSet* counters = nullptr;
+        uintptr_t input = obj;
+        for (int attempt = 0; attempt < 10; ++attempt) {
+            auto index = GetIndex<2>(input);
+            counters = &pool->pool[index];
+
+            if (!counters->obj) {
+                counters->obj = obj;
+                break;
+            }
+            if (counters->obj == obj) {
+                break;
+            }
+
+            input = reinterpret_cast<uintptr_t>(counters);
         }
-        return nullptr;
+
+        if (counters && counters->obj != obj) {
+            counters = nullptr;
+        }
+
+        return counters;
     }
 
     static inline void Reset() {
         auto pool = Get();
-        pool->next = pool->pool;
+        pool->pool.fill({});
     }
 
-    InlineCounterSet *next;
-    InlineCounterSet pool[(PoolSize - sizeof next) / (sizeof *next)];
+    std::array<InlineCounterSet, TableSize> pool = {};
 };
 
 template <typename T, typename IndexType>
@@ -491,37 +530,24 @@ public:
     typedef std::atomic<counter_type> atomic_counter_type;
     using Index = IndexType;
 
-    template <typename X>
-    struct __attribute__((aligned(128))) CounterSet {
-        std::array<X, static_cast<size_t>(IndexType::COLCOUNT)> read_counters;
-        std::array<X, static_cast<size_t>(IndexType::COLCOUNT)> write_counters;
+    struct GlobalCounters {
+        std::atomic<uint64_t> target;
+        std::atomic<uint64_t> count;
     };
 
-    // More detailed counters for contended records
-    struct DetailedCounters {
-        CounterSet<std::atomic<size_t>> global_score = {};
-        std::array<CounterSet<size_t>, MAX_THREADS> thread_scores = {};
-    };
-
-    ~InlineAdapter() {
-        auto ptr = counters();
-        if (ptr) {
-            delete ptr;
-        }
-    }
-
-    inline DetailedCounters* counters() {
-        return detailed_counters.load(std::memory_order::memory_order_relaxed);
-        //return detailed_counters;
+    inline auto counters() {
+        return InlineCounterPool::GetCounterSet(this);
     }
 
     inline void countRead(const Index column, const Index current_split) {
         if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
-            if (true || aborts > commits && aborts > 10) {
+            if (doCount()) {
                 auto ptr = counters();
                 if (ptr) {
-                    auto& set = ptr->thread_scores[TThread::id()];
-                    ++set.read_counters[static_cast<size_t>(column)];
+                    (void) current_split;
+                    ptr->read_score += static_cast<int64_t>(column);
+                    ++ptr->read_count;
+                    //printf("%p R: (Score, Count) = %ld, %ld\n", this, ptr->read_score, ptr->read_count);
                }
             }
         }
@@ -529,13 +555,14 @@ public:
 
     inline void countReads(const Index column, const int64_t count, const Index current_split) {
         if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
-            if (true || aborts > commits && aborts > 10) {
+            if (doCount()) {
                 auto ptr = counters();
                 if (ptr) {
-                    auto& set = ptr->thread_scores[TThread::id()];
-                    for (ssize_t index = 0; index < count; ++index) {
-                        ++set.read_counters[static_cast<size_t>(column + index)];
-                    }
+                    (void) current_split;
+                    ptr->read_score += count * static_cast<int64_t>(column) +
+                        count * (count - 1) / 2;
+                    ptr->read_count += count;
+                    //printf("%p Rs: (Score, Count) = %ld, %ld\n", this, ptr->read_score, ptr->read_count);
                 }
             }
         }
@@ -543,11 +570,13 @@ public:
 
     inline void countWrite(const Index column, const Index current_split) {
         if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
-            if (true || aborts > commits && aborts > 10) {
+            if (doCount()) {
                 auto ptr = counters();
                 if (ptr) {
-                    auto& set = ptr->thread_scores[TThread::id()];
-                    ++set.write_counters[static_cast<size_t>(column)];
+                    (void) current_split;
+                    ptr->write_score += static_cast<int64_t>(column);
+                    ++ptr->write_count;
+                    //printf("%p W: (Score, Count) = %ld, %ld\n", this, ptr->write_score, ptr->write_count);
                 }
             }
         }
@@ -555,13 +584,14 @@ public:
 
     inline void countWrites(const Index column, const int64_t count, const Index current_split) {
         if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
-            if (true || aborts > commits && aborts > 10) {
+            if (doCount()) {
                 auto ptr = counters();
                 if (ptr) {
-                    auto& set = ptr->thread_scores[TThread::id()];
-                    for (ssize_t index = 0; index < count; ++index) {
-                        ++set.write_counters[static_cast<size_t>(column + index)];
-                    }
+                    (void) current_split;
+                    ptr->write_score += count * static_cast<int64_t>(column) +
+                        count * (count - 1) / 2;
+                    ptr->write_count += count;
+                    //printf("%p Ws: (Score, Count) = %ld, %ld\n", this, ptr->write_score, ptr->write_count);
                 }
             }
         }
@@ -569,6 +599,12 @@ public:
 
     inline Index currentSplit() const {
         return current_split.load(std::memory_order::memory_order_relaxed);
+    }
+
+    inline bool doCount() const {
+        auto aborts = this->aborts.load(std::memory_order::memory_order_relaxed);
+        auto commits = this->commits.load(std::memory_order::memory_order_relaxed);
+        return aborts > commits && aborts > 0;
     }
 
     inline void finish(const bool committed) {
@@ -587,57 +623,28 @@ public:
         }
 
         // Do stuff here
-        if (!committed && aborts > commits && aborts > 10 && TThread::rng().chance(25)) {
-        //if (!committed) {
-            return;
-            auto ptr = getCounters();
+        if (!committed && aborts > commits && aborts > 1) {
+            auto ptr = counters();
             if (ptr) {
-                auto& set = ptr->thread_scores[TThread::id()];
-                for (ssize_t index = 0; index < static_cast<ssize_t>(Index::COLCOUNT); ++index) {
-                    if (set.read_counters[index]) {
-                        ptr->global_score.read_counters[index].fetch_add(
-                            set.read_counters[index], std::memory_order::memory_order_relaxed);
-                    }
-                    if (set.write_counters[index]) {
-                        ptr->global_score.write_counters[index].fetch_add(
-                            set.write_counters[index], std::memory_order::memory_order_relaxed);
-                    }
-                }
-                /*
-                if (TThread::id() == 0) {
-                    for (int index = 0; index < static_cast<int>(Index::COLCOUNT); ++index) {
-                        printf("%ld ", set.read_counters[index]);
-                    }
-                    printf("\n");
-                    for (int index = 0; index < static_cast<int>(Index::COLCOUNT); ++index) {
-                        printf("%ld ", set.write_counters[index]);
-                    }
-                    printf("\n\n");
-                }
-                */
-                if (TThread::rng().chance(100)) {
+                int64_t score = 0;
+                int64_t read_mean = ptr->read_count ?
+                    ptr->read_score / ptr->read_count :
+                    static_cast<int64_t>(0);
+                int64_t write_mean = ptr->write_count ?
+                    ptr->write_score / ptr->write_count :
+                    static_cast<int64_t>(Index::COLCOUNT);
+                score = read_mean * ptr->write_count + write_mean * ptr->read_count;
+                int64_t count = ptr->read_count + ptr->write_count;
+                //printf("%p (Score, Count) = %ld, %ld, %ld, %ld\n", this, read_mean, write_mean, score, count);
+                score += global_counters.target.fetch_add(
+                    score, std::memory_order::memory_order_relaxed);
+                count += global_counters.count.fetch_add(
+                    count, std::memory_order::memory_order_relaxed);
+                if (count) {
                     recomputeSplit();
                 }
             }
         }
-    }
-
-    inline DetailedCounters* getCounters() {
-        if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
-            //return counters();
-            auto ptr = counters();
-            if (ptr) {
-                return ptr;
-            }
-
-            auto new_ptr = new DetailedCounters;
-            if (detailed_counters.compare_exchange_strong(ptr, new_ptr)) {
-                return new_ptr;
-            }
-            delete new_ptr;
-            return counters();
-        }
-        return nullptr;
     }
 
     inline static uint64_t rand(uint64_t min, uint64_t max) {
@@ -646,110 +653,28 @@ public:
 
     inline void recomputeSplit() {
         if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
-            //auto ptr = counters.load(std::memory_order::memory_order_relaxed);
-            auto ptr = counters();
-            if (ptr) {
-                // Semi-consistent snapshot of the data; maybe use locks in the future
-                std::array<size_t, NCOUNTERS> read_freq;
-                std::array<size_t, NCOUNTERS> write_freq;
-                std::array<size_t, NCOUNTERS> read_psum;  // Prefix sums
-                std::array<size_t, NCOUNTERS> write_psum;  // Prefix sums
-                size_t read_total = 0;
-                size_t write_total = 0;
-                for (auto index = Index(0); index < Index::COLCOUNT; index++) {
-                    auto numindex = static_cast<std::underlying_type_t<Index>>(index);
-                    read_freq[numindex] = ptr->global_score.read_counters[numindex].load(std::memory_order::memory_order_relaxed);
-                    write_freq[numindex] = ptr->global_score.write_counters[numindex].load(std::memory_order::memory_order_relaxed);
-                    if (numindex) {
-                        read_psum[numindex] = read_psum[numindex - 1] + read_freq[numindex];
-                        write_psum[numindex] = write_psum[numindex - 1] + write_freq[numindex];
-                    } else {
-                        read_psum[numindex] = read_freq[numindex];
-                        write_psum[numindex] = write_freq[numindex];
-                    }
-                    read_total += read_freq[numindex];
-                    write_total += write_freq[numindex];
-                }
-
-                /*
-                if (TThread::id() == 0) {
-                    for (int index = 0; index < static_cast<int>(Index::COLCOUNT); ++index) {
-                        printf("%ld ", read_freq[index]);
-                    }
-                    printf("\n");
-                    for (int index = 0; index < static_cast<int>(Index::COLCOUNT); ++index) {
-                        printf("%ld ", write_freq[index]);
-                    }
-                    printf("\n\n");
-                }
-                */
-
-                size_t prev_split = static_cast<size_t>(
-                        current_split.load(std::memory_order::memory_order_relaxed));
-                size_t best_split = prev_split;
-                double best_data[2] = {read_psum[best_split - 1] * 1.0 / read_total, write_psum[best_split - 1] * 1.0 / write_total};
-                // Maximize write load vs read load difference
-                for (size_t active_split = NCOUNTERS - 1; active_split; active_split--) {
-                    double current_data[2] = {read_psum[active_split - 1] * 1.0 / read_total, write_psum[active_split - 1] * 1.0 / write_total};
-                    double best_diff = std::abs(best_data[1] - best_data[0]);
-                    double current_diff = std::abs(current_data[1] - current_data[0]);
-                    double factor = best_split == prev_split ? 1.05 : 1;
-                    if (current_diff > factor * best_diff) {
-#if DEBUG
-                        printf("Split diff %.6f (%zu) > %.2f * %.6f (%zu)\n",
-                               current_diff, active_split, factor,  best_diff, best_split);
-#endif
-                        best_split = active_split;
-                        best_data[0] = current_data[0];
-                        best_data[1] = current_data[1];
-                    }
-                }
-
-                // Load difference is unsubstantial, try to balance writes
-                if (best_split == NCOUNTERS) {
-#if DEBUG
-                    printf("Load difference is unsubstantial, switching to write-balancing\n");
-#endif
-                    best_split = prev_split;
-                    for (size_t active_split = NCOUNTERS - 1; active_split; active_split--) {
-                        double best_diff = std::abs(write_psum[best_split - 1] * 1.0 / write_total - 0.5);
-                        double current_diff = std::abs(write_psum[active_split - 1] * 1.0 / write_total - 0.5);
-
-                        double factor = best_split == prev_split ? 0.95 : 1;
-                        if (current_diff < factor * best_diff) {
-#if DEBUG
-                            printf("Split diff %.6f (%zu) < %.2f * %.6f (%zu)\n",
-                                   current_diff, active_split, factor, best_diff, best_split);
-#endif
-                            best_split = active_split;
-                        }
-                    }
-                }
-
-                auto expected_split = static_cast<Index>(prev_split);
-                auto desired_split = Index(best_split);
-                /*
-                if (expected_split != desired_split) {
-                    printf("Changing split!\n");
-                }*/
-                while (expected_split != desired_split) {
-                    if (current_split.compare_exchange_weak(expected_split, desired_split)) {
-                        break;
-                    }
-                    expected_split = current_split.load(std::memory_order::memory_order_relaxed);
-                }
+            auto count = global_counters.count.load(
+                std::memory_order::memory_order_relaxed);
+            auto target = static_cast<Index>(global_counters.target.load(
+                std::memory_order::memory_order_relaxed) / count);
+            auto split = current_split.load(
+                std::memory_order::memory_order_relaxed);
+            if (target == Index(0)) {
+                target = Index::COLCOUNT;
+            }
+            //printf("Target: %ld\n", target);
+            while ((split != target) &&
+                    current_split.compare_exchange_weak(split, target)) {
+                split = current_split.load(std::memory_order::memory_order_relaxed);
             }
         }
     }
 
     inline void reset() {
         if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
-            auto xx = InlineCounterPool::Get();
-            //auto ptr = counters.load(std::memory_order::memory_order_relaxed);
             auto ptr = counters();
             if (ptr) {
-                ptr->thread_scores[TThread::id()].read_counters.fill(0);
-                ptr->thread_scores[TThread::id()].write_counters.fill(0);
+                ptr->reset();
             }
         }
     }
@@ -757,8 +682,7 @@ public:
     std::atomic<Index> current_split = T::DEFAULT_SPLIT;
     std::atomic<uint64_t> aborts = 0;
     std::atomic<uint64_t> commits = 0;
-    std::atomic<DetailedCounters*> detailed_counters = nullptr;
-    //DetailedCounters* detailed_counters = new DetailedCounters;
+    GlobalCounters global_counters = {};
 };
 
 }  // namespace adapter

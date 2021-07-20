@@ -783,6 +783,7 @@ public:
             auto& adapter = e->row_container.adapter();
 
             adapter.finish(committed);
+            adapter.reset();
         }
     }
 

@@ -661,8 +661,6 @@ public:
             }
         }
 
-        printf("Size of DetailedCounters: %zuB\n", sizeof (INLINE_ADAPTER_OF(ordered_value)::DetailedCounters));
-
         return 0;
     }
 }; // class dynamic_access

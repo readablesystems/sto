@@ -62,6 +62,11 @@ if constexpr (!DBParams::MVCC) {
         CHK(abort);
         assert(result);
         assert(value);
+        /*
+        if (TThread::id() == 0 && std::abs(static_cast<int64_t>(range_boundary - value->splitindex_)) > 1) {
+            printf("Still adapting: %p %ld %ld\n", value, range_boundary, value->splitindex_);
+        }
+        */
 
         if (params.sample) {
             if (reader) {
