@@ -661,6 +661,37 @@ public:
             }
         }
 
+        if (params.mix == 1 || params.mix == 2) {
+            size_t suboptimal = 0;
+            for (auto key = db.keymin(); key <= db.keymax(); ++key) {
+                if (params.ordered) {
+                    auto value = db.tbl_ordered().nontrans_get(key);
+                    auto range_boundary = static_cast<ordered_value::NamedColumn>(
+                            key % static_cast<uint64_t>(ordered_value::NamedColumn::COLCOUNT));
+                    if (value->splitindex_ != range_boundary) {
+                        ++suboptimal;
+                        /*
+                        printf("Suboptimal split (%ld) with optimum %ld\n",
+                               value->splitindex_, range_boundary);
+                        */
+                    }
+                }
+
+                if (key == db.keymax()) {
+                    break;
+                }
+            }
+            size_t ncolumns = params.ordered ?
+                static_cast<size_t>(ordered_value::NamedColumn::COLCOUNT) :
+                static_cast<size_t>(unordered_value::NamedColumn::COLCOUNT);
+            printf("Suboptimal splits: %zu/%zu (%.6f%%, ~%zu/%zu)\n",
+                   suboptimal, db.keymax() - db.keymin() + 1,
+                   suboptimal * 100.0 / (db.keymax() - db.keymin() + 1),
+                   static_cast<size_t>(
+                       std::round(suboptimal * ncolumns * 1.0 / (db.keymax() - db.keymin() + 1))),
+                   ncolumns);
+        }
+
         return 0;
     }
 }; // class dynamic_access

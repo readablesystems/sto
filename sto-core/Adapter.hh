@@ -626,22 +626,31 @@ public:
         if (!committed && aborts > commits && aborts > 1) {
             auto ptr = counters();
             if (ptr) {
-                int64_t score = 0;
-                int64_t read_mean = ptr->read_count ?
-                    ptr->read_score / ptr->read_count :
-                    static_cast<int64_t>(0);
-                int64_t write_mean = ptr->write_count ?
-                    ptr->write_score / ptr->write_count :
-                    static_cast<int64_t>(Index::COLCOUNT);
-                score = read_mean * ptr->write_count + write_mean * ptr->read_count;
                 int64_t count = ptr->read_count + ptr->write_count;
-                //printf("%p (Score, Count) = %ld, %ld, %ld, %ld\n", this, read_mean, write_mean, score, count);
-                score += global_counters.target.fetch_add(
-                    score, std::memory_order::memory_order_relaxed);
-                count += global_counters.count.fetch_add(
-                    count, std::memory_order::memory_order_relaxed);
                 if (count) {
-                    recomputeSplit();
+                    /*
+                    int64_t score = 0;
+                    int64_t read_mean = ptr->read_count ?
+                        ptr->read_score / ptr->read_count :
+                        static_cast<int64_t>(0);
+                    int64_t write_mean = ptr->write_count ?
+                        ptr->write_score / ptr->write_count :
+                        static_cast<int64_t>(Index::COLCOUNT);
+                    score = read_mean * ptr->write_count + write_mean * ptr->read_count;
+                    score /= count;
+                    */
+                    int64_t score = (ptr->read_count + ptr->write_count) / count;
+                    auto split = static_cast<int64_t>(
+                            current_split.load(std::memory_order::memory_order_relaxed));
+                    //printf("%p (Score, Count) = %ld, %ld, %ld, %ld\n", this, read_mean, write_mean, score, count);
+                    if (split != score) {
+                        score = count * (split + (score < split ? -1 : 1));
+                        score += global_counters.target.fetch_add(
+                            score, std::memory_order::memory_order_relaxed);
+                        count += global_counters.count.fetch_add(
+                            count, std::memory_order::memory_order_relaxed);
+                        recomputeSplit();
+                    }
                 }
             }
         }

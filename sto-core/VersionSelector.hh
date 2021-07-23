@@ -190,9 +190,16 @@ public:
             split_accesses[split] |= colaccess.access;
         }
         */
-        const auto current_split = ADAPTER_OF(RowType)::CurrentSplit();
+        nc current_split = RowType::DEFAULT_SPLIT;
+        if (::sto::adapter::AdapterConfig::IsEnabled(
+                ::sto::adapter::AdapterConfig::Global)) {
+            current_split = ADAPTER_OF(RowType)::CurrentSplit();
+        } else if (::sto::adapter::AdapterConfig::IsEnabled(
+                ::sto::adapter::AdapterConfig::Inline)) {
+            current_split = read_row->splitindex_;
+        }
         for (auto colaccess : accesses) {
-            const auto split = colaccess.column < current_split;
+            const auto split = colaccess.column < current_split ? 0 : 1;
             split_accesses[split] |= colaccess.access;
         }
 
@@ -217,6 +224,7 @@ public:
 
     void install_cell(int cell, const RowType* new_row) {
         install_by_cell<nc(0)>(cell, new_row);
+        write_ptr()->splitindex_ = new_row->splitindex_;
     }
 
     version_type& row_version() {
@@ -236,8 +244,8 @@ private:
     void install_by_cell(int cell, const RowType* new_row) {
         static_assert(Column < nc::COLCOUNT);
 
-        if (row.split_of(Column) == cell) {
-            auto& old_col = read_row->template get<Column>();
+        if (write_ptr()->split_of(Column) == cell) {
+            auto& old_col = write_ptr()->template get<Column>();
             auto& new_col = new_row->template get<Column>();
             old_col.value_ = new_col.value_;
         }
@@ -249,6 +257,7 @@ private:
     }
 
     RowType* write_ptr() const {
+        return read_row;
         auto rptr = reinterpret_cast<uintptr_t>(read_row);
         auto r1ptr = reinterpret_cast<uintptr_t>(&row);
         auto r2ptr = reinterpret_cast<uintptr_t>(&row2);
