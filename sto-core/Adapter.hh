@@ -442,11 +442,15 @@ struct InlineCounterPool;
 struct InlineCounterSet;
 
 struct InlineCounterSet {
+    struct Dist {
+        float mu;
+        float m2;
+        int32_t count;
+    };
+
     uintptr_t obj = 0x0;
-    int64_t read_score = 0;
-    int64_t write_score = 0;
-    int32_t read_count = 0;
-    int32_t write_count = 0;
+    Dist read_dist = {0, 0, 0};
+    Dist write_dist = {0, 0, 0};
 
     inline void reset() {
         memset(this, 0, sizeof *this);
@@ -545,8 +549,12 @@ public:
                 auto ptr = counters();
                 if (ptr) {
                     (void) current_split;
+                    recomputeDist(
+                        &ptr->read_dist, static_cast<int32_t>(column));
+                    /*
                     ptr->read_score += static_cast<int64_t>(column);
                     ++ptr->read_count;
+                    */
                     //printf("%p R: (Score, Count) = %ld, %ld\n", this, ptr->read_score, ptr->read_count);
                }
             }
@@ -559,9 +567,16 @@ public:
                 auto ptr = counters();
                 if (ptr) {
                     (void) current_split;
+                    for (int32_t offset = 0; offset < count; ++offset) {
+                        recomputeDist(
+                            &ptr->read_dist,
+                            static_cast<int32_t>(column) + offset);
+                    }
+                    /*
                     ptr->read_score += count * static_cast<int64_t>(column) +
                         count * (count - 1) / 2;
                     ptr->read_count += count;
+                    */
                     //printf("%p Rs: (Score, Count) = %ld, %ld\n", this, ptr->read_score, ptr->read_count);
                 }
             }
@@ -574,8 +589,12 @@ public:
                 auto ptr = counters();
                 if (ptr) {
                     (void) current_split;
+                    recomputeDist(
+                        &ptr->write_dist, static_cast<int32_t>(column));
+                    /*
                     ptr->write_score += static_cast<int64_t>(column);
                     ++ptr->write_count;
+                    */
                     //printf("%p W: (Score, Count) = %ld, %ld\n", this, ptr->write_score, ptr->write_count);
                 }
             }
@@ -588,9 +607,16 @@ public:
                 auto ptr = counters();
                 if (ptr) {
                     (void) current_split;
+                    for (int32_t offset = 0; offset < count; ++offset) {
+                        recomputeDist(
+                            &ptr->write_dist,
+                            static_cast<int32_t>(column) + offset);
+                    }
+                    /*
                     ptr->write_score += count * static_cast<int64_t>(column) +
                         count * (count - 1) / 2;
                     ptr->write_count += count;
+                    */
                     //printf("%p Ws: (Score, Count) = %ld, %ld\n", this, ptr->write_score, ptr->write_count);
                 }
             }
@@ -605,6 +631,22 @@ public:
         auto aborts = this->aborts.load(std::memory_order::memory_order_relaxed);
         auto commits = this->commits.load(std::memory_order::memory_order_relaxed);
         return aborts > commits && aborts > 0;
+    }
+
+    template <typename Float>
+    inline Float erf(Float x) {
+        /*
+        // Abramowitz & Stegun approximation
+        auto x2 = x * x;
+        auto x3 = x2 * x;
+        auto x4 = x2 * x2;
+        auto d = static_cast<Float>(1) + static_cast<Float>(0.278393) * x +
+            static_cast<Float>(0.230389) * x2 + static_cast<Float>(0.000972) * x3 +
+            static_cast<Float>(0.078108) * x4;
+        auto d2 = d * d;
+        return static_cast<Float>(1) - static_cast<Float>(1) / (d2 * d2);
+        */
+        return std::erf(x);
     }
 
     inline void finish(const bool committed) {
@@ -626,6 +668,43 @@ public:
         if (!committed && aborts > commits && aborts > 1) {
             auto ptr = counters();
             if (ptr) {
+                auto total_count = ptr->read_dist.count + ptr->write_dist.count;
+                if (total_count) {
+                    if (!ptr->read_dist.count) {  // Only write samples
+                    } else if (!ptr->write_dist.count) {  // Only read samples
+                    } else if (TThread::rng().chance(1)) {
+                        float read_var = ptr->read_dist.m2 / ptr->read_dist.count;
+                        float write_var = ptr->write_dist.m2 / ptr->write_dist.count;
+                        float read_denom = std::sqrt(2 * read_var);
+                        float write_denom = std::sqrt(2 * write_var);
+
+                        Index best_split = Index::COLCOUNT;
+                        float best_score = 0;
+                        for (Index split = Index(1); split <= Index::COLCOUNT; ++split) {
+                            auto read_score = (1 + erf(
+                                (static_cast<float>(split) - ptr->read_dist.mu) /
+                                read_denom)) * 0.5f;
+                            auto write_score = (1 + erf(
+                                (static_cast<float>(split) - ptr->write_dist.mu) /
+                                write_denom)) * 0.5f;
+                            auto score = std::abs(read_score - write_score);
+                            if (score >= best_score) {
+                                best_split = split;
+                                best_score = score;
+                            }
+                        }
+                        auto prev_split = current_split.load(
+                            std::memory_order::memory_order_relaxed);
+                        while (prev_split != best_split) {
+                            if (current_split.compare_exchange_weak(prev_split, best_split)) {
+                                break;
+                            }
+                            prev_split = current_split.load(
+                                std::memory_order::memory_order_relaxed);
+                        }
+                    }
+                }
+#if 0
                 int64_t count = ptr->read_count + ptr->write_count;
                 if (count) {
                     /*
@@ -652,12 +731,35 @@ public:
                         recomputeSplit();
                     }
                 }
+#endif
             }
         }
     }
 
     inline static uint64_t rand(uint64_t min, uint64_t max) {
         return std::uniform_int_distribution<uint64_t>(min, max)(TThread::gen[TThread::id()].gen);
+    }
+
+    // Uses in-place Welford's algorithm
+    inline static void recomputeDist(
+            InlineCounterSet::Dist* dist, const int sample) {
+        ++dist->count;
+        float d0 = sample - dist->mu;
+        dist->mu += d0 / dist->count;
+        float d1 = sample - dist->mu;
+        dist->m2 += d0 * d1;
+    }
+
+    // Uses buffered Welford's algorithm
+    inline static InlineCounterSet::Dist recomputeDist(
+            const InlineCounterSet::Dist dist0, const int sample) {
+        InlineCounterSet::Dist dist1;
+        dist1.count = dist0.count + 1;
+        float d0 = sample - dist0.mu;
+        dist1.mu = dist0.mu + d0 / dist1.count;
+        float d1 = sample - dist1.mu;
+        dist1.m2 = dist0.m2 + d0 * d1;
+        return dist1;
     }
 
     inline void recomputeSplit() {
