@@ -617,6 +617,7 @@ public:
                 e->row_container.row = const_cast<value_type&>(v);
             else
                copy_row(e, &v);
+            e->row_container.row.adapter_ = &e->row_container.adapter();
             lp.finish(0, *ti);
         } else {
             internal_elem *e = new internal_elem(k, v, true);
@@ -782,7 +783,15 @@ public:
             internal_elem *e = key.internal_elem_ptr();
             auto& adapter = e->row_container.adapter();
 
-            adapter.finish(committed);
+            /*
+            auto range_boundary = static_cast<NamedColumn>(
+                key.keyint() % static_cast<uint64_t>(NamedColumn::COLCOUNT));
+            if (adapter.current_split == range_boundary + 1 && !committed) {
+                printf("Failed commit on optimal split\n");
+            }
+            */
+
+            //adapter.finish(committed);  // XXX
             adapter.reset();
         }
     }

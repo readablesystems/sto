@@ -146,11 +146,19 @@ public:
         new (&versions_[0]) version_type(v);
         row.adapter_ = &adapter();
         row2.adapter_ = &adapter();
+        if (::sto::adapter::AdapterConfig::IsEnabled(
+                ::sto::adapter::AdapterConfig::Inline)) {
+            adapter().current_split = r.splitindex_;  // XXX
+        }
     }
     AdaptiveValueContainer(type v, bool insert, const RowType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v, insert);
         row.adapter_ = &adapter();
         row2.adapter_ = &adapter();
+        if (::sto::adapter::AdapterConfig::IsEnabled(
+                ::sto::adapter::AdapterConfig::Inline)) {
+            adapter().current_split = r.splitindex_;  // XXX
+        }
     }
 
     template <typename KeyType>
@@ -158,6 +166,8 @@ public:
             std::array<AccessType, NUM_VERSIONS>& split_accesses,
             std::array<TransItem*, NUM_VERSIONS>& split_items,
             TransItem::flags_type split_bit) {
+
+        assert(row.adapter_);
 
         for (size_t idx = 0; idx < split_accesses.size(); ++idx) {
             auto& access = split_accesses[idx];
@@ -203,6 +213,12 @@ public:
             split_accesses[split] |= colaccess.access;
         }
 
+        /*
+        if (TThread::id() == 0) {
+            printf("Split %ld with acceses %ld %ld\n",
+                    current_split, split_accesses[0], split_accesses[1]);
+        }
+        */
         return split_accesses;
     }
 

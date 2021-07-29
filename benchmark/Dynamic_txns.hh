@@ -63,7 +63,7 @@ if constexpr (!DBParams::MVCC) {
         assert(result);
         assert(value);
         /*
-        if (TThread::id() == 0 && std::abs(static_cast<int64_t>(range_boundary - value->splitindex_)) > 1) {
+        if (TThread::id() == 0 && std::abs(static_cast<int64_t>(range_boundary - value->splitindex_)) > 0) {
             printf("Still adapting: %p %ld %ld\n", value, range_boundary, value->splitindex_);
         }
         */
@@ -100,7 +100,7 @@ if constexpr (!DBParams::MVCC) {
             }
         } else {
             if (reader) {
-                for (auto index = static_cast<ov_nc>(0); index < range_boundary; ++index) {
+                for (auto index = static_cast<ov_nc>(0); index <= range_boundary; ++index) {
                     if (index < ov_nc::rw) {
                         (void) value->ro[static_cast<uint64_t>(index - ov_nc::ro)];
                     } else if (index < ov_nc::wo) {
@@ -114,7 +114,7 @@ if constexpr (!DBParams::MVCC) {
                 ordered_value* new_val = Sto::tx_alloc<ordered_value>();
                 new (new_val) ordered_value();
                 new_val->init(value);
-                for (auto index = range_boundary; index < ov_nc::COLCOUNT; ++index) {
+                for (auto index = range_boundary + 1; index < ov_nc::COLCOUNT; ++index) {
                     if (index < ov_nc::rw) {
                         new_val->ro(static_cast<uint64_t>(index - ov_nc::ro)) = ig.gen_value();
                     } else if (index < ov_nc::wo) {
@@ -133,6 +133,15 @@ if constexpr (!DBParams::MVCC) {
     // retry until commits
     } TEND(true);
     adapters_treset();
+
+    if (reader) {
+        TXP_INCREMENT(txp_dyn_r_commits);
+        TXP_ACCOUNT(txp_dyn_r_aborts, starts - 1);
+    }
+    if (writer) {
+        TXP_INCREMENT(txp_dyn_w_commits);
+        TXP_ACCOUNT(txp_dyn_w_aborts, starts - 1);
+    }
 } else {
 }
 }

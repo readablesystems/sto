@@ -442,15 +442,25 @@ struct InlineCounterPool;
 struct InlineCounterSet;
 
 struct InlineCounterSet {
+    template <typename Float, typename Int>
     struct Dist {
-        float mu;
-        float m2;
-        int32_t count;
+        Float mu;
+        Float m2;
+        Int count;
     };
 
+    struct AtomicDist {
+        std::atomic_uint64_t params;  // Combined mu and m2
+        std::atomic_uint64_t count;
+    };
+
+    //using atomic_dist_type = Dist<std::atomic<double>, std::atomic_uint64_t>;
+    using atomic_dist_type = AtomicDist;
+    using dist_type = Dist<float, int32_t>;
+
     uintptr_t obj = 0x0;
-    Dist read_dist = {0, 0, 0};
-    Dist write_dist = {0, 0, 0};
+    dist_type read_dist = {0, 0, 0};
+    dist_type write_dist = {0, 0, 0};
 
     inline void reset() {
         memset(this, 0, sizeof *this);
@@ -499,11 +509,11 @@ public:
             auto index = GetIndex<2>(input);
             counters = &pool->pool[index];
 
-            if (!counters->obj) {
-                counters->obj = obj;
+            if (counters->obj == obj) {
                 break;
             }
-            if (counters->obj == obj) {
+            if (!counters->obj) {
+                counters->obj = obj;
                 break;
             }
 
@@ -539,7 +549,7 @@ public:
         std::atomic<uint64_t> count;
     };
 
-    inline auto counters() {
+    inline InlineCounterSet* counters() {
         return InlineCounterPool::GetCounterSet(this);
     }
 
@@ -670,68 +680,16 @@ public:
             if (ptr) {
                 auto total_count = ptr->read_dist.count + ptr->write_dist.count;
                 if (total_count) {
-                    if (!ptr->read_dist.count) {  // Only write samples
-                    } else if (!ptr->write_dist.count) {  // Only read samples
-                    } else if (TThread::rng().chance(1)) {
-                        float read_var = ptr->read_dist.m2 / ptr->read_dist.count;
-                        float write_var = ptr->write_dist.m2 / ptr->write_dist.count;
-                        float read_denom = std::sqrt(2 * read_var);
-                        float write_denom = std::sqrt(2 * write_var);
-
-                        Index best_split = Index::COLCOUNT;
-                        float best_score = 0;
-                        for (Index split = Index(1); split <= Index::COLCOUNT; ++split) {
-                            auto read_score = (1 + erf(
-                                (static_cast<float>(split) - ptr->read_dist.mu) /
-                                read_denom)) * 0.5f;
-                            auto write_score = (1 + erf(
-                                (static_cast<float>(split) - ptr->write_dist.mu) /
-                                write_denom)) * 0.5f;
-                            auto score = std::abs(read_score - write_score);
-                            if (score >= best_score) {
-                                best_split = split;
-                                best_score = score;
-                            }
-                        }
-                        auto prev_split = current_split.load(
-                            std::memory_order::memory_order_relaxed);
-                        while (prev_split != best_split) {
-                            if (current_split.compare_exchange_weak(prev_split, best_split)) {
-                                break;
-                            }
-                            prev_split = current_split.load(
-                                std::memory_order::memory_order_relaxed);
-                        }
+                    if (ptr->read_dist.count) {
+                        recombineDists(&global_read_dist, &ptr->read_dist);
                     }
-                }
-#if 0
-                int64_t count = ptr->read_count + ptr->write_count;
-                if (count) {
-                    /*
-                    int64_t score = 0;
-                    int64_t read_mean = ptr->read_count ?
-                        ptr->read_score / ptr->read_count :
-                        static_cast<int64_t>(0);
-                    int64_t write_mean = ptr->write_count ?
-                        ptr->write_score / ptr->write_count :
-                        static_cast<int64_t>(Index::COLCOUNT);
-                    score = read_mean * ptr->write_count + write_mean * ptr->read_count;
-                    score /= count;
-                    */
-                    int64_t score = (ptr->read_count + ptr->write_count) / count;
-                    auto split = static_cast<int64_t>(
-                            current_split.load(std::memory_order::memory_order_relaxed));
-                    //printf("%p (Score, Count) = %ld, %ld, %ld, %ld\n", this, read_mean, write_mean, score, count);
-                    if (split != score) {
-                        score = count * (split + (score < split ? -1 : 1));
-                        score += global_counters.target.fetch_add(
-                            score, std::memory_order::memory_order_relaxed);
-                        count += global_counters.count.fetch_add(
-                            count, std::memory_order::memory_order_relaxed);
+                    if (ptr->write_dist.count) {
+                        recombineDists(&global_write_dist, &ptr->write_dist);
+                    }
+                    if (TThread::rng().chance(1)) {
                         recomputeSplit();
                     }
                 }
-#endif
             }
         }
     }
@@ -740,9 +698,30 @@ public:
         return std::uniform_int_distribution<uint64_t>(min, max)(TThread::gen[TThread::id()].gen);
     }
 
+    // Combines two distributions using pooled variance of two populations
+    inline static void recombineDists(
+            typename InlineCounterSet::atomic_dist_type* sink,
+            typename InlineCounterSet::dist_type* source) {
+        auto count0 = sink->count.fetch_add(
+            source->count, std::memory_order::memory_order_relaxed);
+        uint64_t params0 = sink->params.load(std::memory_order::memory_order_relaxed);
+        uint64_t params1;
+        do {
+            float* mu0 = reinterpret_cast<float*>(&params0) + 1;
+            float* mu1 = reinterpret_cast<float*>(&params1) + 1;
+            *mu1 = (count0 * *mu0 + source->count * source->mu) /
+                (count0 + source->count);
+            auto delta = source->mu - *mu0;
+            float* m20 = reinterpret_cast<float*>(&params0);
+            float* m21 = reinterpret_cast<float*>(&params1);
+            *m21 = *m20 + source->m2 + delta * delta * count0 * source->count /
+                (count0 + source->count);
+        } while (!sink->params.compare_exchange_weak(params0, params1));
+    }
+
     // Uses in-place Welford's algorithm
     inline static void recomputeDist(
-            InlineCounterSet::Dist* dist, const int sample) {
+            typename InlineCounterSet::dist_type* dist, const int sample) {
         ++dist->count;
         float d0 = sample - dist->mu;
         dist->mu += d0 / dist->count;
@@ -751,9 +730,9 @@ public:
     }
 
     // Uses buffered Welford's algorithm
-    inline static InlineCounterSet::Dist recomputeDist(
-            const InlineCounterSet::Dist dist0, const int sample) {
-        InlineCounterSet::Dist dist1;
+    inline static typename InlineCounterSet::dist_type recomputeDist(
+            const typename InlineCounterSet::dist_type dist0, const int sample) {
+        typename InlineCounterSet::dist_type dist1;
         dist1.count = dist0.count + 1;
         float d0 = sample - dist0.mu;
         dist1.mu = dist0.mu + d0 / dist1.count;
@@ -764,19 +743,71 @@ public:
 
     inline void recomputeSplit() {
         if (AdapterConfig::IsEnabled(AdapterConfig::Inline)) {
-            auto count = global_counters.count.load(
+            auto read_count = global_read_dist.count.load(
                 std::memory_order::memory_order_relaxed);
-            auto target = static_cast<Index>(global_counters.target.load(
-                std::memory_order::memory_order_relaxed) / count);
-            auto split = current_split.load(
+            auto write_count = global_write_dist.count.load(
                 std::memory_order::memory_order_relaxed);
-            if (target == Index(0)) {
-                target = Index::COLCOUNT;
+            if (!read_count && !write_count) {
+                return;
             }
-            //printf("Target: %ld\n", target);
-            while ((split != target) &&
-                    current_split.compare_exchange_weak(split, target)) {
-                split = current_split.load(std::memory_order::memory_order_relaxed);
+            uint64_t read_params;
+            float* read_mu;
+            float* read_m2;
+            float read_inc = 0;
+            uint64_t write_params;
+            float* write_mu;
+            float* write_m2;
+            float write_inc = 0;
+            if (read_count) {
+                read_params = global_read_dist.params.load(
+                    std::memory_order::memory_order_relaxed);
+                read_mu = reinterpret_cast<float*>(&read_params) + 1;
+                read_m2 = reinterpret_cast<float*>(&read_params);
+                read_inc = std::sqrt(read_count / (2 * *read_m2));  // 1 / sqrt(2 * m2 / count)
+            }
+            if (write_count) {
+                write_params = global_write_dist.params.load(
+                    std::memory_order::memory_order_relaxed);
+                write_mu = reinterpret_cast<float*>(&write_params) + 1;
+                write_m2 = reinterpret_cast<float*>(&write_params);
+                write_inc = std::sqrt(write_count / (2 * *write_m2));  // 1 / sqrt(2 * m2 / count)
+            }
+            auto prev_split = current_split.load(
+                std::memory_order::memory_order_relaxed);
+            Index best_split = prev_split;
+            float best_score = 0;
+            {
+                auto read_score = read_count ? (1 + erf(
+                    (static_cast<float>(best_split) - *read_mu) * read_inc
+                    )) * 0.5f : 0;
+                auto write_score = write_count ? (1 + erf(
+                    (static_cast<float>(best_split) - *write_mu) * write_inc
+                    )) * 0.5f : 0;
+                best_score = std::abs(read_score - write_score);
+            }
+            for (Index split = Index(1); split <= Index::COLCOUNT; ++split) {
+                if (split == prev_split) {
+                    continue;
+                }
+                auto read_score = read_count ? (1 + erf(
+                    (static_cast<float>(split) - *read_mu) * read_inc
+                    )) * 0.5f : 0;
+                auto write_score = write_count ? (1 + erf(
+                    (static_cast<float>(split) - *write_mu) * write_inc
+                    )) * 0.5f : 0;
+                auto score = std::abs(read_score - write_score);
+                float multiplier = best_split == prev_split ? 1.05 : 1;
+                if (score >= multiplier * best_score) {
+                    best_split = split;
+                    best_score = score;
+                }
+            }
+            while (prev_split != best_split) {
+                if (current_split.compare_exchange_weak(prev_split, best_split)) {
+                    break;
+                }
+                prev_split = current_split.load(
+                    std::memory_order::memory_order_relaxed);
             }
         }
     }
@@ -793,7 +824,8 @@ public:
     std::atomic<Index> current_split = T::DEFAULT_SPLIT;
     std::atomic<uint64_t> aborts = 0;
     std::atomic<uint64_t> commits = 0;
-    GlobalCounters global_counters = {};
+    typename InlineCounterSet::atomic_dist_type global_read_dist = {};
+    typename InlineCounterSet::atomic_dist_type global_write_dist = {};
 };
 
 }  // namespace adapter

@@ -173,11 +173,7 @@ public:
         uint64_t x = ig.random(0, 99);
         if (mix == 0) {
             int workload_variant = (tsc_elapsed / tsc_threshold) % 4;
-            //int workload_variant = (count / 10000) % 2;
-            /*
-            bool change_workload = ig.random(0, tsc_threshold - 1) < (tsc_elapsed % tsc_threshold);
-            int workload_variant = change_workload? 1 - prev_workload : prev_workload;
-            */
+
             txn_type txn;
             int next_workload;
             switch (workload_variant) {
@@ -207,7 +203,7 @@ public:
         } else if (mix == 1) {
             return txn_type::per_record;
         } else if (mix == 2) {
-            return ig.random(0, 1) ? txn_type::per_record_read : txn_type::per_record_write;
+            return TThread::rng().chance(50) ? txn_type::per_record_read : txn_type::per_record_write;
         }
         assert(false);
         return txn_type::read;
@@ -312,6 +308,11 @@ void dynamic_prepopulator<DBParams>::prepopulate_ordered() {
     for (uint64_t key = keymin; key <= keymax; ++key) {
         ordered_key ok(key);
         ordered_value ov;
+        if (::sto::adapter::AdapterConfig::IsEnabled(
+                ::sto::adapter::AdapterConfig::Inline)) {
+            ov.splitindex_ = ordered_value::NamedColumn(
+                key % static_cast<uint64_t>(ordered_value::NamedColumn::COLCOUNT) + 1);  // XXX
+        }
 
         for (int index = 0; ordered_value::NamedColumn::ro + index < ordered_value::NamedColumn::rw; ++index) {
             ov.ro(index) = ig.random(1900, 1999);
@@ -668,12 +669,17 @@ public:
                     auto value = db.tbl_ordered().nontrans_get(key);
                     auto range_boundary = static_cast<ordered_value::NamedColumn>(
                             key % static_cast<uint64_t>(ordered_value::NamedColumn::COLCOUNT));
-                    if (value->splitindex_ != range_boundary) {
+                    if (value->splitindex_ != range_boundary + 1) {
                         ++suboptimal;
                         /*
                         printf("Suboptimal split (%ld) with optimum %ld\n",
-                               value->splitindex_, range_boundary);
-                        */
+                               value->splitindex_, range_boundary + 1);
+                               */
+                    } else {
+                        /*
+                        printf("   Optimal split (%ld) with optimum %ld\n",
+                               value->splitindex_, range_boundary + 1);
+                               */
                     }
                 }
 

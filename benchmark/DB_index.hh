@@ -211,6 +211,10 @@ public:
         bool is_row_item() const {
             return (cell_num() == row_item_cell_num);
         }
+
+        uint64_t keyint() const {
+            return key_;
+        }
     };
 
     template <typename T>
