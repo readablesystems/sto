@@ -1,5 +1,7 @@
 #pragma once
 
+#include <bitset>
+#include <cmath>
 #include "MVCC.hh"
 #include "VersionBase.hh"
 
@@ -100,6 +102,213 @@ public:
     version_type& row_version() {
         return version_at(0);
     }
+};
+
+enum class AccessType : int8_t {none = 0, read = 1, write = 2, update = 3};
+
+inline AccessType operator&(const AccessType& lhs, const AccessType& rhs) {
+    return static_cast<AccessType>(
+            static_cast<std::underlying_type_t<AccessType>>(lhs) &
+            static_cast<std::underlying_type_t<AccessType>>(rhs));
+};
+
+inline AccessType operator|(const AccessType& lhs, const AccessType& rhs) {
+    return static_cast<AccessType>(
+            static_cast<std::underlying_type_t<AccessType>>(lhs) |
+            static_cast<std::underlying_type_t<AccessType>>(rhs));
+};
+
+inline AccessType& operator|=(AccessType& lhs, const AccessType& rhs) {
+    return lhs = (lhs | rhs);
+};
+
+// Container for adaptively-split value containers
+template <typename RowType, typename VersImpl>
+class AdaptiveValueContainer {
+public:
+    using comm_type = commutators::Commutator<RowType>;
+    using nc = typename RowType::NamedColumn;
+    using RecordAccessor = typename RowType::RecordAccessor;
+    using type = TransactionTid::type;
+    using version_type = VersImpl;
+    using ValueType = RowType;
+    using SplitType = typename RowType::RecordAccessor::SplitType;
+    static constexpr auto num_versions = RowType::RecordAccessor::MAX_SPLITS;
+    static constexpr auto NUM_VERSIONS = RowType::RecordAccessor::MAX_SPLITS;
+    static constexpr auto NUM_POINTERS = RowType::RecordAccessor::MAX_POINTERS;
+    //static constexpr auto split_width = static_cast<size_t>(std::ceil(std::log2l(NUM_VERSIONS)));
+
+    struct ColumnAccess {
+        ColumnAccess(nc column, AccessType access)
+            : column(column), access(access) {}
+
+        nc column;
+        AccessType access;
+    };
+
+    AdaptiveValueContainer(type v, const RowType& r) : row(r), versions_() {
+        new (&versions_[0]) version_type(v);
+    }
+    AdaptiveValueContainer(type v, bool insert, const RowType& r) : row(r), versions_() {
+        new (&versions_[0]) version_type(v, insert);
+    }
+
+    template <typename KeyType>
+    bool access(
+            std::array<AccessType, NUM_VERSIONS>& split_accesses,
+            std::array<TransItem*, NUM_VERSIONS>& split_items,
+            TransItem::flags_type split_bit) {
+        for (size_t idx = 0; idx < split_accesses.size(); ++idx) {
+            auto& access = split_accesses[idx];
+            auto proxy = TransProxy(*Sto::transaction(), *split_items[idx]);
+            if ((access & AccessType::read) != AccessType::none) {
+                if (!proxy.observe(version_at(idx))) {
+                    return false;
+                }
+            }
+            if ((access & AccessType::write) != AccessType::none) {
+                if (!proxy.acquire_write(version_at(idx))) {
+                    return false;
+                }
+                if (proxy.item().key<KeyType>().is_row_item()) {
+                    proxy.item().add_flags(split_bit);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    constexpr static int map(int col_n) {
+        return RecordAccessor::split_of(RecordAccessor::DEFAULT_SPLIT, nc(col_n));
+    }
+
+    std::array<AccessType, NUM_VERSIONS>
+    split_accesses(const SplitType& split, std::initializer_list<ColumnAccess> accesses) {
+        std::array<AccessType, NUM_VERSIONS> split_accesses = {};
+        std::fill(split_accesses.begin(), split_accesses.end(), AccessType::none);
+
+        for (auto colaccess : accesses) {
+            const auto cell = split_of(split, colaccess.column);
+            split_accesses[cell] |= colaccess.access;
+        }
+
+        return split_accesses;
+    }
+
+    inline RecordAccessor get() {
+        return get(std::make_index_sequence<NUM_POINTERS>());
+    }
+
+    inline RecordAccessor get(const SplitType& split) {
+        return get(split, std::make_index_sequence<NUM_POINTERS>());
+    }
+
+    template <size_t... Indexes>
+    inline RecordAccessor get(std::index_sequence<Indexes...>) {
+        return get(index_to_ptr<Indexes>()...);
+    }
+
+    template <size_t... Indexes>
+    inline RecordAccessor get(const SplitType& split, std::index_sequence<Indexes...>) {
+        return get(split, index_to_ptr<Indexes>()...);
+    }
+
+    template <size_t... Indexes>
+    inline RecordAccessor get(const SplitType& split, RowType* ptr, std::index_sequence<Indexes...>) {
+        return get(split, index_to_ptr<Indexes>(ptr)...);
+    }
+
+    template <typename... Args>
+    inline RecordAccessor get(Args&&... args) {
+        return get(split(), std::forward<Args>(args)...);
+    }
+
+    template <typename... Args>
+    inline RecordAccessor get(const SplitType& split, Args&&... args) {
+        if constexpr (sizeof...(args) == 1 && NUM_POINTERS > 1) {
+            return get(
+                    split, std::forward<Args>(args)...,
+                    std::make_index_sequence<NUM_POINTERS>());
+        } else {
+            RecordAccessor accessor(std::forward<Args>(args)...);
+            accessor.splitindex_ = split;
+            return accessor;
+        }
+    }
+
+    template <size_t Index>
+    inline RowType* index_to_ptr() {
+        return &row;
+    }
+
+    template <size_t Index>
+    inline RowType* index_to_ptr(RowType* ptr) {
+        return ptr;
+    }
+
+    void install(const comm_type& comm) {
+        comm.operate(row);
+    }
+
+    void install(RowType* new_row) {
+        row = *new_row;
+    }
+
+    void install_cell(const comm_type& comm) {
+        comm.operate(row);
+    }
+
+    void install_cell(int cell, RowType* const new_row) {
+        install_by_cell<nc(0)>(split(), cell, new_row);
+    }
+
+    version_type& row_version() {
+        return versions_[0];
+    }
+
+    inline bool set_split(const SplitType new_split) {
+        splitindex_.store(new_split, std::memory_order::memory_order_relaxed);
+        //if (splitindex_ != new_split) {
+        //    splitindex_ = new_split;
+        //}
+        return true;
+    }
+
+    inline SplitType split() {
+        return splitindex_.load(std::memory_order::memory_order_relaxed);
+        //return splitindex_;
+    }
+
+    inline static int split_of(SplitType split, const nc column) {
+        return RecordAccessor::split_of(split, column);
+    }
+
+    version_type& version_at(int cell) {
+        return versions_[cell];
+    }
+
+    RowType row;
+
+private:
+    template <nc Column>
+    inline void install_by_cell(const SplitType& split, int cell, RowType* const new_row) {
+        static_assert(Column < nc::COLCOUNT);
+
+        if (split_of(split, Column) == cell) {
+            auto& old_col = RecordAccessor::template get_value<Column>(&row);
+            auto& new_col = RecordAccessor::template get_value<Column>(new_row);
+            old_col = new_col;
+        }
+
+        // This constexpr is necessary for template deduction purposes
+        if constexpr (Column + 1 < nc::COLCOUNT) {
+            install_by_cell<Column + 1>(split, cell, new_row);
+        }
+    }
+
+    std::atomic<SplitType> splitindex_ = {};
+    std::array<version_type, num_versions> versions_;
 };
 
 /////////////////////////////

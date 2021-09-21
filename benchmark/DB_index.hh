@@ -261,6 +261,26 @@ public:
         return { any_has_write, cell_items };
     }
 
+    template <typename T>
+    static std::pair<bool, std::array<TransItem*, T::NUM_VERSIONS>>
+    extract_items(const std::array<AccessType, T::NUM_VERSIONS>& accesses, TObject *tobj, internal_elem *e, const typename T::SplitType& preferred_split) {
+        bool any_has_write = false;
+        std::array<TransItem*, T::NUM_VERSIONS> items { nullptr };
+        std::fill(items.begin(), items.end(), nullptr);
+
+        for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
+            if (accesses[i] != AccessType::none) {
+                auto item = Sto::item(tobj, item_key_t(e, i));
+                any_has_write |= IndexType::index_read_my_write && item.has_write();
+                if (preferred_split >= 0) {
+                    item.set_preferred_split(preferred_split);
+                }
+                items[i] = &item.item();
+            }
+        }
+        return { any_has_write, items };
+    }
+
     // mvcc_*_loop() methods: Template meta-programs that iterates through all version "splits" at compile time.
     // Template parameters:
     // C: size of split (should be constant throughout the recursive instantiation)
@@ -626,20 +646,22 @@ public:
 
     typedef typename value_type::NamedColumn NamedColumn;
     typedef typename get_version<DBParams>::type version_type;
-    typedef IndexValueContainer<V, version_type> value_container_type;
+    typedef AdaptiveValueContainer<V, version_type> value_container_type;
     typedef commutators::Commutator<value_type> comm_type;
+    using RecordAccessor = typename value_container_type::RecordAccessor;
+    using ColumnAccess = typename value_container_type::ColumnAccess;
 
     typedef typename std::conditional_t<DBParams::MVCC,
       SplitRecordAccessor<V>, UniRecordAccessor<V>> accessor_t;
     typedef typename std::conditional_t<DBParams::MVCC,
       void*, std::array<void*, SplitParams<V>::num_splits>> scan_value_t;
 
-    typedef std::tuple<bool, bool, uintptr_t, const value_type*>  sel_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, RecordAccessor>     sel_return_type;
     typedef std::tuple<bool, bool>                                ins_return_type;
     typedef std::tuple<bool, bool>                                del_return_type;
     typedef std::tuple<bool, bool, uintptr_t, accessor_t>         sel_split_return_type;
 
-    static constexpr sel_return_type sel_abort = { false, false, 0, nullptr };
+    static constexpr sel_return_type sel_abort = { false, false, 0, RecordAccessor(nullptr) };
     static constexpr ins_return_type ins_abort = { false, false };
     static constexpr del_return_type del_abort = { false, false };
 

@@ -632,7 +632,7 @@ private:
     static testing_type testing;
 
     Transaction(int threadid, const testing_type&)
-        : threadid_(threadid), is_test_(true), restarted(false)
+        : threadid_(threadid), is_test_(true), restarted(false), has_stats_(false)
 #if CICADA_HASHTABLE
           , cht_(*this)
 #endif
@@ -642,7 +642,7 @@ private:
     }
 
     Transaction(bool)
-        : threadid_(TThread::id()), is_test_(false), restarted(false)
+        : threadid_(TThread::id()), is_test_(false), restarted(false), has_stats_(false)
 #if CICADA_HASHTABLE
           , cht_(*this)
 #endif
@@ -664,6 +664,7 @@ private:
 #if STO_TSC_PROFILE
         start_tsc_ = read_tsc();
 #endif
+        has_stats_ = false;
         special_txp = false;
         // New committed versions “happen” in write_snapshot_epoch
         thr.write_snapshot_epoch.store(global_epochs.global_epoch.load(std::memory_order_acquire), std::memory_order_release);
@@ -1178,6 +1179,14 @@ public:
         lrng_state_ = state;
     }
 
+    bool has_stats() const {
+        return has_stats_;
+    }
+
+    void set_stats(bool stats_made=true) {
+        has_stats_ = stats_made;
+    }
+
     bool is_restarted() {
         return restarted;
     }
@@ -1203,6 +1212,7 @@ private:
     bool may_duplicate_items_;
     bool is_test_;
     bool restarted;
+    bool has_stats_;
     TransItem* tset_next_;
     unsigned tset_size_;
     mutable bool mvcc_rw_;  // manual MVCC read-write flag
@@ -1353,10 +1363,10 @@ public:
         t->start();
     }
 
-		static void delete_transaction() {
-				delete TThread::txn;
-				TThread::txn = nullptr;
-		}
+    static void delete_transaction() {
+        delete TThread::txn;
+        TThread::txn = nullptr;
+    }
 
     static void update_threadid() {
         if (TThread::txn)
@@ -1375,6 +1385,18 @@ public:
     static void silent_abort() {
         if (in_progress())
             TThread::txn->silent_abort();
+    }
+
+    static bool has_stats() {
+        return TThread::txn->has_stats();
+    }
+
+    static void set_stats(bool stats_made=true) {
+        return TThread::txn->set_stats(stats_made);
+    }
+
+    static bool is_restarted() {
+        return TThread::txn->is_restarted();
     }
 
     template <typename T>
@@ -1483,6 +1505,9 @@ public:
         //    TThread::set_id(base_->threadid_);
         //}
     }
+    void set_restarted(bool restarted=true) {
+        t_.set_restarted(restarted);
+    }
     void use() {
         TThread::txn = &t_;
         TThread::set_id(t_.threadid_);
@@ -1530,6 +1555,7 @@ class TransactionLoopGuard {
     TransactionLoopGuard() {
         Transaction* t = Sto::transaction();
         t->set_restarted(false);
+        next_restarted = false;
         //std::ostringstream buf;
         //buf << "Thread [" << TThread::id() << "] starts a new transaction" << std::endl;
         //std::cerr << buf.str();
@@ -1541,7 +1567,9 @@ class TransactionLoopGuard {
             TThread::txn->silent_abort();
     }
     void start() {
+        Sto::transaction()->set_restarted(next_restarted);
         Sto::start_transaction();
+        next_restarted = true;
     }
     void silent_abort() {
         TThread::txn->silent_abort();
@@ -1549,6 +1577,9 @@ class TransactionLoopGuard {
     bool try_commit() {
         return TThread::txn->in_progress() && TThread::txn->try_commit();
     }
+
+  private:
+    bool next_restarted = false;
 };
 
 

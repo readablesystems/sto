@@ -221,7 +221,25 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
     TXP_ACCOUNT(txp_max_transbuffer, buf_.buffer_size());
     TXP_ACCOUNT(txp_total_transbuffer, buf_.buffer_size());
 
+    bool report_stats = has_stats_ && TThread::rng().chance(100);
+    /*
+    if (TThread::id() == 0 && report_stats) {
+        printf("Stats have to be reported!\n");
+    }
+    */
+
     TransItem* it;
+
+    if (report_stats) {
+        it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
+        for (unsigned tidx = tset_size_; tidx != 0; --tidx) {
+            it = (tidx % tset_chunk ? it - 1 : &tset_[(tidx - 1) / tset_chunk][tset_chunk - 1]);
+            if (report_stats && it->has_preferred_split()) {
+                it->owner()->update_split(*it, committed);
+            }
+        }
+    }
+
     if (!any_writes_)
         goto unlock_all;
 

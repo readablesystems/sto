@@ -23,6 +23,9 @@ public:
     virtual bool check(TransItem& item, Transaction& txn) = 0;
     virtual void install(TransItem& item, Transaction& txn) = 0;
     virtual void unlock(TransItem& item) = 0;
+    virtual void update_split(TransItem& item, bool committed) {
+        (void) item, (void) committed;
+    }
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
     }

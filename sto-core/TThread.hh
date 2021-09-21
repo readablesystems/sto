@@ -54,4 +54,7 @@ public:
     static void set_hashsize(int hashsize) {
         hashsize_ = hashsize;
     }
+    static PercentGen& rng() {
+        return gen[id()];
+    }
 };

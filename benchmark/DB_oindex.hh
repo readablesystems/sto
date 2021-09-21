@@ -3,33 +3,47 @@
 #include "DB_index.hh"
 
 namespace bench {
+// ordered index implemented as a tree-backed map
 template <typename K, typename V, typename DBParams>
-class ordered_index : public TObject {
+class ordered_index : public index_common<K, V, DBParams>, public TObject {
 public:
-    typedef K key_type;
-    typedef V value_type;
-    typedef commutators::Commutator<value_type> comm_type;
+    // Preamble
+    using C = index_common<K, V, DBParams>;
+    using typename C::key_type;
+    using typename C::value_type;
+    using typename C::NamedColumn;
+    using typename C::sel_return_type;
+    using typename C::ins_return_type;
+    using typename C::del_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, UniRecordAccessor<V>> sel_split_return_type;
 
-    //typedef typename get_occ_version<DBParams>::type occ_version_type;
-    typedef typename get_version<DBParams>::type version_type;
+    using typename C::version_type;
+    using typename C::value_container_type;
+    using typename C::comm_type;
+    using typename C::ColumnAccess;
 
-    using accessor_t = typename index_common<K, V, DBParams>::accessor_t;
+    using C::invalid_bit;
+    using C::insert_bit;
+    using C::delete_bit;
+    using C::row_update_bit;
+    using C::row_cell_bit;
 
-    static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
-    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1u;
-    static constexpr TransItem::flags_type row_update_bit = TransItem::user0_bit << 2u;
-    static constexpr TransItem::flags_type row_cell_bit = TransItem::user0_bit << 3u;
+    using C::has_insert;
+    using C::has_delete;
+    using C::has_row_update;
+    using C::has_row_cell;
+
+    using C::sel_abort;
+    using C::ins_abort;
+    using C::del_abort;
+
+    using C::index_read_my_write;
+
     static constexpr uintptr_t internode_bit = 1;
     // TicToc node version bit
     static constexpr uintptr_t ttnv_bit = 1 << 1u;
 
-    typedef typename value_type::NamedColumn NamedColumn;
-    typedef IndexValueContainer<V, version_type> value_container_type;
-
     static constexpr bool value_is_small = is_small<V>::value;
-
-    static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
     struct internal_elem {
         key_type key;
@@ -77,11 +91,10 @@ public:
     template <typename T>
     static constexpr auto extract_item_list
         = split_version_helpers<ordered_index<K, V, DBParams>>::template extract_item_list<T>;
+    template <typename T>
+    static constexpr auto extract_items
+        = split_version_helpers<ordered_index<K, V, DBParams>>::template extract_items<T>;
 
-    typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
-    typedef std::tuple<bool, bool>                               ins_return_type;
-    typedef std::tuple<bool, bool>                               del_return_type;
-    typedef std::tuple<bool, bool, uintptr_t, UniRecordAccessor<V>> sel_split_return_type;
 
     static __thread typename table_params::threadinfo_type *ti;
 
@@ -130,6 +143,19 @@ public:
         }
     }
 #endif
+
+    sel_return_type
+    select_row(const key_type& key,
+               std::initializer_list<ColumnAccess> accesses,
+               int preferred_split=-1) {
+        unlocked_cursor_type lp(table_, key);
+        bool found = lp.find_unlocked(*ti);
+        internal_elem *e = lp.value();
+        if (found) {
+            return select_row(reinterpret_cast<uintptr_t>(e), accesses, preferred_split);
+        }
+        return { register_internode_version(lp.node(), lp), false, 0, nullptr };
+    }
 
     sel_split_return_type
     select_split_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
@@ -193,6 +219,53 @@ public:
         return sel_return_type(false, false, 0, nullptr);
     }
 #endif
+
+    sel_return_type
+    select_row(uintptr_t rid,
+               std::initializer_list<ColumnAccess> accesses,
+               int preferred_split=-1) {
+        auto e = reinterpret_cast<internal_elem *>(rid);
+        const auto split = e->row_container.split();  // This is a ~2% overhead
+        TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+        auto cell_accesses = e->row_container.split_accesses(split, accesses);
+
+        std::array<TransItem*, value_container_type::NUM_VERSIONS> cell_items {};
+        bool any_has_write;
+        bool ok;
+        std::tie(any_has_write, cell_items) = extract_items<value_container_type>(
+                cell_accesses, this, e, preferred_split);
+
+        if (is_phantom(e, row_item)) {
+            return { false, false, 0, nullptr };
+        }
+
+        if (index_read_my_write) {
+            if (has_delete(row_item)) {
+                return { true, false, 0, nullptr };
+            }
+            if (has_row_update(row_item)) {
+                value_type *vptr;
+                if (has_insert(row_item))
+                    vptr = &e->row_container.row;
+                else
+                    vptr = row_item.template raw_write_value<value_type*>();
+                if (split != preferred_split) {
+                    Sto::set_stats();
+                }
+                return { true, true, rid, e->row_container.get(split, vptr) };
+            }
+        }
+
+        ok = access(cell_accesses, cell_items, e->row_container);
+        if (!ok) {
+            return { false, false, 0, nullptr };
+        }
+
+        if (split != preferred_split) {
+            Sto::set_stats();
+        }
+        return { true, true, rid, e->row_container.get(split) };
+    }
 
     sel_split_return_type
     select_split_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
@@ -534,7 +607,7 @@ public:
             return nullptr;
     }
 
-    void nontrans_put(const key_type& k, const value_type& v) {
+    void nontrans_put(const key_type& k, const value_type& v, int preferred_split=-1) {
         cursor_type lp(table_, k);
         bool found = lp.find_insert(*ti);
         if (found) {
@@ -543,9 +616,15 @@ public:
                 e->row_container.row = v;
             else
                copy_row(e, &v);
+            if (preferred_split >= 0) {
+                e->row_container.set_split(preferred_split);
+            }
             lp.finish(0, *ti);
         } else {
             internal_elem *e = new internal_elem(k, v, true);
+            if (preferred_split >= 0) {
+                e->row_container.set_split(preferred_split);
+            }
             lp.value() = e;
             lp.finish(1, *ti);
         }
@@ -684,6 +763,16 @@ public:
             e->row_container.version_at(key.cell_num()).cp_unlock(item);
     }
 
+    void update_split(TransItem& item, bool committed) override {
+        if (!committed && item.has_preferred_split()) {
+            auto key = item.key<item_key_t>();
+            internal_elem *e = key.internal_elem_ptr();
+            auto preferred_split = item.preferred_split();
+            e->row_container.set_split(preferred_split);
+            item.clear_preferred_split();
+        }
+    }
+
     void cleanup(TransItem& item, bool committed) override {
         if (committed ? has_delete(item) : has_insert(item)) {
             auto key = item.key<item_key_t>();
@@ -774,6 +863,28 @@ protected:
 private:
     table_type table_;
     uint64_t key_gen_;
+
+    static bool
+    access(std::array<AccessType, value_container_type::NUM_VERSIONS>& accesses,
+           std::array<TransItem*, value_container_type::NUM_VERSIONS>& items,
+           value_container_type& row_container) {
+        for (size_t idx = 0; idx < accesses.size(); ++idx) {
+            auto& access = accesses[idx];
+            auto proxy = TransProxy(*Sto::transaction(), *items[idx]);
+            if ((access & AccessType::read) != AccessType::none) {
+                if (!proxy.observe(row_container.version_at(idx)))
+                    return false;
+            }
+            if ((access & AccessType::write) != AccessType::none) {
+                if (!proxy.acquire_write(row_container.version_at(idx)))
+                    return false;
+                if (proxy.item().key<item_key_t>().is_row_item()) {
+                    proxy.item().add_flags(row_cell_bit);
+                }
+            }
+        }
+        return true;
+    }
 
     static bool
     access_all(std::array<access_t, value_container_type::num_versions>& cell_accesses, std::array<TransItem*,

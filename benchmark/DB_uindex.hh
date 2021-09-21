@@ -7,10 +7,11 @@ namespace bench {
 template <typename K, typename V, typename DBParams>
 class unordered_index : public index_common<K, V, DBParams>, public TObject {
 public:
-    // Premable
+    // Preamble
     using C = index_common<K, V, DBParams>;
     using typename C::key_type;
     using typename C::value_type;
+    using typename C::NamedColumn;
     using typename C::sel_return_type;
     using typename C::ins_return_type;
     using typename C::del_return_type;
@@ -101,6 +102,10 @@ public:
     template <typename T>
     static constexpr auto extract_item_list
         = split_version_helpers<index_t>::template extract_item_list<T>;
+    template <typename T>
+    static constexpr auto extract_items
+        = split_version_helpers<index_t>::template extract_items<T>;
+    using ColumnAccess = typename value_container_type::ColumnAccess;
 
     // Main constructor
     unordered_index(size_t size, Hash h = Hash(), Pred p = Pred()) :
@@ -140,6 +145,25 @@ public:
         }
     }
 #endif
+
+    sel_return_type
+    select_row(const key_type& key,
+               std::initializer_list<ColumnAccess> accesses,
+               int preferred_split=-1) {
+        bucket_entry& buck = map_[find_bucket_idx(key)];
+        bucket_version_type buck_vers = buck.version;
+        fence();
+        internal_elem *e = find_in_bucket(buck, key);
+
+        if (e) {
+            return select_row(reinterpret_cast<uintptr_t>(e), accesses, preferred_split);
+        } else {
+            if (!Sto::item(this, make_bucket_key(buck)).observe(buck_vers)) {
+                return { false, false, 0, nullptr };
+            }
+            return { true, false, 0, nullptr };
+        }
+    }
 
     sel_split_return_type
     select_split_row(const key_type& k, std::initializer_list<column_access_t> accesses) {
@@ -201,6 +225,48 @@ public:
         return { true, true, rid, &(e->row_container.row) };
     }
 #endif
+
+    sel_return_type
+    select_row(uintptr_t rid,
+               std::initializer_list<ColumnAccess> accesses,
+               int preferred_split=-1) {
+        auto e = reinterpret_cast<internal_elem *>(rid);
+        const auto split = e->row_container.split();
+        TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+        auto cell_accesses = e->row_container.split_accesses(split, accesses);
+
+        std::array<TransItem*, value_container_type::NUM_VERSIONS> cell_items {};
+        bool any_has_write;
+        bool ok = true;
+        std::tie(any_has_write, cell_items) = extract_items<value_container_type>(
+                cell_accesses, this, e, preferred_split);
+
+        if (is_phantom(e, row_item)) {
+            return { false, false, 0, nullptr };
+        }
+            goto abort;
+
+        if (index_read_my_write) {
+            if (has_delete(row_item)) {
+                return { true, false, 0, nullptr };
+            }
+            if (has_row_update(row_item)) {
+                value_type *vptr;
+                if (has_insert(row_item))
+                    vptr = &e->row_container.row;
+                else
+                    vptr = row_item.template raw_write_value<value_type*>();
+                return { true, true, rid, e->row_container.get(split, vptr) };
+            }
+        }
+
+        ok = access(cell_accesses, cell_items, e->row_container);
+        if (!ok) {
+            return { false, false, 0, nullptr };
+        }
+
+        return { true, true, rid, e->row_container.get(split) };
+    }
 
     sel_split_return_type
     select_split_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {

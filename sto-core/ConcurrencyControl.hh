@@ -121,6 +121,12 @@ inline TransProxy& TransProxy::add_write(Args&&... args) {
     return *this;
 }
 
+inline TransProxy& TransProxy::set_preferred_split(int split) {
+    item().__or_flags(TransItem::split_bit);
+    item().preferred_split_ = split;
+    return *this;
+}
+
 // Helper function accessing the transaction object on this thread
 static inline Transaction& t() {
     return *TThread::txn;

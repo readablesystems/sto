@@ -31,6 +31,30 @@ inline db_params_id parse_dbid(const char *id_string) {
     return db_params_id::None;
 }
 
+constexpr const char *db_split_names[] = {"none", "static", "adaptive"};
+
+enum class db_split_type : int {
+    None = 0, Static, Adaptive
+};
+
+inline std::ostream &operator<<(std::ostream &os, const db_split_type& split) {
+    os << db_split_names[static_cast<int>(split)];
+    return os;
+}
+
+inline db_split_type parse_split_type(const char *id_string) {
+    if (id_string == nullptr || (*id_string) == '\0')
+        return db_split_type::None;
+    for (size_t i = 0; i < sizeof(db_split_names); ++i) {
+        if (strcmp(id_string, db_split_names[i]) == 0) {
+            auto selected = static_cast<db_split_type>(i);
+            std::cout << "Selected \"" << selected << "\" as DB concurrency control." << std::endl;
+            return selected;
+        }
+    }
+    return db_split_type::None;
+}
+
 class db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::Default;
@@ -43,9 +67,30 @@ public:
     static constexpr bool MVCC = false;
     static constexpr bool NodeTrack = false;
     static constexpr bool Commute = false;
+    static constexpr db_split_type Split = db_split_type::None;
+};
+
+class db_default_sts_params : public db_default_params {
+public:
+    static constexpr db_split_type Split = db_split_type::Static;
+};
+
+class db_default_ats_params : public db_default_params {
+public:
+    static constexpr db_split_type Split = db_split_type::Adaptive;
 };
 
 class db_default_commute_params : public db_default_params {
+public:
+    static constexpr bool Commute = true;
+};
+
+class db_default_sts_commute_params : public db_default_sts_params {
+public:
+    static constexpr bool Commute = true;
+};
+
+class db_default_ats_commute_params : public db_default_ats_params {
 public:
     static constexpr bool Commute = true;
 };

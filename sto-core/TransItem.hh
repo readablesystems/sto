@@ -42,6 +42,7 @@ class TransItem {
     static constexpr flags_type cl_bit = flags_type(1) << 58;
     static constexpr flags_type commute_bit = flags_type(1) << 57;
     static constexpr flags_type mvhistory_bit = flags_type(1) << 56;
+    static constexpr flags_type split_bit = flags_type(1) << 55;
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type owner_mask = pointer_mask;
     static constexpr flags_type user0_bit = flags_type(1) << 48;
@@ -52,7 +53,8 @@ class TransItem {
 
     TransItem() : s_(), key_(), rdata_(), wdata_(), mode_(CCMode::none) {};
     TransItem(TObject* owner, void* k)
-        : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k), rdata_(), wdata_(), mode_(CCMode::none) {
+        : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k), rdata_(),
+          wdata_(), preferred_split_(-1), mode_(CCMode::none) {
     }
 
     TObject* owner() const {
@@ -76,6 +78,9 @@ class TransItem {
     }
     bool has_mvhistory() const {
         return flags() & mvhistory_bit;
+    }
+    bool has_preferred_split() const {
+        return flags() & split_bit;
     }
     bool needs_unlock() const {
         return flags() & lock_bit;
@@ -182,6 +187,14 @@ class TransItem {
             return std::move(default_value);
     }
 
+    int preferred_split() const {
+        assert(has_preferred_split());
+        return preferred_split_;
+    }
+    void clear_preferred_split() {
+        __rm_flags(TransItem::split_bit);
+    }
+
     inline bool operator==(const TransItem& x) const {
         return same_item(x);
     }
@@ -276,6 +289,7 @@ private:
     rdata_t rdata_;
     void* wdata_;
     uintptr_t ts_origin_; // only used by TicToc
+    int preferred_split_;
 
     CCMode mode_;
 
@@ -385,6 +399,12 @@ class TransProxy {
     inline TransProxy& add_write(Args&&... wdata);
     inline TransProxy& clear_write() {
         item().__rm_flags(TransItem::write_bit);
+        return *this;
+    }
+
+    inline TransProxy& set_preferred_split(int split);
+    inline TransProxy& clear_preferred_split() {
+        item().clear_preferred_split();
         return *this;
     }
 

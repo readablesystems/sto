@@ -76,6 +76,10 @@ class Output:
             filter(lambda item: item[0][0] == '@', sdata.items())))
 
         self.colcount = Output.count_columns(self.sdata.keys())
+        self.mdata['splits'] = ((0,) * self.colcount,) \
+                + tuple(tuple(int(cell.strip()) for cell in split.split(','))
+                        for split in self.mdata.get('splits', '').split('\n')
+                        if split)
         self._data = {
                 'raccessor': 'RecordAccessor'.format(struct),
                 'vaccessor': '::sto::adapter::ValueAccessor',
@@ -96,7 +100,7 @@ class Output:
 #pragma once
 
 #include <type_traits>
-#include "AdapterStructs.hh"
+//#include "AdapterStructs.hh"
 ''')
 
         for ns in self._namespaces:
@@ -105,49 +109,50 @@ class Output:
         self.writeln('namespace {ns} {{\n')
 
         self.writelns('''\
-class {raccessor};
 enum class NamedColumn;
+
+using SplitType = int;
+
+class {raccessor};
 ''')
 
         self.convert_base_struct()
 
         self.convert_namedcolumns()
 
+        self.convert_splits()
+
         self.convert_column_accessors()
 
-        self.writelns('class {raccessor} {{')
+        self.writelns('''\
+class {raccessor} {{\
+''')
 
         self.writeln('public:')
         self.indent()
         self.writelns('''\
 using NamedColumn = {ns}::NamedColumn;
-using StatsType = {statstype};
-template <NamedColumn Column>
-using ValueAccessor = {vaccessor}<{infostruct}<Column>>;
+using SplitType = {ns}::SplitType;
+//using StatsType = {statstype};
+//template <NamedColumn Column>
+//using ValueAccessor = {vaccessor}<{infostruct}<Column>>;
 using ValueType = {struct};
-static constexpr auto DEFAULT_SPLIT = NamedColumn::{defaultsplit};
+static constexpr auto DEFAULT_SPLIT = {defaultsplit};
 static constexpr auto MAX_SPLITS = 2;
-''', defaultsplit=self.mdata.get('split', 'COLCOUNT'))
+static constexpr auto MAX_POINTERS = MAX_SPLITS;
+''', defaultsplit=self.mdata.get('split', '0'))
 
         self.writelns('''\
 {raccessor}() = default;
-{raccessor}({struct}& value, StatsType* sptr=nullptr)
-{indent}{indent}: {raccessor}(&value, sptr) {{}}
-{raccessor}({struct}* vptr, StatsType* sptr=nullptr)\
+template <typename... T>
+{raccessor}(T ...vals) : vptrs_({{ pointer_of(vals)... }}) {{}}
 ''')
-        self.writei('{indent}{indent}: ')
-        for index, member in enumerate(self.sdata, start=0):
-            member, *_ = Output.extract_member_type(member)
-            self.write('{member}(this), ', member=member)
-        self.write('vptr_(vptr), stats_(sptr) {{}}')
-        self.writeln()
-        self.writeln()
 
         self.convert_coercions()
 
-        self.convert_getters()
-
         self.convert_accessors()
+
+        self.convert_getters()
 
         self.convert_members()
 
@@ -286,6 +291,28 @@ if constexpr (Column < NamedColumn::{nextmember}) {{
 
         self.writeln('}}\n')
 
+    def convert_splits(self):
+        '''Output the valid split options.'''
+        self.writeln('struct SplitTable {{')
+
+        self.indent()
+        self.writeln(
+                'static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[{splitcount}] = {{',
+                splitcount=len(self.mdata['splits']))
+
+        self.indent()
+        for split in self.mdata['splits']:
+            self.writeln(
+                    '{{ {split} }},',
+                    split=', '.join(str(cell) for cell in split))
+        self.unindent()
+
+        self.writeln('}};')
+        self.unindent()
+
+        self.writeln('}};')
+        self.writeln()
+
     def convert_column_accessors(self):
         '''Output the accessor wrapper for each column.'''
 
@@ -327,7 +354,30 @@ struct {infostruct} : {infostruct}<RoundedNamedColumn<ColumnValue>()> {{
         '''Output the type coercions.'''
         self.writelns('''\
 inline operator bool() const {{
-{indent}return vptr_ != nullptr;
+{indent}return vptrs_ [0] != nullptr;
+}}
+
+/*
+inline ValueType* pointer_of(ValueType& value) {{
+{indent}return &value;
+}}
+*/
+
+inline ValueType* pointer_of(ValueType* vptr) {{
+{indent}return vptr;
+}}
+''')
+
+    def convert_accessors(self):
+        '''Output the accessors.'''
+
+        self.writelns('''\
+const static auto split_of(int index, NamedColumn column) {{
+{indent}return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+}}
+
+const auto cell_of(NamedColumn column) const {{
+{indent}return split_of(splitindex_, column);
 }}
 ''')
 
@@ -335,24 +385,21 @@ inline operator bool() const {{
         '''Output the constexpr getters.'''
         keys = tuple(self.sdata.keys()) + ('COLCOUNT',)
 
-#        for const in ('', 'const '):
-#            self.writelns('''\
-#template <NamedColumn Column>
-#inline {const}{vaccessor}<{infostruct}<RoundedNamedColumn<Column>()>>& get() {const}{{\
-#''', const=const)
-#            self.indent()
-#            for index in range(len(keys) - 1):
-#                member = Output.extract_member_type(keys[index])[0]
-#                nextmember = Output.extract_member_type(keys[index + 1])[0]
-#                self.writelns('''\
-#if constexpr (NamedColumn::{member} <= Column && Column < NamedColumn::{nextmember}) {{
-#{indent}return {member};
-#}}\
-#''', member=member, nextmember=nextmember)
-#            self.writeln('static_assert(Column < NamedColumn::COLCOUNT);')
-#            self.unindent()
-#            self.writeln('}}')
-#            self.writeln()
+        for member, ctype in self.sdata.items():
+            member, _, count = Output.extract_member_type(member)
+            for const in ('', 'const '):
+                self.writelns('''\
+inline {const}typename {infostruct}<NamedColumn::{member}>::value_type& {member}() {const}{{
+{indent}return vptrs_[cell_of(NamedColumn::{member})]->{member};
+}}
+''', const=const, member=member)
+                if count > 1:  # array
+                    self.writelns('''\
+inline {const}typename {infostruct}<NamedColumn::{member}>::type& {member}(
+{indent}{indent}const std::underlying_type_t<NamedColumn> index) {const}{{
+{indent}return vptrs_[cell_of(NamedColumn::{member})]->{member}[index];
+}}
+''', const=const, member=member)
 
         self.writelns('''\
 template <NamedColumn Column>
@@ -364,7 +411,7 @@ inline typename {infostruct}<RoundedNamedColumn<Column>()>::value_type& get_raw(
             nextmember = Output.extract_member_type(keys[index + 1])[0]
             self.writelns('''\
 if constexpr (NamedColumn::{member} <= Column && Column < NamedColumn::{nextmember}) {{
-{indent}return vptr_->{member};
+{indent}return vptrs_[cell_of(NamedColumn::{member})]->{member};
 }}\
 ''', member=member, nextmember=nextmember)
         self.writeln('static_assert(Column < NamedColumn::COLCOUNT);')
@@ -394,50 +441,20 @@ if constexpr (NamedColumn::{member} <= Column && Column < NamedColumn::{nextmemb
         self.writeln('static_assert(Column < NamedColumn::COLCOUNT);')
         self.unindent()
         self.writeln('}}')
-
-    def convert_accessors(self):
-        '''Output the accessors.'''
-
-        self.writelns('''
-const auto split_of(NamedColumn index) const {{
-{indent}return index < splitindex_ ? 0 : 1;
-}}
-
-void read(NamedColumn column) {{
-{indent}if (stats_) {{
-{indent}{indent}stats_->read_data.set(static_cast<std::underlying_type_t<NamedColumn>>(column));
-{indent}}}
-}}
-
-void write(NamedColumn column) {{
-{indent}if (!written_) {{
-{indent}{indent}{struct}* old_val = vptr_;
-{indent}{indent}vptr_ = Sto::tx_alloc<{struct}>();
-{indent}{indent}if (old_val) {{
-{indent}{indent}{indent}memmove(vptr_, old_val, sizeof *old_val);
-{indent}{indent}}} else {{
-{indent}{indent}{indent}new (vptr_) {struct}();
-{indent}{indent}}}
-{indent}}}
-{indent}if (stats_) {{
-{indent}{indent}stats_->write_data.set(static_cast<std::underlying_type_t<NamedColumn>>(column));
-{indent}}}
-}}
-''')
+        self.writeln()
 
     def convert_members(self):
         '''Output the member variables.'''
 
-        for member in self.sdata:
-            member, _, count = Output.extract_member_type(member)
-            self.writeln(
-                    'ValueAccessor<NamedColumn::{member}> {member};',
-                    member=member)
+        #for member in self.sdata:
+        #    member, _, count = Output.extract_member_type(member)
+        #    self.writeln(
+        #            'ValueAccessor<NamedColumn::{member}> {member};',
+        #            member=member)
 
-        self.writeln('{struct}* vptr_ = nullptr;')
-        self.writeln('NamedColumn splitindex_ = DEFAULT_SPLIT;')
-        self.writeln('StatsType* stats_ = nullptr;')
-        self.writeln('bool written_ = false;')
+        self.writeln('std::array<{struct}*, MAX_POINTERS> vptrs_ = {{ nullptr, }};')
+        self.writeln('SplitType splitindex_ = {{}};')
+        #self.writeln('StatsType* stats_ = nullptr;')
 
     def convert_resplitter(self):
         '''Output the resplitting functionality.'''
