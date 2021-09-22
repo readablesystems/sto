@@ -108,8 +108,9 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[1] = {
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
         { 0, 0, 0, 0, 0, 0, 0, 0 },
+        { 1, 1, 1, 1, 1, 1, 1, 0 },
     };
 };
 
@@ -237,6 +238,10 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    void copy_into(warehouse_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::w_name>::value_type& w_name() {
@@ -475,8 +480,9 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[1] = {
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
         { 0, 0, 0, 0, 0, 0, 0, 0 },
+        { 1, 1, 1, 1, 1, 1, 1, 0 },
     };
 };
 
@@ -604,6 +610,10 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    void copy_into(district_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::d_name>::value_type& d_name() {
@@ -868,6 +878,10 @@ public:
         return split_of(splitindex_, column);
     }
 
+    void copy_into(customer_idx_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
+    }
+
     inline typename accessor_info<NamedColumn::c_ids>::value_type& c_ids() {
         return vptrs_[cell_of(NamedColumn::c_ids)]->c_ids;
     }
@@ -1056,8 +1070,9 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[1] = {
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0 },
     };
 };
 
@@ -1285,6 +1300,10 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    void copy_into(customer_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::c_first>::value_type& c_first() {
@@ -1794,6 +1813,10 @@ public:
         return split_of(splitindex_, column);
     }
 
+    void copy_into(history_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
+    }
+
     inline typename accessor_info<NamedColumn::h_c_id>::value_type& h_c_id() {
         return vptrs_[cell_of(NamedColumn::h_c_id)]->h_c_id;
     }
@@ -2015,8 +2038,9 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[1] = {
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
         { 0, 0, 0, 0, 0 },
+        { 0, 0, 0, 0, 1 },
     };
 };
 
@@ -2114,6 +2138,10 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    void copy_into(order_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::o_c_id>::value_type& o_c_id() {
@@ -2300,8 +2328,9 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[1] = {
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
         { 0, 0, 0, 0, 0, 0 },
+        { 1, 1, 1, 1, 1, 0 },
     };
 };
 
@@ -2409,6 +2438,10 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    void copy_into(orderline_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::ol_i_id>::value_type& ol_i_id() {
@@ -2690,6 +2723,10 @@ public:
         return split_of(splitindex_, column);
     }
 
+    void copy_into(item_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
+    }
+
     inline typename accessor_info<NamedColumn::i_im_id>::value_type& i_im_id() {
         return vptrs_[cell_of(NamedColumn::i_im_id)]->i_im_id;
     }
@@ -2860,8 +2897,9 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[1] = {
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        { 1, 1, 0, 0, 0, 0 },
     };
 };
 
@@ -2969,6 +3007,10 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    void copy_into(stock_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::s_dists>::value_type& s_dists() {

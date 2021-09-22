@@ -166,6 +166,10 @@ public:
         return split_of(splitindex_, column);
     }
 
+    void copy_into(index_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
+    }
+
     inline typename accessor_info<NamedColumn::data>::value_type& data() {
         return vptrs_[cell_of(NamedColumn::data)]->data;
     }

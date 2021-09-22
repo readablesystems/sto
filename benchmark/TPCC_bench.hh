@@ -15,9 +15,9 @@
 #include "TPCC_structs.hh"
 #include "TPCC_commutators.hh"
 
-#if TABLE_FINE_GRAINED
+//#if TABLE_FINE_GRAINED
 #include "TPCC_selectors.hh"
-#endif
+//#endif
 
 #include "DB_index.hh"
 #include "DB_params.hh"
@@ -39,7 +39,7 @@
 // @section: clp parser definitions
 enum {
     opt_dbid = 1, opt_nwhs, opt_nthrs, opt_time, opt_perf, opt_pfcnt, opt_gc,
-    opt_gr, opt_node, opt_comm, opt_verb, opt_mix
+    opt_gr, opt_node, opt_comm, opt_splt, opt_verb, opt_mix
 };
 
 extern const char* workload_mix_names[];
@@ -48,8 +48,8 @@ extern const size_t noptions;
 extern void print_usage(const char *);
 // @endsection: clp parser definitions
 
-extern int tpcc_d(int, char const* const*);
-extern int tpcc_dc(int, char const* const*);
+extern int tpcc_d(int, char const* const*, db_params::db_split_type);
+extern int tpcc_dc(int, char const* const*, db_params::db_split_type);
 extern int tpcc_dn(int, char const* const*);
 extern int tpcc_dcn(int, char const* const*);
 
@@ -254,6 +254,12 @@ private:
 template <typename DBParams>
 class tpcc_runner {
 public:
+    template <typename T>
+    using Record = typename std::conditional_t<DBParams::MVCC,
+        SplitRecordAccessor<T>, std::conditional_t<
+            DBParams::Split == db_split_type::Adaptive,
+            typename T::RecordAccessor, UniRecordAccessor<T>>>;
+
     static constexpr bool Commute = DBParams::Commute;
     enum class txn_type : int {
         new_order = 1,
@@ -882,6 +888,8 @@ public:
                 case opt_node:
                     break;
                 case opt_comm:
+                    break;
+                case opt_splt:
                     break;
                 case opt_verb:
                     verbose = !clp->negated;

@@ -99,7 +99,12 @@ class RecordAccessor<A, tpcc::warehouse_value> {
 template <>
 class UniRecordAccessor<tpcc::warehouse_value> : public RecordAccessor<UniRecordAccessor<tpcc::warehouse_value>, tpcc::warehouse_value> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::warehouse_value* const vptr) : vptr_(vptr) {}
+
+  operator bool() const {
+      return vptr_ != nullptr;
+  }
 
  private:
   
@@ -168,8 +173,13 @@ class SplitRecordAccessor<tpcc::warehouse_value> : public RecordAccessor<SplitRe
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::warehouse_value>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::warehouse_value*>(vptrs[0])) {}
+
+   operator bool() const {
+       return vptr_0_ != nullptr;
+   }
 
  private:
   
@@ -334,7 +344,12 @@ class RecordAccessor<A, tpcc::district_value> {
 template <>
 class UniRecordAccessor<tpcc::district_value> : public RecordAccessor<UniRecordAccessor<tpcc::district_value>, tpcc::district_value> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::district_value* const vptr) : vptr_(vptr) {}
+
+  operator bool() const {
+      return vptr_ != nullptr;
+  }
 
  private:
   
@@ -403,8 +418,13 @@ class SplitRecordAccessor<tpcc::district_value> : public RecordAccessor<SplitRec
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::district_value>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::district_value*>(vptrs[0])) {}
+
+   operator bool() const {
+       return vptr_0_ != nullptr;
+   }
 
  private:
   
@@ -639,7 +659,12 @@ class RecordAccessor<A, tpcc::customer_value> {
 template <>
 class UniRecordAccessor<tpcc::customer_value> : public RecordAccessor<UniRecordAccessor<tpcc::customer_value>, tpcc::customer_value> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::customer_value* const vptr) : vptr_(vptr) {}
+
+  operator bool() const {
+      return vptr_ != nullptr;
+  }
 
  private:
   
@@ -768,8 +793,13 @@ class SplitRecordAccessor<tpcc::customer_value> : public RecordAccessor<SplitRec
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::customer_value>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::customer_value*>(vptrs[0])) {}
+
+   operator bool() const {
+       return vptr_0_ != nullptr;
+   }
 
  private:
   
@@ -994,7 +1024,12 @@ class RecordAccessor<A, tpcc::history_value> {
 template <>
 class UniRecordAccessor<tpcc::history_value> : public RecordAccessor<UniRecordAccessor<tpcc::history_value>, tpcc::history_value> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::history_value* const vptr) : vptr_(vptr) {}
+
+  operator bool() const {
+      return vptr_ != nullptr;
+  }
 
  private:
   
@@ -1063,8 +1098,13 @@ class SplitRecordAccessor<tpcc::history_value> : public RecordAccessor<SplitReco
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::history_value>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::history_value*>(vptrs[0])) {}
+
+   operator bool() const {
+       return vptr_0_ != nullptr;
+   }
 
  private:
   
@@ -1208,7 +1248,12 @@ class RecordAccessor<A, tpcc::order_value> {
 template <>
 class UniRecordAccessor<tpcc::order_value> : public RecordAccessor<UniRecordAccessor<tpcc::order_value>, tpcc::order_value> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::order_value* const vptr) : vptr_(vptr) {}
+
+  operator bool() const {
+      return vptr_ != nullptr;
+  }
 
  private:
   
@@ -1259,8 +1304,13 @@ class SplitRecordAccessor<tpcc::order_value> : public RecordAccessor<SplitRecord
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::order_value>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::order_value*>(vptrs[0])) {}
+
+   operator bool() const {
+       return vptr_0_ != nullptr;
+   }
 
  private:
   
@@ -1393,7 +1443,12 @@ class RecordAccessor<A, tpcc::orderline_value> {
 template <>
 class UniRecordAccessor<tpcc::orderline_value> : public RecordAccessor<UniRecordAccessor<tpcc::orderline_value>, tpcc::orderline_value> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::orderline_value* const vptr) : vptr_(vptr) {}
+
+  operator bool() const {
+      return vptr_ != nullptr;
+  }
 
  private:
   
@@ -1450,8 +1505,13 @@ class SplitRecordAccessor<tpcc::orderline_value> : public RecordAccessor<SplitRe
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::orderline_value>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::orderline_value*>(vptrs[0])) {}
+
+   operator bool() const {
+       return vptr_0_ != nullptr;
+   }
 
  private:
   
@@ -1576,7 +1636,12 @@ class RecordAccessor<A, tpcc::item_value> {
 template <>
 class UniRecordAccessor<tpcc::item_value> : public RecordAccessor<UniRecordAccessor<tpcc::item_value>, tpcc::item_value> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::item_value* const vptr) : vptr_(vptr) {}
+
+  operator bool() const {
+      return vptr_ != nullptr;
+  }
 
  private:
   
@@ -1621,8 +1686,13 @@ class SplitRecordAccessor<tpcc::item_value> : public RecordAccessor<SplitRecordA
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::item_value>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::item_value*>(vptrs[0])) {}
+
+   operator bool() const {
+       return vptr_0_ != nullptr;
+   }
 
  private:
   
@@ -1749,7 +1819,12 @@ class RecordAccessor<A, tpcc::stock_value> {
 template <>
 class UniRecordAccessor<tpcc::stock_value> : public RecordAccessor<UniRecordAccessor<tpcc::stock_value>, tpcc::stock_value> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::stock_value* const vptr) : vptr_(vptr) {}
+
+  operator bool() const {
+      return vptr_ != nullptr;
+  }
 
  private:
   
@@ -1806,8 +1881,13 @@ class SplitRecordAccessor<tpcc::stock_value> : public RecordAccessor<SplitRecord
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::stock_value>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::stock_value*>(vptrs[0])) {}
+
+   operator bool() const {
+       return vptr_0_ != nullptr;
+   }
 
  private:
   
@@ -1911,7 +1991,12 @@ class RecordAccessor<A, tpcc::customer_idx_value> {
 template <>
 class UniRecordAccessor<tpcc::customer_idx_value> : public RecordAccessor<UniRecordAccessor<tpcc::customer_idx_value>, tpcc::customer_idx_value> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::customer_idx_value* const vptr) : vptr_(vptr) {}
+
+  operator bool() const {
+      return vptr_ != nullptr;
+  }
 
  private:
   
@@ -1938,8 +2023,13 @@ class SplitRecordAccessor<tpcc::customer_idx_value> : public RecordAccessor<Spli
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::customer_idx_value>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::customer_idx_value*>(vptrs[0])) {}
+
+   operator bool() const {
+       return vptr_0_ != nullptr;
+   }
 
  private:
   

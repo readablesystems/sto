@@ -166,6 +166,10 @@ public:
         return split_of(splitindex_, column);
     }
 
+    void copy_into(ordered_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
+    }
+
     inline typename accessor_info<NamedColumn::ro>::value_type& ro() {
         return vptrs_[cell_of(NamedColumn::ro)]->ro;
     }
@@ -418,6 +422,10 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    void copy_into(unordered_value* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::ro>::value_type& ro() {

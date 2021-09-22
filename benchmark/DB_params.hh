@@ -48,7 +48,7 @@ inline db_split_type parse_split_type(const char *id_string) {
     for (size_t i = 0; i < sizeof(db_split_names); ++i) {
         if (strcmp(id_string, db_split_names[i]) == 0) {
             auto selected = static_cast<db_split_type>(i);
-            std::cout << "Selected \"" << selected << "\" as DB concurrency control." << std::endl;
+            std::cout << "Timestamp splitting strategy: " << selected << std::endl;
             return selected;
         }
     }

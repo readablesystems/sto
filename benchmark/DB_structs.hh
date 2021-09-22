@@ -176,11 +176,7 @@ static inline IntType bswap(IntType x) {
         always_assert(false);
 }
 
-struct dummy_row {
-    enum class NamedColumn : int { dummy = 0 };
-    uintptr_t dummy;
-    static dummy_row row;
-};
+#include "DB_structs_generated.hh"
 
 template <typename K>
 struct masstree_key_adapter : public K {

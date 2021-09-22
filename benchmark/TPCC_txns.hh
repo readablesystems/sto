@@ -62,6 +62,9 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     size_t starts = 0;
 
+    bool abort, result;
+    uintptr_t row;
+
     // begin txn
     RWTXN {
     ++starts;
@@ -71,9 +74,15 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     {
     warehouse_key wk(q_w_id);
-    auto [abort, result, row, value] = db.tbl_warehouses().select_split_row(wk,
-        {{wh_nc::w_tax, access_t::read}}
-    );
+    Record<warehouse_value> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_warehouses().select_row(
+                wk, {{wh_nc::w_tax, AccessType::read}}, 1);
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_warehouses().select_split_row(wk,
+            {{wh_nc::w_tax, access_t::read}}
+        );
+    }
     (void)row; (void)result;
     CHK(abort);
     assert(result);
@@ -82,9 +91,15 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     {
     district_key dk(q_w_id, q_d_id);
-    auto [abort, result, row, value] = db.tbl_districts(q_w_id).select_split_row(dk,
-        {{dt_nc::d_tax, access_t::read}}
-    );
+    Record<district_value> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(
+                dk, {{dt_nc::d_tax, AccessType::read}}, 1);
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_split_row(dk,
+            {{dt_nc::d_tax, access_t::read}}
+        );
+    }
     (void)row; (void)result;
     CHK(abort);
     assert(result);
@@ -100,11 +115,20 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     int64_t cus_discount;
     {
     customer_key ck(q_w_id, q_d_id, q_c_id);
-    auto [abort, result, row, value] = db.tbl_customers(q_w_id).select_split_row(ck,
-        {{cu_nc::c_discount, access_t::read},
-         {cu_nc::c_last, access_t::read},
-         {cu_nc::c_credit, access_t::read}}
-    );
+    Record<customer_value> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_customers(q_w_id).select_row(ck,
+            {{cu_nc::c_discount, AccessType::read},
+             {cu_nc::c_last, AccessType::read},
+             {cu_nc::c_credit, AccessType::read}},
+             1);
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_customers(q_w_id).select_split_row(ck,
+            {{cu_nc::c_discount, access_t::read},
+             {cu_nc::c_last, access_t::read},
+             {cu_nc::c_credit, access_t::read}}
+        );
+    }
     (void)row; (void)result;
     CHK(abort);
     assert(result);
@@ -153,11 +177,21 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         uint32_t i_price;
 
         {
-        auto [abort, result, row, value] = db.tbl_items().select_split_row(item_key(iid),
-            {{it_nc::i_im_id, access_t::read},
-             {it_nc::i_price, access_t::read},
-             {it_nc::i_name, access_t::read},
-             {it_nc::i_data, access_t::read}});
+        Record<item_value> value;
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            std::tie(abort, result, row, value) = db.tbl_items().select_row(item_key(iid),
+                {{it_nc::i_im_id, AccessType::read},
+                 {it_nc::i_price, AccessType::read},
+                 {it_nc::i_name, AccessType::read},
+                 {it_nc::i_data, AccessType::read}},
+                 1);
+        } else {
+            std::tie(abort, result, row, value) = db.tbl_items().select_split_row(item_key(iid),
+                {{it_nc::i_im_id, access_t::read},
+                 {it_nc::i_price, access_t::read},
+                 {it_nc::i_name, access_t::read},
+                 {it_nc::i_data, access_t::read}});
+        }
         (void)row; (void)result;
         CHK(abort);
         assert(result);
@@ -169,14 +203,27 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         }
 
         {
-        auto [abort, result, row, value] = db.tbl_stocks(wid).select_split_row(stock_key(wid, iid),
-            {{st_nc::s_quantity, Commute ? access_t::write : access_t::update},
-             {st_nc::s_ytd, Commute ? access_t::write : access_t::update},
-             {st_nc::s_order_cnt, Commute ? access_t::write : access_t::update},
-             {st_nc::s_remote_cnt, Commute ? access_t::write : access_t::update},
-             {st_nc::s_dists, access_t::read },
-             {st_nc::s_data, access_t::read }}
-        );
+        Record<stock_value> value;
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            std::tie(abort, result, row, value) = db.tbl_stocks(wid).select_row(stock_key(wid, iid),
+                {{st_nc::s_quantity, Commute ? AccessType::write : AccessType::update},
+                 {st_nc::s_ytd, Commute ? AccessType::write : AccessType::update},
+                 {st_nc::s_order_cnt, Commute ? AccessType::write : AccessType::update},
+                 {st_nc::s_remote_cnt, Commute ? AccessType::write : AccessType::update},
+                 {st_nc::s_dists, AccessType::read },
+                 {st_nc::s_data, AccessType::read }},
+                1
+            );
+        } else {
+            std::tie(abort, result, row, value) = db.tbl_stocks(wid).select_split_row(stock_key(wid, iid),
+                {{st_nc::s_quantity, Commute ? access_t::write : access_t::update},
+                 {st_nc::s_ytd, Commute ? access_t::write : access_t::update},
+                 {st_nc::s_order_cnt, Commute ? access_t::write : access_t::update},
+                 {st_nc::s_remote_cnt, Commute ? access_t::write : access_t::update},
+                 {st_nc::s_dists, access_t::read },
+                 {st_nc::s_data, access_t::read }}
+            );
+        }
         (void)result;
         CHK(abort);
         assert(result);
@@ -296,6 +343,9 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     size_t starts = 0;
 
+    bool success, result;
+    uintptr_t row;
+
     // begin txn
     RWTXN {
     Sto::transaction()->special_txp = true;
@@ -304,15 +354,28 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // select warehouse row for update and retrieve warehouse info
     {
     warehouse_key wk(q_w_id);
-    auto [success, result, row, value] = db.tbl_warehouses().select_split_row(wk,
-        {{wh_nc::w_name, access_t::read},
-         {wh_nc::w_street_1, access_t::read},
-         {wh_nc::w_street_2, access_t::read},
-         {wh_nc::w_city, access_t::read},
-         {wh_nc::w_state, access_t::read},
-         {wh_nc::w_zip, access_t::read},
-         {wh_nc::w_ytd, Commute ? access_t::write : access_t::update}}
-    );
+    Record<warehouse_value> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(success, result, row, value) = db.tbl_warehouses().select_row(wk,
+            {{wh_nc::w_name, AccessType::read},
+             {wh_nc::w_street_1, AccessType::read},
+             {wh_nc::w_street_2, AccessType::read},
+             {wh_nc::w_city, AccessType::read},
+             {wh_nc::w_state, AccessType::read},
+             {wh_nc::w_zip, AccessType::read},
+             {wh_nc::w_ytd, Commute ? AccessType::write : AccessType::update}},
+             1);
+    } else {
+        std::tie(success, result, row, value) = db.tbl_warehouses().select_split_row(wk,
+            {{wh_nc::w_name, access_t::read},
+             {wh_nc::w_street_1, access_t::read},
+             {wh_nc::w_street_2, access_t::read},
+             {wh_nc::w_city, access_t::read},
+             {wh_nc::w_state, access_t::read},
+             {wh_nc::w_zip, access_t::read},
+             {wh_nc::w_ytd, Commute ? access_t::write : access_t::update}}
+        );
+    }
     (void)result;
     CHK(success);
     assert(result);
@@ -338,15 +401,28 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // select district row and retrieve district info
     {
     district_key dk(q_w_id, q_d_id);
-    auto [success, result, row, value] = db.tbl_districts(q_w_id).select_split_row(dk,
-        {{dt_nc::d_name, access_t::read},
-         {dt_nc::d_street_1, access_t::read},
-         {dt_nc::d_street_2, access_t::read},
-         {dt_nc::d_city, access_t::read},
-         {dt_nc::d_state, access_t::read},
-         {dt_nc::d_zip, access_t::read},
-         {dt_nc::d_ytd, Commute ? access_t::write : access_t::update}}
-    );
+    Record<district_value> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk,
+            {{dt_nc::d_name, AccessType::read},
+             {dt_nc::d_street_1, AccessType::read},
+             {dt_nc::d_street_2, AccessType::read},
+             {dt_nc::d_city, AccessType::read},
+             {dt_nc::d_state, AccessType::read},
+             {dt_nc::d_zip, AccessType::read},
+             {dt_nc::d_ytd, Commute ? AccessType::write : AccessType::update}},
+             1);
+    } else {
+        std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_split_row(dk,
+            {{dt_nc::d_name, access_t::read},
+             {dt_nc::d_street_1, access_t::read},
+             {dt_nc::d_street_2, access_t::read},
+             {dt_nc::d_city, access_t::read},
+             {dt_nc::d_state, access_t::read},
+             {dt_nc::d_zip, access_t::read},
+             {dt_nc::d_ytd, Commute ? access_t::write : access_t::update}}
+        );
+    }
     (void)result;
     CHK(success);
     assert(result);
@@ -377,8 +453,14 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // select and update customer
     if (by_name) {
         customer_idx_key ck(q_c_w_id, q_c_d_id, last_name);
-        auto [success, result, row, value] = db.tbl_customer_index(q_c_w_id).select_split_row(ck,
-            {{customer_idx_value::NamedColumn::c_ids, access_t::read}});
+        Record<customer_idx_value> value;
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            std::tie(success, result, row, value) = db.tbl_customer_index(q_c_w_id).select_row(ck,
+                {{customer_idx_value::NamedColumn::c_ids, AccessType::read}});
+        } else {
+            std::tie(success, result, row, value) = db.tbl_customer_index(q_c_w_id).select_split_row(ck,
+                {{customer_idx_value::NamedColumn::c_ids, access_t::read}});
+        }
         (void)row; (void)result;
         CHK(success);
         assert(result);
@@ -396,15 +478,28 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     TXP_INCREMENT(txp_tpcc_pm_stage3);
 
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
-    auto [success, result, row, value] = db.tbl_customers(q_c_w_id).select_split_row(ck,
-        {{cu_nc::c_since,    access_t::read},
-         {cu_nc::c_credit,   access_t::read},
-         {cu_nc::c_discount, access_t::read},
-         {cu_nc::c_balance, access_t::update},
-         {cu_nc::c_payment_cnt, Commute ? access_t::write : access_t::update},
-         {cu_nc::c_ytd_payment, Commute ? access_t::write : access_t::update},
-         {cu_nc::c_credit, Commute ? access_t::write : access_t::update}}
-    );
+    Record<customer_value> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck,
+            {{cu_nc::c_since,    AccessType::read},
+             {cu_nc::c_credit,   AccessType::read},
+             {cu_nc::c_discount, AccessType::read},
+             {cu_nc::c_balance, AccessType::update},
+             {cu_nc::c_payment_cnt, Commute ? AccessType::write : AccessType::update},
+             {cu_nc::c_ytd_payment, Commute ? AccessType::write : AccessType::update},
+             {cu_nc::c_credit, Commute ? AccessType::write : AccessType::update}},
+             1);
+    } else {
+        std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_split_row(ck,
+            {{cu_nc::c_since,    access_t::read},
+             {cu_nc::c_credit,   access_t::read},
+             {cu_nc::c_discount, access_t::read},
+             {cu_nc::c_balance, access_t::update},
+             {cu_nc::c_payment_cnt, Commute ? access_t::write : access_t::update},
+             {cu_nc::c_ytd_payment, Commute ? access_t::write : access_t::update},
+             {cu_nc::c_credit, Commute ? access_t::write : access_t::update}}
+        );
+    }
     (void)result;
     CHK(success);
     assert(result);
@@ -507,13 +602,22 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     size_t starts = 0;
 
+    bool success, result;
+    uintptr_t row;
+
     TXN {
     ++starts;
 
     if (by_name) {
         customer_idx_key ck(q_w_id, q_d_id, last_name);
-        auto [success, result, row, value] = db.tbl_customer_index(q_w_id).select_split_row(ck,
-            {{customer_idx_value::NamedColumn::c_ids, access_t::read}});
+        Record<customer_idx_value> value;
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            std::tie(success, result, row, value) = db.tbl_customer_index(q_w_id).select_row(ck,
+                {{customer_idx_value::NamedColumn::c_ids, AccessType::read}});
+        } else {
+            std::tie(success, result, row, value) = db.tbl_customer_index(q_w_id).select_split_row(ck,
+                {{customer_idx_value::NamedColumn::c_ids, access_t::read}});
+        }
         (void)row; (void)result;
         CHK(success);
         assert(result);
@@ -529,12 +633,22 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     }
 
     customer_key ck(q_w_id, q_d_id, q_c_id);
-    auto [success, result, row, value] = db.tbl_customers(q_w_id).select_split_row(ck,
-        {{cu_nc::c_first, access_t::read},
-         {cu_nc::c_last, access_t::read},
-         {cu_nc::c_middle, access_t::read},
-         {cu_nc::c_balance, access_t::read}}
-    );
+    Record<customer_value> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck,
+            {{cu_nc::c_first, AccessType::read},
+             {cu_nc::c_last, AccessType::read},
+             {cu_nc::c_middle, AccessType::read},
+             {cu_nc::c_balance, AccessType::read}},
+             1);
+    } else {
+        std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_split_row(ck,
+            {{cu_nc::c_first, access_t::read},
+             {cu_nc::c_last, access_t::read},
+             {cu_nc::c_middle, access_t::read},
+             {cu_nc::c_balance, access_t::read}}
+        );
+    }
     (void)row; (void)result;
     CHK(success);
     assert(result);
@@ -561,9 +675,17 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     if (cus_o_id > 0) {
         order_key ok(q_w_id, q_d_id, cus_o_id);
-        auto [success, result, row, value] = db.tbl_orders(q_w_id).select_split_row(ok,
-            {{od_nc::o_entry_d, access_t::read},
-             {od_nc::o_carrier_id, access_t::read}});
+        Record<order_value> value;
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok,
+                {{od_nc::o_entry_d, AccessType::read},
+                 {od_nc::o_carrier_id, AccessType::read}},
+                1);
+        } else {
+            std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_split_row(ok,
+                {{od_nc::o_entry_d, access_t::read},
+                 {od_nc::o_carrier_id, access_t::read}});
+        }
         (void)row; (void)result;
         CHK(success);
         assert(result);
@@ -627,6 +749,9 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
 
     size_t starts = 0;
 
+    bool success, result;
+    uintptr_t row;
+
     TXP_INCREMENT(txp_tpcc_dl_stage1);
 
     RWTXN {
@@ -661,11 +786,20 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
         uint64_t q_c_id = 0;
         uint32_t ol_cnt = 0;
         {
-        auto [success, result, row, value] = db.tbl_orders(q_w_id).select_split_row(ok,
-            {{od_nc::o_c_id, access_t::read},
-             {od_nc::o_ol_cnt, access_t::read},
-             {od_nc::o_carrier_id, Commute ? access_t::write : access_t::update}}
-        );
+        Record<order_value> value;
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok,
+                {{od_nc::o_c_id, AccessType::read},
+                 {od_nc::o_ol_cnt, AccessType::read},
+                 {od_nc::o_carrier_id, Commute ? AccessType::write : AccessType::update}},
+                1);
+        } else {
+            std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_split_row(ok,
+                {{od_nc::o_c_id, access_t::read},
+                 {od_nc::o_ol_cnt, access_t::read},
+                 {od_nc::o_carrier_id, Commute ? access_t::write : access_t::update}}
+            );
+        }
         (void)result;
         CHK(success);
         assert(result);
@@ -691,10 +825,18 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
         ol_amount_sum = 0;
         for (uint32_t ol_num = 1; ol_num <= ol_cnt; ++ol_num) {
             orderline_key olk(q_w_id, q_d_id, order_id, ol_num);
-            auto [success, result, row, value] = db.tbl_orderlines(q_w_id).select_split_row(olk,
-                {{ol_nc::ol_amount, access_t::read},
-                 {ol_nc::ol_delivery_d, Commute ? access_t::write : access_t::update}}
-            );
+            Record<orderline_value> value;
+            if constexpr (DBParams::Split == db_split_type::Adaptive) {
+                std::tie(success, result, row, value) = db.tbl_orderlines(q_w_id).select_row(olk,
+                    {{ol_nc::ol_amount, AccessType::read},
+                     {ol_nc::ol_delivery_d, Commute ? AccessType::write : AccessType::update}},
+                    1);
+            } else {
+                std::tie(success, result, row, value) = db.tbl_orderlines(q_w_id).select_split_row(olk,
+                    {{ol_nc::ol_amount, access_t::read},
+                     {ol_nc::ol_delivery_d, Commute ? access_t::write : access_t::update}}
+                );
+            }
             (void)result;
             CHK(success);
             assert(result);
@@ -717,10 +859,18 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id,
 
         {
         customer_key ck(q_w_id, q_d_id, q_c_id);
-        auto [success, result, row, value] = db.tbl_customers(q_w_id).select_split_row(ck,
-            {{cu_nc::c_balance, Commute ? access_t::write : access_t::update},
-             {cu_nc::c_delivery_cnt, Commute ? access_t::write : access_t::update}}
-        );
+        Record<customer_value> value;
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck,
+                {{cu_nc::c_balance, Commute ? AccessType::write : AccessType::update},
+                 {cu_nc::c_delivery_cnt, Commute ? AccessType::write : AccessType::update}},
+                1);
+        } else {
+            std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_split_row(ck,
+                {{cu_nc::c_balance, Commute ? access_t::write : access_t::update},
+                 {cu_nc::c_delivery_cnt, Commute ? access_t::write : access_t::update}}
+            );
+        }
         (void)result;
         CHK(success);
         assert(result);
@@ -770,6 +920,9 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 
     size_t starts = 0;
 
+    bool success, result;
+    uintptr_t row;
+
     TXN {
     ++starts;
 
@@ -788,9 +941,16 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 
     for (auto iid : ol_iids) {
         stock_key sk(q_w_id, iid);
-        auto [success, result, row, value] = db.tbl_stocks(q_w_id).select_split_row(sk,
-            {{st_nc::s_quantity, access_t::read}}
-        );
+        Record<stock_value> value;
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            std::tie(success, result, row, value) = db.tbl_stocks(q_w_id).select_row(sk,
+                {{st_nc::s_quantity, AccessType::read}},
+                1);
+        } else {
+            std::tie(success, result, row, value) = db.tbl_stocks(q_w_id).select_split_row(sk,
+                {{st_nc::s_quantity, access_t::read}}
+            );
+        }
         (void)row; (void)result;
         CHK(success);
         assert(result);

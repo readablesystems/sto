@@ -379,6 +379,10 @@ const static auto split_of(int index, NamedColumn column) {{
 const auto cell_of(NamedColumn column) const {{
 {indent}return split_of(splitindex_, column);
 }}
+
+void copy_into({struct}* vptr) {{
+{indent}memcpy(vptr, vptrs_[0], sizeof *vptr);
+}}
 ''')
 
     def convert_getters(self):

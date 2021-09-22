@@ -26,6 +26,7 @@ const Clp_Option options[] = {
         { "gc-rate",      'r', opt_gr,    Clp_ValInt,    Clp_Optional },
         { "node",         'n', opt_node,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate | Clp_Optional },
+        { "split",        's', opt_splt,  Clp_ValString, Clp_Optional },
         { "verbose",      'v', opt_verb,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "mix",          'm', opt_mix,   Clp_ValInt,    Clp_Optional },
 };
@@ -41,7 +42,7 @@ void print_usage(const char *argv_0) {
     std::stringstream ss;
     ss << "Usage of " << std::string(argv_0) << ":" << std::endl
        << "  --dbid=<STRING> (or -i<STRING>)" << std::endl
-       << "    Specify the type of DB concurrency control used. Can be one of the followings:" << std::endl
+       << "    Specify the type of DB concurrency control used. Can be one of the following:" << std::endl
        << "      default, opaque, 2pl, adaptive, swiss, tictoc, defaultnode, mvcc, mvccnode" << std::endl
        << "  --nwarehouses=<NUM> (or -w<NUM>)" << std::endl
        << "    Specify the number of warehouses (default 1)." << std::endl
@@ -61,6 +62,9 @@ void print_usage(const char *argv_0) {
        << "    Enable node tracking (default false)." << std::endl
        << "  --commute (or -x)" << std::endl
        << "    Enable commutative updates in MVCC (default false)." << std::endl
+       << "  --split=<STRING> (or -s<STRING>)" << std::endl
+       << "    Specify the split algorithm to use. Can be one of:" << std::endl
+       << "      none (default), static, adaptive" << std::endl
        << "  --verbose (or -v)" << std::endl
        << "    Enable verbose output (default false)." << std::endl
        << "  --mix=<NUM> or -m<NUM>" << std::endl
@@ -84,6 +88,7 @@ int main(int argc, const char *const *argv) {
         constants::processor_tsc_frequency = cpu_freq;
 
     db_params_id dbid = db_params_id::Default;
+    db_split_type split_type = db_split_type::None;
     int ret_code = 0;
 
     std::cout << "TPCC_HASH_INDEX: " <<
@@ -139,6 +144,9 @@ int main(int argc, const char *const *argv) {
         case opt_comm:
             enable_commute = !clp->negated;
             break;
+        case opt_splt:
+            split_type = parse_split_type(clp->val.s);
+            break;
         default:
             break;
         }
@@ -155,9 +163,9 @@ int main(int argc, const char *const *argv) {
         } else if (node_tracking) {
             ret_code = tpcc_dn(argc, argv);
         } else if (enable_commute) {
-            ret_code = tpcc_dc(argc, argv);
+            ret_code = tpcc_dc(argc, argv, split_type);
         } else {
-            ret_code = tpcc_d(argc, argv);
+            ret_code = tpcc_d(argc, argv, split_type);
         }
         break;
     case db_params_id::Opaque:

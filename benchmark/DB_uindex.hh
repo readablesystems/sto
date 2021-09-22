@@ -157,12 +157,8 @@ public:
 
         if (e) {
             return select_row(reinterpret_cast<uintptr_t>(e), accesses, preferred_split);
-        } else {
-            if (!Sto::item(this, make_bucket_key(buck)).observe(buck_vers)) {
-                return { false, false, 0, nullptr };
-            }
-            return { true, false, 0, nullptr };
         }
+        return { Sto::item(this, make_bucket_key(buck)).observe(buck_vers), false, 0, nullptr };
     }
 
     sel_split_return_type
@@ -244,7 +240,6 @@ public:
         if (is_phantom(e, row_item)) {
             return { false, false, 0, nullptr };
         }
-            goto abort;
 
         if (index_read_my_write) {
             if (has_delete(row_item)) {
@@ -256,6 +251,9 @@ public:
                     vptr = &e->row_container.row;
                 else
                     vptr = row_item.template raw_write_value<value_type*>();
+                if (split != preferred_split) {
+                    Sto::set_stats();
+                }
                 return { true, true, rid, e->row_container.get(split, vptr) };
             }
         }
@@ -265,6 +263,9 @@ public:
             return { false, false, 0, nullptr };
         }
 
+        if (split != preferred_split) {
+            Sto::set_stats();
+        }
         return { true, true, rid, e->row_container.get(split) };
     }
 
@@ -529,6 +530,16 @@ public:
             e->row_container.version_at(key.cell_num()).cp_unlock(item);
     }
 
+    void update_split(TransItem& item, bool committed) override {
+        if (!committed && item.has_preferred_split()) {
+            auto key = item.key<item_key_t>();
+            internal_elem *e = key.internal_elem_ptr();
+            auto preferred_split = item.preferred_split();
+            e->row_container.set_split(preferred_split);
+            item.clear_preferred_split();
+        }
+    }
+
     void cleanup(TransItem& item, bool committed) override {
         if (committed ? has_delete(item) : has_insert(item)) {
             assert(!is_bucket(item));
@@ -541,6 +552,28 @@ public:
     }
 
 private:
+    static bool
+    access(std::array<AccessType, value_container_type::NUM_VERSIONS>& accesses,
+           std::array<TransItem*, value_container_type::NUM_VERSIONS>& items,
+           value_container_type& row_container) {
+        for (size_t idx = 0; idx < accesses.size(); ++idx) {
+            auto& access = accesses[idx];
+            auto proxy = TransProxy(*Sto::transaction(), *items[idx]);
+            if ((access & AccessType::read) != AccessType::none) {
+                if (!proxy.observe(row_container.version_at(idx)))
+                    return false;
+            }
+            if ((access & AccessType::write) != AccessType::none) {
+                if (!proxy.acquire_write(row_container.version_at(idx)))
+                    return false;
+                if (proxy.item().key<item_key_t>().is_row_item()) {
+                    proxy.item().add_flags(row_cell_bit);
+                }
+            }
+        }
+        return true;
+    }
+
     static bool
     access_all(std::array<access_t, value_container_type::num_versions>& cell_accesses, std::array<TransItem*, value_container_type::num_versions>& cell_items, value_container_type& row_container) {
         for (size_t idx = 0; idx < cell_accesses.size(); ++idx) {
