@@ -234,7 +234,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
         it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
         for (unsigned tidx = tset_size_; tidx != 0; --tidx) {
             it = (tidx % tset_chunk ? it - 1 : &tset_[(tidx - 1) / tset_chunk][tset_chunk - 1]);
-            if (report_stats && it->has_preferred_split()) {
+            if (it->has_preferred_split()) {
                 it->owner()->update_split(*it, committed);
             }
         }

@@ -132,6 +132,7 @@ class {raccessor} {{\
         self.indent()
         self.writelns('''\
 using NamedColumn = {ns}::NamedColumn;
+using SplitTable = {ns}::SplitTable;
 using SplitType = {ns}::SplitType;
 //using StatsType = {statstype};
 //template <NamedColumn Column>
@@ -297,8 +298,10 @@ if constexpr (Column < NamedColumn::{nextmember}) {{
 
         self.indent()
         self.writeln(
-                'static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[{splitcount}] = {{',
-                splitcount=len(self.mdata['splits']))
+                'static constexpr auto Size = {size};',
+                size=len(self.mdata['splits']))
+        self.writeln(
+                'static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {{')
 
         self.indent()
         for split in self.mdata['splits']:

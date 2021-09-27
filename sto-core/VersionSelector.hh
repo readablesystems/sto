@@ -260,7 +260,8 @@ public:
     }
 
     void install_cell(int cell, RowType* const new_row) {
-        install_by_cell<nc(0)>(split(), cell, new_row);
+        install_by_cell_at_runtime(split(), cell, new_row);
+        //install_by_split_cell(split(), cell, new_row);
     }
 
     version_type& row_version() {
@@ -291,8 +292,8 @@ public:
     RowType row;
 
 private:
-    template <nc Column>
-    inline void install_by_cell(const SplitType& split, int cell, RowType* const new_row) {
+    template <nc Column=nc(0)>
+    inline void install_by_cell_at_runtime(const SplitType& split, int cell, RowType* const new_row) {
         static_assert(Column < nc::COLCOUNT);
 
         if (split_of(split, Column) == cell) {
@@ -303,9 +304,62 @@ private:
 
         // This constexpr is necessary for template deduction purposes
         if constexpr (Column + 1 < nc::COLCOUNT) {
-            install_by_cell<Column + 1>(split, cell, new_row);
+            install_by_cell_at_runtime<Column + 1>(split, cell, new_row);
         }
     }
+
+    /*
+    template <SplitType Split=0>
+    inline void install_by_split_cell(const SplitType& split, int cell, RowType* const new_row) {
+        static_assert(Split >= 0);
+        static_assert(Split < RecordAccessor::SplitTable::Size);
+
+        if (Split != split) {
+            if constexpr (Split + 1 < RecordAccessor::SplitTable::Size) {
+                install_by_split_cell<Split + 1>(split, cell, new_row);
+            }
+            return;
+        }
+
+        install_by_cell<Split>(cell, new_row);
+    }
+
+    template <SplitType Split, int Cell=0>
+    inline void install_by_cell(int cell, RowType* const new_row) {
+        static_assert(Cell >= 0);
+        static_assert(Cell < RecordAccessor::MAX_SPLITS);
+
+        if (Cell != cell) {
+            if constexpr (Cell + 1 < RecordAccessor::MAX_SPLITS) {
+                install_by_cell<Split, Cell + 1>(cell, new_row);
+            }
+            return;
+        }
+
+        install_by_column<Split, Cell>(new_row);
+    }
+
+    template <SplitType Split, int Cell, nc Column=nc(0)>
+    inline void install_by_column(RowType* const new_row) {
+        static_assert(Column >= nc(0));
+        static_assert(Column < nc::COLCOUNT);
+
+        if constexpr (RecordAccessor::SplitTable::Splits[Split][
+                static_cast<std::underlying_type_t<nc>>(Column)] == Cell) {
+            auto& old_col = RecordAccessor::template get_value<Column>(&row);
+            auto& new_col = RecordAccessor::template get_value<Column>(new_row);
+            old_col = new_col;
+        }
+
+        // This constexpr is necessary for template deduction purposes
+        if constexpr (Column + 1 < nc::COLCOUNT) {
+            install_by_column<Split, Cell, Column + 1>(new_row);
+        } else {
+            (void) new_row;
+        }
+
+    }
+    */
 
     std::atomic<SplitType> splitindex_ = {};
     std::array<version_type, num_versions> versions_;

@@ -15,8 +15,9 @@ struct dummy_row {
     using RecordAccessor = dummy_row_datatypes::RecordAccessor;
     using NamedColumn = dummy_row_datatypes::NamedColumn;
 
-    uintptr_t dummy;
     static dummy_row row;
+
+    uintptr_t dummy;
 };
 
 enum class NamedColumn : int {
@@ -74,7 +75,8 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[1] = {
+    static constexpr auto Size = 1;
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
         { 0 },
     };
 };
@@ -100,6 +102,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = dummy_row_datatypes::NamedColumn;
+    using SplitTable = dummy_row_datatypes::SplitTable;
     using SplitType = dummy_row_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<dummy_row>;
     //template <NamedColumn Column>
@@ -133,6 +136,10 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    void copy_into(dummy_row* vptr) {
+        memcpy(vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::dummy>::value_type& dummy() {

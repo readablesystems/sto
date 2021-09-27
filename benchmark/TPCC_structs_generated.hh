@@ -108,7 +108,8 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
+    static constexpr auto Size = 2;
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
         { 0, 0, 0, 0, 0, 0, 0, 0 },
         { 1, 1, 1, 1, 1, 1, 1, 0 },
     };
@@ -205,6 +206,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = warehouse_value_datatypes::NamedColumn;
+    using SplitTable = warehouse_value_datatypes::SplitTable;
     using SplitType = warehouse_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<warehouse_value>;
     //template <NamedColumn Column>
@@ -480,7 +482,8 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
+    static constexpr auto Size = 2;
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
         { 0, 0, 0, 0, 0, 0, 0, 0 },
         { 1, 1, 1, 1, 1, 1, 1, 0 },
     };
@@ -577,6 +580,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = district_value_datatypes::NamedColumn;
+    using SplitTable = district_value_datatypes::SplitTable;
     using SplitType = district_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<district_value>;
     //template <NamedColumn Column>
@@ -817,7 +821,8 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[1] = {
+    static constexpr auto Size = 1;
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
         { 0 },
     };
 };
@@ -843,6 +848,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = customer_idx_value_datatypes::NamedColumn;
+    using SplitTable = customer_idx_value_datatypes::SplitTable;
     using SplitType = customer_idx_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<customer_idx_value>;
     //template <NamedColumn Column>
@@ -1070,7 +1076,8 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
+    static constexpr auto Size = 2;
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
         { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0 },
     };
@@ -1267,6 +1274,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = customer_value_datatypes::NamedColumn;
+    using SplitTable = customer_value_datatypes::SplitTable;
     using SplitType = customer_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<customer_value>;
     //template <NamedColumn Column>
@@ -1682,7 +1690,8 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[1] = {
+    static constexpr auto Size = 1;
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
         { 0, 0, 0, 0, 0, 0, 0, 0 },
     };
 };
@@ -1778,6 +1787,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = history_value_datatypes::NamedColumn;
+    using SplitTable = history_value_datatypes::SplitTable;
     using SplitType = history_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<history_value>;
     //template <NamedColumn Column>
@@ -2038,7 +2048,8 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
+    static constexpr auto Size = 2;
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
         { 0, 0, 0, 0, 0 },
         { 0, 0, 0, 0, 1 },
     };
@@ -2105,6 +2116,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = order_value_datatypes::NamedColumn;
+    using SplitTable = order_value_datatypes::SplitTable;
     using SplitType = order_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<order_value>;
     //template <NamedColumn Column>
@@ -2328,7 +2340,8 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
+    static constexpr auto Size = 2;
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
         { 0, 0, 0, 0, 0, 0 },
         { 1, 1, 1, 1, 1, 0 },
     };
@@ -2405,6 +2418,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = orderline_value_datatypes::NamedColumn;
+    using SplitTable = orderline_value_datatypes::SplitTable;
     using SplitType = orderline_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<orderline_value>;
     //template <NamedColumn Column>
@@ -2632,7 +2646,8 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[1] = {
+    static constexpr auto Size = 1;
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
         { 0, 0, 0, 0 },
     };
 };
@@ -2688,6 +2703,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = item_value_datatypes::NamedColumn;
+    using SplitTable = item_value_datatypes::SplitTable;
     using SplitType = item_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<item_value>;
     //template <NamedColumn Column>
@@ -2897,7 +2913,8 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[2] = {
+    static constexpr auto Size = 2;
+    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
         { 1, 1, 0, 0, 0, 0 },
     };
@@ -2974,6 +2991,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = stock_value_datatypes::NamedColumn;
+    using SplitTable = stock_value_datatypes::SplitTable;
     using SplitType = stock_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<stock_value>;
     //template <NamedColumn Column>
