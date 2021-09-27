@@ -24,11 +24,8 @@
 #include "DB_profiler.hh"
 #include "PlatformFeatures.hh"
 
-#if TABLE_FINE_GRAINED
 #include "tpcc_split_params_ts.hh"
-#else
 #include "tpcc_split_params_default.hh"
-#endif
 
 #define A_GEN_CUSTOMER_ID           1023
 #define A_GEN_ITEM_ID               8191

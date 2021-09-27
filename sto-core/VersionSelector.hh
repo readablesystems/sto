@@ -123,7 +123,9 @@ inline AccessType& operator|=(AccessType& lhs, const AccessType& rhs) {
 };
 
 // Container for adaptively-split value containers
-template <typename RowType, typename VersImpl>
+template <typename RowType, typename VersImpl,
+          typename RowType::RecordAccessor::SplitType DefaultSplit=
+               RowType::RecordAccessor::DEFAULT_SPLIT>
 class AdaptiveValueContainer {
 public:
     using comm_type = commutators::Commutator<RowType>;
@@ -180,7 +182,12 @@ public:
     }
 
     constexpr static int map(int col_n) {
-        return RecordAccessor::split_of(RecordAccessor::DEFAULT_SPLIT, nc(col_n));
+        if constexpr (DefaultSplit == 0) {
+            (void) col_n;
+            return 0;
+        } else {
+            return split_of(DefaultSplit, nc(col_n));
+        }
     }
 
     std::array<AccessType, NUM_VERSIONS>

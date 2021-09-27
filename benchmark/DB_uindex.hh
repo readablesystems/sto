@@ -12,10 +12,11 @@ public:
     using typename C::key_type;
     using typename C::value_type;
     using typename C::NamedColumn;
+    using typename C::accessor_t;
     using typename C::sel_return_type;
     using typename C::ins_return_type;
     using typename C::del_return_type;
-    typedef std::tuple<bool, bool, uintptr_t, UniRecordAccessor<V>> sel_split_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, accessor_t> sel_split_return_type;
 
     using typename C::version_type;
     using typename C::value_container_type;
@@ -172,9 +173,9 @@ public:
             return select_split_row(reinterpret_cast<uintptr_t>(e), accesses);
         } else {
             if (!Sto::item(this, make_bucket_key(buck)).observe(buck_vers)) {
-                return { false, false, 0, UniRecordAccessor<V>(nullptr) };
+                return { false, false, 0, accessor_t(nullptr) };
             }
-            return { true, false, 0, UniRecordAccessor<V>(nullptr) };
+            return { true, false, 0, accessor_t(nullptr) };
         }
     }
 
@@ -282,11 +283,11 @@ public:
         std::tie(any_has_write, cell_items) = extract_item_list<value_container_type>(cell_accesses, this, e);
 
         if (is_phantom(e, row_item))
-            return { false, false, 0, UniRecordAccessor<V>(nullptr) };
+            return { false, false, 0, accessor_t(nullptr) };
 
         if (index_read_my_write) {
             if (has_delete(row_item)) {
-                return { true, false, 0, UniRecordAccessor<V>(nullptr) };
+                return { true, false, 0, accessor_t(nullptr) };
             }
             if (any_has_write || has_row_update(row_item)) {
                 value_type *vptr;
@@ -294,15 +295,15 @@ public:
                     vptr = &(e->row_container.row);
                 else
                     vptr = row_item.template raw_write_value<value_type *>();
-                return { true, true, rid, UniRecordAccessor<V>(vptr) };
+                return { true, true, rid, accessor_t(vptr) };
             }
         }
 
         ok = access_all(cell_accesses, cell_items, e->row_container);
         if (!ok)
-            return { false, false, 0, UniRecordAccessor<V>(nullptr) };
+            return { false, false, 0, accessor_t(nullptr) };
 
-        return { true, true, rid, UniRecordAccessor<V>(&(e->row_container.row)) };
+        return { true, true, rid, accessor_t(&(e->row_container.row)) };
     }
 
     void update_row(uintptr_t rid, value_type *new_row) {
@@ -688,6 +689,7 @@ public:
     using C = index_common<K, V, DBParams>;
     using typename C::key_type;
     using typename C::value_type;
+    using typename C::accessor_t;
     using typename C::sel_return_type;
     using typename C::ins_return_type;
     using typename C::del_return_type;
@@ -905,7 +907,7 @@ public:
                 Sto::item(this, make_bucket_key(buck)).observe(buck_vers),
                 false,
                 0,
-                SplitRecordAccessor<V>({ nullptr })
+                accessor_t({ nullptr })
             };
         }
     }
@@ -917,7 +919,7 @@ public:
         auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
         bool found;
         auto result = MvSplitAccessAll::run_select(&found, cell_accesses, this, e);
-        return {true, found, rid, SplitRecordAccessor<V>(result)};
+        return {true, found, rid, accessor_t(result)};
     }
 
     void update_row(uintptr_t rid, value_type* new_row) {

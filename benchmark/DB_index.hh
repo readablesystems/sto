@@ -580,7 +580,7 @@ struct SplitMvObjectBuilder<std::tuple<T...>> {
 };
 
 // MVCC default split parameters
-template <typename RowType>
+template <typename RowType, bool Split=false>
 struct SplitParams {
     // These are auto-generated or user-specified.
     using split_type_list = std::tuple<RowType>;
@@ -620,13 +620,13 @@ std::array<void*, SplitParams<RowType>::num_splits> TxSplitInto(const RowType* w
     return value_ptrs;
 }
 
-template <typename A, typename V>
+template <typename A, typename V, bool Split=false>
 class RecordAccessor;
 
-template <typename V>
+template <typename V, bool Split=false>
 class UniRecordAccessor;
 
-template <typename V>
+template <typename V, bool Split=false>
 class SplitRecordAccessor;
 
 template <typename K, typename V, typename DBParams>
@@ -646,13 +646,15 @@ public:
 
     typedef typename value_type::NamedColumn NamedColumn;
     typedef typename get_version<DBParams>::type version_type;
-    typedef AdaptiveValueContainer<V, version_type> value_container_type;
+    using value_container_type = AdaptiveValueContainer<
+        V, version_type, (static_cast<int>(DBParams::Split) > 0)>;
     typedef commutators::Commutator<value_type> comm_type;
     using RecordAccessor = typename value_container_type::RecordAccessor;
     using ColumnAccess = typename value_container_type::ColumnAccess;
 
     typedef typename std::conditional_t<DBParams::MVCC,
-      SplitRecordAccessor<V>, UniRecordAccessor<V>> accessor_t;
+      SplitRecordAccessor<V, (static_cast<int>(DBParams::Split) > 0)>,
+      UniRecordAccessor<V>> accessor_t;
     typedef typename std::conditional_t<DBParams::MVCC,
       void*, std::array<void*, SplitParams<V>::num_splits>> scan_value_t;
 

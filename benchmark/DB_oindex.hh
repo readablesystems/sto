@@ -12,10 +12,11 @@ public:
     using typename C::key_type;
     using typename C::value_type;
     using typename C::NamedColumn;
+    using typename C::accessor_t;
     using typename C::sel_return_type;
     using typename C::ins_return_type;
     using typename C::del_return_type;
-    typedef std::tuple<bool, bool, uintptr_t, UniRecordAccessor<V>> sel_split_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, accessor_t> sel_split_return_type;
 
     using typename C::version_type;
     using typename C::value_container_type;
@@ -138,8 +139,8 @@ public:
             return select_row(reinterpret_cast<uintptr_t>(e), acc);
         } else {
             if (!register_internode_version(lp.node(), lp.full_version_value()))
-                return {false, false, 0, UniRecordAccessor<V>(nullptr)};
-            return {true, false, 0, UniRecordAccessor<V>(nullptr)};
+                return {false, false, 0, accessor_t(nullptr)};
+            return {true, false, 0, accessor_t(nullptr)};
         }
     }
 #endif
@@ -169,7 +170,7 @@ public:
             register_internode_version(lp.node(), lp),
             false,
             0,
-            UniRecordAccessor<V>(nullptr)
+            accessor_t(nullptr)
         };
     }
 
@@ -286,7 +287,7 @@ public:
 
         if (index_read_my_write) {
             if (has_delete(row_item)) {
-                return {true, false, 0, UniRecordAccessor<V>(nullptr)};
+                return {true, false, 0, accessor_t(nullptr)};
             }
             if (any_has_write || has_row_update(row_item)) {
                 value_type *vptr;
@@ -294,7 +295,7 @@ public:
                     vptr = &e->row_container.row;
                 else
                     vptr = row_item.template raw_write_value<value_type *>();
-                return {true, true, rid, UniRecordAccessor<V>(vptr)};
+                return {true, true, rid, accessor_t(vptr)};
             }
         }
 
@@ -302,10 +303,10 @@ public:
         if (!ok)
             goto abort;
 
-        return {true, true, rid, UniRecordAccessor<V>(&(e->row_container.row))};
+        return {true, true, rid, accessor_t(&(e->row_container.row))};
 
     abort:
-        return {false, false, 0, UniRecordAccessor<V>(nullptr)};
+        return {false, false, 0, accessor_t(nullptr)};
     }
 
     void update_row(uintptr_t rid, value_type *new_row) {
@@ -1050,23 +1051,43 @@ template <typename K, typename V, typename DBParams>
 __thread typename ordered_index<K, V, DBParams>::table_params::threadinfo_type* ordered_index<K, V, DBParams>::ti;
 
 template <typename K, typename V, typename DBParams>
-class mvcc_ordered_index : public TObject {
+class mvcc_ordered_index : public TObject, public index_common<K, V, DBParams> {
 public:
-    typedef K key_type;
-    typedef V value_type;
-    typedef commutators::Commutator<value_type> comm_type;
+    using C = index_common<K, V, DBParams>;
+    using typename C::key_type;
+    using typename C::value_type;
+    using typename C::NamedColumn;
+    using typename C::accessor_t;
+    using typename C::sel_return_type;
+    using typename C::ins_return_type;
+    using typename C::del_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, accessor_t> sel_split_return_type;
+
+    using typename C::version_type;
+    using typename C::value_container_type;
+    using typename C::comm_type;
+    using typename C::ColumnAccess;
+
+    using C::invalid_bit;
+    using C::insert_bit;
+    using C::delete_bit;
+    using C::row_update_bit;
+    using C::row_cell_bit;
+
+    using C::has_insert;
+    using C::has_delete;
+    using C::has_row_update;
+    using C::has_row_cell;
+
+    using C::sel_abort;
+    using C::ins_abort;
+    using C::del_abort;
+
+    using C::index_read_my_write;
 
     static constexpr bool Commute = DBParams::Commute;
 
-    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1u;
-    static constexpr TransItem::flags_type row_update_bit = TransItem::user0_bit << 2u;
-    static constexpr TransItem::flags_type row_cell_bit = TransItem::user0_bit << 3u;
     static constexpr uintptr_t internode_bit = 1;
-
-    typedef typename value_type::NamedColumn NamedColumn;
-
-    static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
     typedef typename index_common<K, V, DBParams>::MvInternalElement internal_elem;
 
@@ -1084,13 +1105,6 @@ public:
 
     typedef typename table_type::node_type node_type;
     typedef typename unlocked_cursor_type::nodeversion_value_type nodeversion_value_type;
-
-    using accessor_t = typename index_common<K, V, DBParams>::accessor_t;
-
-    typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
-    typedef std::tuple<bool, bool>                               ins_return_type;
-    typedef std::tuple<bool, bool>                               del_return_type;
-    typedef std::tuple<bool, bool, uintptr_t, SplitRecordAccessor<V>> sel_split_return_type;
 
     using index_t = mvcc_ordered_index<K, V, DBParams>;
     using column_access_t = typename split_version_helpers<index_t>::column_access_t;
@@ -1180,7 +1194,7 @@ public:
                 register_internode_version(lp.node(), lp.full_version_value()),
                 false,
                 0,
-                SplitRecordAccessor<V>({ nullptr })
+                accessor_t({ nullptr })
             };
         }
     }
@@ -1192,7 +1206,7 @@ public:
         auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
         bool found;
         auto result = MvSplitAccessAll::run_select(&found, cell_accesses, this, e);
-        return {true, found, rid, SplitRecordAccessor<V>(result)};
+        return {true, found, rid, accessor_t(result)};
     }
 
     void update_row(uintptr_t rid, value_type* new_row) {
