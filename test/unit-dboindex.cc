@@ -588,6 +588,126 @@ void test_fine_conflict2() {
     printf("pass %s\n", __FUNCTION__);
 }
 
+void test_fine_delete0() {
+    typedef FineIndex::NamedColumn nc;
+    FineIndex fi;
+    fi.thread_init();
+
+    init_findex(fi);
+
+    {
+        TestTransaction t1(0);
+        {
+            auto [success, found] = fi.delete_row(key_type(1));
+            assert(success && found);
+        }
+
+        TestTransaction t2(1);
+        {
+            auto [success, found, row, value] = fi.select_split_row(key_type(1), {{nc::tax, access_t::update}});
+            (void) row;
+            assert(success && found);
+            assert(value.d_tax() == 10);
+
+            auto new_row = Sto::tx_alloc<example_row>();
+            value.copy_into(new_row);
+            fi.update_row(row, new_row);
+        }
+
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(!t1.try_commit());
+    }
+
+    {
+        TestTransaction t1(0);
+        {
+            auto [success, found] = fi.delete_row(key_type(2));
+            assert(success && found);
+        }
+
+        TestTransaction t2(1);
+        {
+            auto [success, found, row, value] = fi.select_split_row(key_type(2), {{nc::tax, access_t::update}});
+            (void) row;
+            assert(success && found);
+            assert(value.d_tax() == 10);
+
+            auto new_row = Sto::tx_alloc<example_row>();
+            value.copy_into(new_row);
+            fi.update_row(row, new_row);
+        }
+
+        assert(t1.try_commit());
+
+        t2.use();
+        assert(!t2.try_commit());
+    }
+
+    printf("pass %s\n", __FUNCTION__);
+}
+
+void test_fine_delete1() {
+    typedef FineIndex::NamedColumn nc;
+    FineIndex fi;
+    fi.thread_init();
+
+    init_findex(fi);
+
+    {
+        TestTransaction t1(0);
+        {
+            auto [success, found, row, value] = fi.select_split_row(key_type(1), {{nc::tax, access_t::update}});
+            (void) row;
+            assert(success && found);
+            assert(value.d_tax() == 10);
+
+            auto new_row = Sto::tx_alloc<example_row>();
+            value.copy_into(new_row);
+            fi.update_row(row, new_row);
+        }
+
+        TestTransaction t2(1);
+        {
+            auto [success, found] = fi.delete_row(key_type(1));
+            assert(success && found);
+        }
+
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(!t1.try_commit());
+    }
+
+    {
+        TestTransaction t1(0);
+        {
+            auto [success, found, row, value] = fi.select_split_row(key_type(2), {{nc::tax, access_t::update}});
+            (void) row;
+            assert(success && found);
+            assert(value.d_tax() == 10);
+
+            auto new_row = Sto::tx_alloc<example_row>();
+            value.copy_into(new_row);
+            fi.update_row(row, new_row);
+        }
+
+        TestTransaction t2(1);
+        {
+            auto [success, found] = fi.delete_row(key_type(2));
+            assert(success && found);
+        }
+
+        assert(t1.try_commit());
+
+        t2.use();
+        assert(!t2.try_commit());
+    }
+
+    printf("pass %s\n", __FUNCTION__);
+}
+
 void test_mvcc_snapshot() {
     typedef CoarseIndex::NamedColumn nc;
     MVIndex mi;
@@ -650,6 +770,8 @@ int main() {
     test_fine_conflict0();
     test_fine_conflict1();
     test_fine_conflict2();
+    test_fine_delete0();
+    test_fine_delete1();
     test_mvcc_snapshot();
     printf("All tests pass!\n");
 
