@@ -141,6 +141,7 @@ using ValueType = {struct};
 static constexpr auto DEFAULT_SPLIT = {defaultsplit};
 static constexpr auto MAX_SPLITS = 2;
 static constexpr auto MAX_POINTERS = MAX_SPLITS;
+static constexpr auto POLICY_COUNT = SplitTable::Size;
 ''', defaultsplit=self.mdata.get('split', '0'))
 
         self.writelns('''\
@@ -297,11 +298,12 @@ if constexpr (Column < NamedColumn::{nextmember}) {{
         self.writeln('struct SplitTable {{')
 
         self.indent()
-        self.writeln(
-                'static constexpr auto Size = {size};',
-                size=len(self.mdata['splits']))
-        self.writeln(
-                'static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {{')
+        self.writelns('''\
+static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+static constexpr auto Size = {size};
+using SplitPolicy = int;
+static constexpr SplitPolicy Splits[Size][ColCount] = {{\
+''', size=len(self.mdata['splits']))
 
         self.indent()
         for split in self.mdata['splits']:
@@ -375,7 +377,7 @@ inline ValueType* pointer_of(ValueType* vptr) {{
         '''Output the accessors.'''
 
         self.writelns('''\
-const static auto split_of(int index, NamedColumn column) {{
+static constexpr const auto split_of(int index, NamedColumn column) {{
 {indent}return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
 }}
 

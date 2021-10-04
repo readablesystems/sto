@@ -83,8 +83,10 @@ constexpr NamedColumn RoundedNamedColumn() {
 }
 
 struct SplitTable {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
     static constexpr auto Size = 3;
-    static constexpr std::array<int, static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT)> Splits[Size] = {
+    using SplitPolicy = int;
+    static constexpr SplitPolicy Splits[Size][ColCount] = {
         { 0, 0, 0, 0 },
         { 1, 1, 0, 0 },
         { 0, 1, 0, 1 },
@@ -138,9 +140,10 @@ public:
     //template <NamedColumn Column>
     //using ValueAccessor = ::sto::adapter::ValueAccessor<accessor_info<Column>>;
     using ValueType = index_value;
-    static constexpr auto DEFAULT_SPLIT = 1;
+    static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
+    static constexpr auto POLICY_COUNT = SplitTable::Size;
 
     RecordAccessor() = default;
     template <typename... T>
@@ -160,7 +163,7 @@ public:
         return vptr;
     }
 
-    const static auto split_of(int index, NamedColumn column) {
+    static constexpr const auto split_of(int index, NamedColumn column) {
         return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
     }
 

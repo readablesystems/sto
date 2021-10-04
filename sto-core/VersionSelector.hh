@@ -186,7 +186,7 @@ public:
             (void) col_n;
             return 0;
         } else {
-            return split_of(DefaultSplit, nc(col_n));
+            return split_of(std::min(DefaultSplit, RecordAccessor::POLICY_COUNT - 1), nc(col_n));
         }
     }
 
@@ -260,6 +260,8 @@ public:
 
     void install(RowType* new_row) {
         row = *new_row;
+        //install_by_cell(0, new_row);
+        //install_by_cell(1, new_row);
     }
 
     void install_cell(const comm_type& comm) {
@@ -288,7 +290,7 @@ public:
         //return splitindex_;
     }
 
-    inline static int split_of(SplitType split, const nc column) {
+    inline static constexpr int split_of(SplitType split, const nc column) {
         return RecordAccessor::split_of(split, column);
     }
 
@@ -351,8 +353,7 @@ private:
         static_assert(Column >= nc(0));
         static_assert(Column < nc::COLCOUNT);
 
-        if constexpr (RecordAccessor::SplitTable::Splits[Split][
-                static_cast<std::underlying_type_t<nc>>(Column)] == Cell) {
+        if constexpr (split_of(Split, Column) == Cell) {
             auto& old_col = RecordAccessor::template get_value<Column>(&row);
             auto& new_col = RecordAccessor::template get_value<Column>(new_row);
             old_col = new_col;

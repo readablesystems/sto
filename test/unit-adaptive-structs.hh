@@ -2,9 +2,9 @@
 
 struct index_key {
     static constexpr int32_t key_1_min = 1;
-    static constexpr int32_t key_1_max = 65535;
+    static constexpr int32_t key_1_max = 2047;
     static constexpr int32_t key_2_min = 1;
-    static constexpr int32_t key_2_max = 65535;
+    static constexpr int32_t key_2_max = 2047;
 
     index_key() = default;
     index_key(int32_t k1, int32_t k2)

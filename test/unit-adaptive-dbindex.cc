@@ -24,8 +24,8 @@ private:
     using ValueType = index_value;
     using IndexType = typename std::conditional_t<
         Ordered,
-        ordered_index<KeyType, index_value, db_params::db_default_params>,
-        unordered_index<KeyType, index_value, db_params::db_default_params>>;
+        ordered_index<KeyType, index_value, db_params::db_default_ats_params>,
+        unordered_index<KeyType, index_value, db_params::db_default_ats_params>>;
     //using GlobalAdapterType = ADAPTER_OF(index_value);
     using RecordAccessor = typename ValueType::RecordAccessor;
     typedef index_value::NamedColumn nc;
@@ -33,13 +33,7 @@ private:
     // Helpers
 
     static IndexType CreateTable() {
-        if constexpr (Ordered) {
-            IndexType table;
-            table.thread_init();
-            return table;
-        }
-
-        IndexType table(4000000);
+        IndexType table(4000);
         table.thread_init();
         return table;
     }
@@ -52,7 +46,7 @@ private:
                  key2 <= std::min(KeyType::key_2_min + 999, KeyType::key_2_max);
                  ++key2) {
                 ValueType value {
-                    .data = { key1 + key2, key1 - key2 },
+                    .data = { (double)(key1 + key2), (double)(key1 - key2) },
                     .label = "default",
                     .flagged = false,
                 };
@@ -64,44 +58,35 @@ private:
     // Tests
 
     void CellTest();
-    void CounterTest();
     void ResplittingTest();
     void ResplitConflictTest();
     void ResplitInflightTest();
-    std::enable_if_t<Ordered, void> RowSelectTest();
-    std::enable_if_t<Ordered, void> StatsTest();
+    void RowSelectTest();
+    void StatsTest();
     void StructOfTest();
 };
 
 template <bool Ordered>
 void Tester<Ordered>::RunTests() {
     if constexpr (Ordered) {
-        printf("Testing Adapter on Ordered Index:\n");
+        printf("Testing Adaptive Timestamp Splitting on Ordered Index:\n");
     } else {
-        printf("Testing Adapter on Unordered Index:\n");
+        printf("Testing Adaptive Timestamp Splitting on Unordered Index:\n");
     }
 
     //sto::AdapterConfig::Enable(sto::AdapterConfig::Global);
 
     CellTest();
-
-    //CounterTest();
-    //StructOfTest();
-    //ResplittingTest();
+    RowSelectTest();
+    ResplittingTest();
     //ResplitInflightTest();
     //ResplitConflictTest();
-
-    if constexpr (Ordered) {
-        //sto::AdapterConfig::Enable(sto::AdapterConfig::Inline);
-
-        RowSelectTest();
-        StatsTest();
-    }
+    StatsTest();
 }
 
 template <bool Ordered>
 void Tester<Ordered>::CellTest() {
-    assert(RecordAccessor::DEFAULT_SPLIT == 1);
+    assert(RecordAccessor::DEFAULT_SPLIT == 0);
 
     assert(RecordAccessor::split_of(0, nc::data) == 0);
     assert(RecordAccessor::split_of(0, nc::data + 1) == 0);
@@ -122,77 +107,146 @@ void Tester<Ordered>::CellTest() {
 }
 
 template <bool Ordered>
-void Tester<Ordered>::CounterTest() {
-    /*
-    {
-        GlobalAdapterType::ResetThread();
-
-        ValueType v1_, v2_;
-        RecordAccessor v1(v1_), v2(v2_);
-        v2_.data = {1, 2};
-        assert(GlobalAdapterType::TGetRead(nc::data) == 0);
-        assert(GlobalAdapterType::TGetWrite(nc::data) == 0);
-        v1.data = v2.data;
-        assert(GlobalAdapterType::TGetRead(nc::data) == 1);
-        assert(GlobalAdapterType::TGetWrite(nc::data) == 1);
-    }
-
-    {
-        GlobalAdapterType::ResetThread();
-
-        ValueType v_;
-        RecordAccessor v(v_);
-        v_.data = {14};
-        assert(GlobalAdapterType::TGetRead(nc::data) == 0);
-        assert(GlobalAdapterType::TGetWrite(nc::data) == 0);
-        double x = v.data[0];
-        assert(x == 14);
-        assert(GlobalAdapterType::TGetRead(nc::data) == 1);
-        assert(GlobalAdapterType::TGetWrite(nc::data) == 0);
-        v.data(0, x);
-        assert(GlobalAdapterType::TGetRead(nc::data) == 1);
-        assert(GlobalAdapterType::TGetWrite(nc::data) == 1);
-    }
-
-    {
-        GlobalAdapterType::ResetThread();
-
-        ValueType v_;
-        RecordAccessor v(v_);
-        v_.data = {3};
-        assert(GlobalAdapterType::TGetRead(nc::data) == 0);
-        assert(GlobalAdapterType::TGetWrite(nc::data) == 0);
-        v.data(0)++;
-        assert(GlobalAdapterType::TGetRead(nc::data) == 0);
-        assert(GlobalAdapterType::TGetWrite(nc::data) == 1);
-        double x = v.data[0];
-        assert(x == 4);
-        assert(GlobalAdapterType::TGetRead(nc::data) == 1);
-        assert(GlobalAdapterType::TGetWrite(nc::data) == 1);
-    }
-    */
-
-    printf("Test pass: %s\n", __FUNCTION__);
-}
-
-template <bool Ordered>
 void Tester<Ordered>::ResplittingTest() {
-    /*
-    ValueType v_;
-    RecordAccessor v(v_);
-    v_.data = {1.2};
-    v_.label = "5.6";
-    v_.flagged = true;
-    assert(v.split_of(nc::COLCOUNT + (-1)) == 0);
+    auto table = CreateTable();
+    PopulateTable(table);
 
-    ValueType::RecordAccessor v2;
-    //ValueType::resplit(v2, v, nc::label);
-    assert(v.split_of(nc::COLCOUNT + (-1)) == 0);
-    assert(v2.split_of(nc::data) == 0);
-    assert(v2.split_of(nc::data + 1) == 0);
-    assert(v2.split_of(nc::label) == 1);
-    assert(v2.split_of(nc::flagged) == 1);
-    */
+    {
+        TestTransaction t1(1);
+
+        auto [success, found, row, value] = table.select_row(KeyType(1, 1), {
+                {nc::label, AccessType::read},
+                {nc::flagged, AccessType::read},
+                }, 1);
+        assert(success);
+        assert(found);
+        (void) row;
+        assert(value);
+        assert(value.label() == "default");
+        assert(!value.flagged());
+        assert(value.splitindex_ == 0);
+
+        // Resplit does not happen because transaction succeeded
+        assert(t1.try_commit());
+    }
+
+    {
+        TestTransaction t1(1);
+
+        {
+            auto [success, found, row, value] = table.select_row(KeyType(1, 1), {
+                    {nc::label, AccessType::read},
+                    {nc::flagged, AccessType::read},
+                    }, 1);
+            assert(success);
+            assert(found);
+            (void) row;
+            assert(value);
+            assert(value.label() == "default");
+            assert(!value.flagged());
+            assert(value.splitindex_ == 0);
+        }
+
+        TestTransaction t2(2);
+
+        {
+            auto [success, found, row, value] = table.select_row(KeyType(1, 1), {
+                    {nc::data, AccessType::update},
+                    {nc::data + 1, AccessType::update},
+                    }, 1);
+            assert(success);
+            assert(found);
+            assert(value);
+            assert(value.splitindex_ == 0);
+
+            ValueType* new_value = Sto::tx_alloc<ValueType>();
+            value.copy_into(new_value);
+            new_value->data[0]++;
+            new_value->data[1]++;
+
+            table.update_row(row, new_value);
+        }
+
+        assert(t2.try_commit());
+
+        assert(!t1.try_commit());  // Aborts, should now set the new split
+    }
+
+    {
+        TestTransaction t1(1);
+
+        auto [success, found, row, value] = table.select_row(KeyType(1, 1), {
+                {nc::label, AccessType::read},
+                {nc::flagged, AccessType::read},
+                });
+        assert(success);
+        assert(found);
+        (void) row;
+        assert(value);
+        assert(value.data(0) == 3);
+        assert(value.data(1) == 1);
+        assert(value.splitindex_ == 1);
+    }
+
+    {
+        TestTransaction t1(1);
+
+        {
+            auto [success, found, row, value] = table.select_row(KeyType(1, 1), {
+                    {nc::label, AccessType::read},
+                    {nc::flagged, AccessType::read},
+                    }, 1);
+            assert(success);
+            assert(found);
+            (void) row;
+            assert(value);
+            assert(value.label() == "default");
+            assert(!value.flagged());
+            assert(value.splitindex_ == 1);
+        }
+
+        TestTransaction t2(2);
+
+        {
+            auto [success, found, row, value] = table.select_row(KeyType(1, 1), {
+                    {nc::data, AccessType::update},
+                    {nc::data + 1, AccessType::update},
+                    }, 1);
+            assert(success);
+            assert(found);
+            assert(value);
+            assert(value.data(0) == 3);
+            assert(value.data(1) == 1);
+            assert(value.splitindex_ == 1);
+
+            ValueType* new_value = Sto::tx_alloc<ValueType>();
+            value.copy_into(new_value);
+            new_value->data[0]++;
+            new_value->data[1]++;
+
+            table.update_row(row, new_value);
+        }
+
+        assert(t2.try_commit());
+
+        assert(!t1.try_commit());  // Fails because of hierarchical versions
+    }
+
+    {
+        TestTransaction t1(1);
+
+        auto [success, found, row, value] = table.select_row(KeyType(1, 1), {
+                {nc::label, AccessType::read},
+                {nc::flagged, AccessType::read},
+                });
+        assert(success);
+        assert(found);
+        (void) row;
+        assert(value);
+        assert(value.data(0) == 4);
+        assert(value.data(1) == 2);
+        assert(value.splitindex_ == 1);
+    }
 
     printf("Test pass: %s\n", __FUNCTION__);
 }
@@ -412,8 +466,7 @@ void Tester<Ordered>::StructOfTest() {
 }
 
 template <bool Ordered>
-std::enable_if_t<Ordered, void>
-Tester<Ordered>::RowSelectTest() {
+void Tester<Ordered>::RowSelectTest() {
     auto table = CreateTable();
     PopulateTable(table);
 
@@ -502,15 +555,12 @@ Tester<Ordered>::RowSelectTest() {
 }
 
 template <bool Ordered>
-std::enable_if_t<Ordered, void>
-Tester<Ordered>::StatsTest() {
-    /*
+void Tester<Ordered>::StatsTest() {
     auto table = CreateTable();
     PopulateTable(table);
 
     {
         TestTransaction t1(1);
-        t1.set_restarted();
 
         auto [success, found, row, value] = table.select_row(KeyType(1, 1), {
                 {nc::data, AccessType::read},
@@ -521,19 +571,12 @@ Tester<Ordered>::StatsTest() {
         assert(success);
         assert(found);
         (void) row;
-        assert(value.data[0] == 2);
-        assert(value.data[1] == 0);
-        assert(value.label == std::string("default"));
-        assert(value.flagged == false);
+        assert(value.data(0) == 2);
+        assert(value.data(1) == 0);
+        assert(value.label() == std::string("default"));
+        assert(value.flagged() == false);
 
-        // Yes selections, yes restart = yes stats
-        assert(value.stats_);
-
-        // Read everything
-        assert(value.stats_->read_data.to_ullong() == 0b1111);
-        assert(value.stats_->write_data.to_ullong() == 0b0000);
-
-        t1.try_commit();
+        assert(t1.try_commit());
     }
 
     {
@@ -548,39 +591,34 @@ Tester<Ordered>::StatsTest() {
                 });
         assert(success);
         assert(found);
-        assert(value.label == std::string("default"));
-        assert(value.flagged == false);
+        assert(value.label() == std::string("default"));
+        assert(value.flagged() == false);
 
-        // Yes selections, yes restart = yes stats
-        assert(value.stats_);
+        assert(t1.get_tx().has_stats());
 
-        // Read some things
-        assert(value.stats_->read_data.to_ullong() == 0b1100);
-        assert(value.stats_->write_data.to_ullong() == 0b0000);
+        ValueType* new_value = Sto::tx_alloc<ValueType>();
+        value.copy_into(new_value);
 
-        // Write to some stuff too
-        value.data(0) = 2.5;
-        value.data(1) = 0.5;
-        assert(value.stats_->read_data.to_ullong() == 0b1100);
-        assert(value.stats_->write_data.to_ullong() == 0b0011);
+        new_value->data[0] = 2.5;
+        new_value->data[1] = 0.5;
 
-        table.update_row(row, value);
+        table.update_row(row, new_value);
 
-        t1.try_commit();
+        assert(t1.try_commit());
     }
-    */
 
     printf("Test pass: %s\n", __FUNCTION__);
 }
 
 int main() {
+    Sto::global_init();
     {
         Tester<true> tester;
         tester.RunTests();
     }
     {
-        //Tester<false> tester;
-        //tester.RunTests();
+        Tester<false> tester;
+        tester.RunTests();
     }
     printf("ALL TESTS PASS, ignore errors after this.\n");
     auto advancer = std::thread(&Transaction::epoch_advancer, nullptr);

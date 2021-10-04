@@ -68,6 +68,7 @@ public:
     static constexpr bool NodeTrack = false;
     static constexpr bool Commute = false;
     static constexpr db_split_type Split = db_split_type::None;
+    static constexpr bool UseATS = false;
 };
 
 class db_default_sts_params : public db_default_params {
@@ -78,6 +79,7 @@ public:
 class db_default_ats_params : public db_default_params {
 public:
     static constexpr db_split_type Split = db_split_type::Adaptive;
+    static constexpr bool UseATS = true;
 };
 
 class db_default_commute_params : public db_default_params {

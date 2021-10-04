@@ -309,7 +309,20 @@ public:
         return {false, false, 0, accessor_t(nullptr)};
     }
 
-    void update_row(uintptr_t rid, value_type *new_row) {
+    std::enable_if_t<!DBParams::UseATS, void>
+    update_row(uintptr_t rid, value_type *new_row) {
+        auto e = reinterpret_cast<internal_elem*>(rid);
+        auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+        if (value_is_small) {
+            row_item.acquire_write(e->version(), *new_row);
+        } else {
+            row_item.acquire_write(e->version(), new_row);
+        }
+    }
+
+    std::enable_if_t<DBParams::UseATS, void>
+    update_row(uintptr_t rid, value_type *new_row, int x=0) {
+        (void) x;
         auto e = reinterpret_cast<internal_elem*>(rid);
         auto row_item = Sto::item(this, item_key_t::row_item_key(e));
         if (value_is_small) {

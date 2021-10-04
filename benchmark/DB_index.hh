@@ -278,6 +278,8 @@ public:
                 items[i] = &item.item();
             }
         }
+
+        //std::cout << "(item, item) " << items[0] << ", " << items[1] << std::endl;
         return { any_has_write, items };
     }
 
