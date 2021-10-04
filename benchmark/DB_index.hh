@@ -649,7 +649,7 @@ public:
     typedef typename value_type::NamedColumn NamedColumn;
     typedef typename get_version<DBParams>::type version_type;
     using value_container_type = AdaptiveValueContainer<
-        V, version_type, (static_cast<int>(DBParams::Split) > 0)>;
+        V, version_type, (static_cast<int>(DBParams::Split) > 0), DBParams::UseATS>;
     typedef commutators::Commutator<value_type> comm_type;
     using RecordAccessor = typename value_container_type::RecordAccessor;
     using ColumnAccess = typename value_container_type::ColumnAccess;

@@ -125,7 +125,8 @@ inline AccessType& operator|=(AccessType& lhs, const AccessType& rhs) {
 // Container for adaptively-split value containers
 template <typename RowType, typename VersImpl,
           typename RowType::RecordAccessor::SplitType DefaultSplit=
-               RowType::RecordAccessor::DEFAULT_SPLIT>
+               RowType::RecordAccessor::DEFAULT_SPLIT,
+          bool UseATS=false>
 class AdaptiveValueContainer {
 public:
     using comm_type = commutators::Commutator<RowType>;
@@ -286,8 +287,12 @@ public:
     }
 
     inline SplitType split() {
-        return splitindex_.load(std::memory_order::memory_order_relaxed);
-        //return splitindex_;
+        if constexpr (UseATS) {
+            return splitindex_.load(std::memory_order::memory_order_relaxed);
+            //return splitindex_;
+        } else {
+            return DefaultSplit;
+        }
     }
 
     inline static constexpr int split_of(SplitType split, const nc column) {
