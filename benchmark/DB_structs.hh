@@ -2,6 +2,7 @@
 
 #include "config.h"
 
+#include <bitset>
 #include <string>
 #include <iostream>
 #include <cstring>

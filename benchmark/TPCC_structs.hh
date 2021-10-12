@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bitset>
 #include <string>
 #include <list>
 #include <cassert>

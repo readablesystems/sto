@@ -221,7 +221,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
     TXP_ACCOUNT(txp_max_transbuffer, buf_.buffer_size());
     TXP_ACCOUNT(txp_total_transbuffer, buf_.buffer_size());
 
-    bool report_stats = has_stats_ && TThread::rng().chance(100);
+    //bool report_stats = has_stats_ && TThread::rng().chance(100);
     /*
     if (TThread::id() == 0 && report_stats) {
         printf("Stats have to be reported!\n");
@@ -230,6 +230,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
 
     TransItem* it;
 
+    /*
     if (report_stats) {
         it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
         for (unsigned tidx = tset_size_; tidx != 0; --tidx) {
@@ -239,6 +240,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
             }
         }
     }
+    */
 
     if (!any_writes_)
         goto unlock_all;
@@ -358,6 +360,8 @@ bool Transaction::try_commit() {
     unsigned nwriteset = 0;
     writeset[0] = tset_size_;
 
+    bool report_stats = has_stats_ && TThread::rng().chance(100);
+
     TransItem* it = nullptr;
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
@@ -451,6 +455,9 @@ bool Transaction::try_commit() {
             TXP_INCREMENT(txp_total_w);
             it->owner()->install(*it, *this);
         }
+        if (report_stats && it->has_preferred_split()) {
+            it->owner()->update_split(*it, true);
+        }
     }
 #else
     if (nwriteset) {
@@ -462,6 +469,9 @@ bool Transaction::try_commit() {
                 it = &tset_[*idxit / tset_chunk][*idxit % tset_chunk];
             TXP_INCREMENT(txp_total_w);
             it->owner()->install(*it, *this);
+            if (report_stats && it->has_preferred_split()) {
+                it->owner()->update_split(*it, true);
+            }
         }
     }
 #endif

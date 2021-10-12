@@ -283,6 +283,9 @@ public:
         //if (splitindex_ != new_split) {
         //    splitindex_ = new_split;
         //}
+        //fence();
+        //splitindex_ = new_split;
+        //fence();
         return true;
     }
 
@@ -375,6 +378,7 @@ private:
     */
 
     std::atomic<SplitType> splitindex_ = {};
+    //SplitType splitindex_ = {};
     std::array<version_type, num_versions> versions_;
 };
 

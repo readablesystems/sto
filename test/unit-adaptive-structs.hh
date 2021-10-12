@@ -1,3 +1,4 @@
+#include <bitset>
 #include <variant>
 
 struct index_key {

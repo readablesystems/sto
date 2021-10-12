@@ -2942,7 +2942,7 @@ struct SplitTable {
     using SplitPolicy = int;
     static constexpr SplitPolicy Splits[Size][ColCount] = {
         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-        { 1, 1, 0, 0, 0, 0 },
+        { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0 },
     };
 };
 
