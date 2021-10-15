@@ -263,7 +263,8 @@ public:
 
     template <typename T>
     static std::pair<bool, std::array<TransItem*, T::NUM_VERSIONS>>
-    extract_items(const std::array<AccessType, T::NUM_VERSIONS>& accesses, TObject *tobj, internal_elem *e, const typename T::SplitType& preferred_split) {
+    extract_items(const std::array<AccessType, T::NUM_VERSIONS>& accesses, TObject *tobj, internal_elem *e, const typename T::SplitType& current_split, const typename T::SplitType& preferred_split) {
+        bool any_accessed = false;
         bool any_has_write = false;
         std::array<TransItem*, T::NUM_VERSIONS> items { nullptr };
         std::fill(items.begin(), items.end(), nullptr);
@@ -271,11 +272,18 @@ public:
         for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
             if (accesses[i] != AccessType::none) {
                 auto item = Sto::item(tobj, item_key_t(e, i));
+                any_accessed = true;
                 any_has_write |= IndexType::index_read_my_write && item.has_write();
                 if (preferred_split >= 0) {
                     item.set_preferred_split(preferred_split);
                 }
                 items[i] = &item.item();
+            }
+        }
+
+        if (any_accessed) {
+            if (current_split != preferred_split) {
+                Sto::set_stats();
             }
         }
 

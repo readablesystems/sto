@@ -670,7 +670,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     order_cidx_key k1(q_w_id, q_d_id, q_c_id, std::numeric_limits<uint64_t>::max());
 
     bool scan_success = db.tbl_order_customer_index(q_w_id)
-            .template range_scan<decltype(scan_callback), true/*reverse*/>(k1, k0, scan_callback, RowAccess::ObserveExists, true, 1/*reverse scan for only 1 item*/);
+        .template range_scan<decltype(scan_callback), true/*reverse*/>(k1, k0, scan_callback, RowAccess::ObserveExists, true, 1/*reverse scan for only 1 item*/);
     CHK(scan_success);
 
     if (cus_o_id > 0) {
@@ -706,14 +706,24 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         orderline_key olk0(q_w_id, q_d_id, cus_o_id, 0);
         orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint64_t>::max());
 
-        scan_success = db.tbl_orderlines(q_w_id)
-                .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk0, olk1, ol_scan_callback,
-                        {{ol_nc::ol_i_id, access_t::read},
-                         {ol_nc::ol_supply_w_id, access_t::read},
-                         {ol_nc::ol_quantity, access_t::read},
-                         {ol_nc::ol_amount, access_t::read},
-                         {ol_nc::ol_delivery_d, access_t::read}}
-                );
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            scan_success = db.tbl_orderlines(q_w_id)
+                    .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk0, olk1, ol_scan_callback,
+                            {{ol_nc::ol_i_id, access_t::read},
+                             {ol_nc::ol_supply_w_id, access_t::read},
+                             {ol_nc::ol_quantity, access_t::read},
+                             {ol_nc::ol_amount, access_t::read},
+                             {ol_nc::ol_delivery_d, access_t::read}},
+                    -1/* unlimited results*/, 1/* preferred split*/);
+        } else {
+            scan_success = db.tbl_orderlines(q_w_id)
+                    .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk0, olk1, ol_scan_callback,
+                            {{ol_nc::ol_i_id, access_t::read},
+                             {ol_nc::ol_supply_w_id, access_t::read},
+                             {ol_nc::ol_quantity, access_t::read},
+                             {ol_nc::ol_amount, access_t::read},
+                             {ol_nc::ol_delivery_d, access_t::read}});
+        }
         CHK(scan_success);
     } else {
         // order doesn't exist, simply commit the transaction
@@ -933,10 +943,17 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     orderline_key olk0(q_w_id, q_d_id, oid_lower, 0);
     orderline_key olk1(q_w_id, q_d_id, d_next_oid, 0);
 
-    bool scan_success = db.tbl_orderlines(q_w_id)
-            .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk1, olk0, ol_scan_callback,
-                    {{ol_nc::ol_i_id, access_t::read}}
-            );
+    bool scan_success = false;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        scan_success = db.tbl_orderlines(q_w_id)
+                .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk1, olk0, ol_scan_callback,
+                        {{ol_nc::ol_i_id, access_t::read}},
+                    -1/* unlimited results*/, 1/* preferred split*/);
+    } else {
+        scan_success = db.tbl_orderlines(q_w_id)
+                .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk1, olk0, ol_scan_callback,
+                        {{ol_nc::ol_i_id, access_t::read}});
+    }
     CHK(scan_success);
 
     for (auto iid : ol_iids) {

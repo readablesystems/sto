@@ -228,7 +228,7 @@ public:
                std::initializer_list<ColumnAccess> accesses,
                int preferred_split=-1) {
         auto e = reinterpret_cast<internal_elem *>(rid);
-        const auto split = e->row_container.split();
+        const auto split = e->row_container.split();  // This is a ~2% overhead
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
         auto cell_accesses = e->row_container.split_accesses(split, accesses);
 
@@ -236,7 +236,7 @@ public:
         bool any_has_write;
         bool ok = true;
         std::tie(any_has_write, cell_items) = extract_items<value_container_type>(
-                cell_accesses, this, e, preferred_split);
+                cell_accesses, this, e, split, preferred_split);
 
         if (is_phantom(e, row_item)) {
             return { false, false, 0, nullptr };
@@ -252,9 +252,6 @@ public:
                     vptr = &e->row_container.row;
                 else
                     vptr = row_item.template raw_write_value<value_type*>();
-                if (split != preferred_split) {
-                    Sto::set_stats();
-                }
                 return { true, true, rid, e->row_container.get(split, vptr) };
             }
         }
@@ -264,9 +261,6 @@ public:
             return { false, false, 0, nullptr };
         }
 
-        if (split != preferred_split) {
-            Sto::set_stats();
-        }
         return { true, true, rid, e->row_container.get(split) };
     }
 
@@ -532,6 +526,7 @@ public:
     }
 
     void update_split(TransItem& item, bool committed) override {
+        (void) committed;
         //if (!committed && item.has_preferred_split()) {
             auto key = item.key<item_key_t>();
             internal_elem *e = key.internal_elem_ptr();

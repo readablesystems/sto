@@ -234,7 +234,7 @@ public:
         bool any_has_write;
         bool ok;
         std::tie(any_has_write, cell_items) = extract_items<value_container_type>(
-                cell_accesses, this, e, preferred_split);
+                cell_accesses, this, e, split, preferred_split);
 
         if (is_phantom(e, row_item)) {
             return { false, false, 0, nullptr };
@@ -250,9 +250,6 @@ public:
                     vptr = &e->row_container.row;
                 else
                     vptr = row_item.template raw_write_value<value_type*>();
-                if (split != preferred_split) {
-                    Sto::set_stats();
-                }
                 return { true, true, rid, e->row_container.get(split, vptr) };
             }
         }
@@ -262,9 +259,6 @@ public:
             return { false, false, 0, nullptr };
         }
 
-        if (split != preferred_split) {
-            Sto::set_stats();
-        }
         return { true, true, rid, e->row_container.get(split) };
     }
 
@@ -611,6 +605,73 @@ public:
         return scanner.scan_succeeded_;
     }
 
+    template <typename Callback, bool Reverse>
+    bool range_scan(const key_type& begin, const key_type& end, Callback callback,
+                    std::initializer_list<ColumnAccess> accesses, bool phantom_protection = true, int limit = -1, int preferred_split = -1) {
+        (void) preferred_split;
+        assert((limit == -1) || (limit > 0));
+        auto node_callback = [&] (leaf_type* node,
+            typename unlocked_cursor_type::nodeversion_value_type version) {
+            return ((!phantom_protection) || scan_track_node_version(node, version));
+        };
+
+        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
+            const auto split = e->row_container.split();  // This is a ~2% overhead
+
+            TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
+                                                      : Sto::fresh_item(this, item_key_t::row_item_key(e));
+
+            auto cell_accesses = e->row_container.split_accesses(split, accesses);
+
+            bool any_has_write;
+            std::array<TransItem*, value_container_type::num_versions> cell_items {};
+            std::tie(any_has_write, cell_items) = extract_items<value_container_type>(cell_accesses, this, e, split, preferred_split);
+
+            if (index_read_my_write) {
+                if (has_delete(row_item)) {
+                    ret = true;
+                    count = false;
+                    return true;
+                }
+                if (any_has_write) {
+                    if (has_insert(row_item))
+                        ret = callback(key_type(key), &(e->row_container.row));
+                    else
+                        ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
+                    return true;
+                }
+            }
+
+            bool ok = access_all(cell_accesses, cell_items, e->row_container);
+            if (!ok)
+                return false;
+            //bool ok = item.observe(e->version);
+            //if (Adaptive) {
+            //    ok = item.observe(e->version, true/*force occ*/);
+            //} else {
+            //    ok = item.observe(e->version);
+            //}
+
+            // skip invalid (inserted but yet committed) values, but do not abort
+            if (!e->valid()) {
+                ret = true;
+                count = false;
+                return true;
+            }
+
+            ret = callback(key_type(key), &(e->row_container.row));
+            return true;
+        };
+
+        range_scanner<decltype(node_callback), decltype(value_callback), Reverse>
+            scanner(end, node_callback, value_callback, limit);
+        if (Reverse)
+            table_.rscan(begin, true, scanner, *ti);
+        else
+            table_.scan(begin, true, scanner, *ti);
+        return scanner.scan_succeeded_;
+    }
+
     value_type *nontrans_get(const key_type& k) {
         unlocked_cursor_type lp(table_, k);
         bool found = lp.find_unlocked(*ti);
@@ -778,6 +839,7 @@ public:
     }
 
     void update_split(TransItem& item, bool committed) override {
+        (void) committed;
         //if (!committed && item.has_preferred_split()) {
             auto key = item.key<item_key_t>();
             internal_elem *e = key.internal_elem_ptr();
@@ -1379,7 +1441,8 @@ public:
     template <typename Callback, bool Reverse>
     bool range_scan(const key_type& begin, const key_type& end, Callback callback,
                     std::initializer_list<column_access_t> accesses,
-                    bool phantom_protection = true, int limit = -1) {
+                    bool phantom_protection = true, int limit = -1, int preferred_split = -1) {
+        (void) preferred_split;
         assert((limit == -1) || (limit > 0));
         auto cell_accesses = mvcc_column_to_cell_accesses<SplitParams<value_type>>(accesses);
         auto node_callback = [&] (leaf_type* node,
@@ -1403,7 +1466,8 @@ public:
 
     template <typename Callback, bool Reverse>
     bool range_scan(const key_type& begin, const key_type& end, Callback callback,
-                    RowAccess access, bool phantom_protection = true, int limit = -1) {
+                    RowAccess access, bool phantom_protection = true, int limit = -1, int preferred_split = -1) {
+        (void) preferred_split;
         // TODO: Scan ignores blind writes right now
         access_t each_cell = access_t::none;
         if (access == RowAccess::ObserveValue || access == RowAccess::ObserveExists) {
