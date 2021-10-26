@@ -354,7 +354,7 @@ public:
             TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
             if (is_phantom(e, row_item))
-                goto abort;
+                return ins_abort;
 
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
@@ -376,7 +376,7 @@ public:
                 else
                     ok = version_adapter::select_for_overwrite(row_item, e->version(), vptr);
                 if (!ok)
-                    goto abort;
+                    return ins_abort;
                 if (index_read_my_write) {
                     if (has_insert(row_item)) {
                         copy_row(e, vptr);
@@ -385,7 +385,7 @@ public:
             } else {
                 // observes that the row exists, but nothing more
                 if (!row_item.observe(e->version()))
-                    goto abort;
+                    return ins_abort;
             }
 
         } else {
@@ -422,13 +422,10 @@ public:
 
             // update the node version already in the read set and modified by split
             if (!update_internode_version(node, orig_nv, new_nv))
-                goto abort;
+                return ins_abort;
         }
 
         return ins_return_type(true, found);
-
-    abort:
-        return ins_return_type(false, false);
     }
 
     del_return_type
@@ -440,7 +437,7 @@ public:
             TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
             if (is_phantom(e, row_item)) {
-                goto abort;
+                return del_abort;
             }
 
             if (index_read_my_write) {
@@ -458,23 +455,27 @@ public:
             // select_for_update will register an observation and set the write bit of
             // the TItem
             if (!version_adapter::select_for_update(row_item, e->version())) {
-                goto abort;
+                return del_abort;
+            }
+            for (auto i = 0; i < value_container_type::NUM_VERSIONS; ++i) {
+                auto item = Sto::item(this, item_key_t(e, i));
+                if (!version_adapter::select_for_update(
+                        item, e->row_container.version_at(i))) {
+                    return del_abort;
+                }
             }
             fence();
             if (e->deleted) {
-                goto abort;
+                return del_abort;
             }
             row_item.add_flags(delete_bit);
         } else {
             if (!register_internode_version(lp.node(), lp)) {
-                goto abort;
+                return del_abort;
             }
         }
 
         return del_return_type(true, found);
-
-    abort:
-        return del_return_type(false, false);
     }
 
     template <typename Callback, bool Reverse>
