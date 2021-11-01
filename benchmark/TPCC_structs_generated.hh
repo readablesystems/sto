@@ -107,14 +107,25 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::w_ytd;
 }
 
-struct SplitTable {
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr auto Size = 2;
-    using SplitPolicy = int;
-    static constexpr SplitPolicy Splits[Size][ColCount] = {
-        { 0, 0, 0, 0, 0, 0, 0, 0 },
-        { 1, 1, 1, 1, 1, 1, 1, 0 },
-    };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
 };
 
 template <NamedColumn Column>
@@ -208,7 +219,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = warehouse_value_datatypes::NamedColumn;
-    using SplitTable = warehouse_value_datatypes::SplitTable;
+    //using SplitTable = warehouse_value_datatypes::SplitTable;
     using SplitType = warehouse_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<warehouse_value>;
     //template <NamedColumn Column>
@@ -217,14 +228,14 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICY_COUNT = SplitTable::Size;
+    static constexpr auto POLICIES = 2;
 
     RecordAccessor() = default;
     template <typename... T>
     RecordAccessor(T ...vals) : vptrs_({ pointer_of(vals)... }) {}
 
     inline operator bool() const {
-        return vptrs_ [0] != nullptr;
+        return vptrs_[0] != nullptr;
     }
 
     /*
@@ -237,8 +248,14 @@ public:
         return vptr;
     }
 
-    static constexpr const auto split_of(int index, NamedColumn column) {
-        return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+    inline static constexpr const auto split_of(int index, NamedColumn column) {
+        if (index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if (index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
     }
 
     const auto cell_of(NamedColumn column) const {
@@ -484,14 +501,25 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::d_ytd;
 }
 
-struct SplitTable {
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr auto Size = 2;
-    using SplitPolicy = int;
-    static constexpr SplitPolicy Splits[Size][ColCount] = {
-        { 0, 0, 0, 0, 0, 0, 0, 0 },
-        { 1, 1, 1, 1, 1, 1, 1, 0 },
-    };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
 };
 
 template <NamedColumn Column>
@@ -585,7 +613,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = district_value_datatypes::NamedColumn;
-    using SplitTable = district_value_datatypes::SplitTable;
+    //using SplitTable = district_value_datatypes::SplitTable;
     using SplitType = district_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<district_value>;
     //template <NamedColumn Column>
@@ -594,14 +622,14 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICY_COUNT = SplitTable::Size;
+    static constexpr auto POLICIES = 2;
 
     RecordAccessor() = default;
     template <typename... T>
     RecordAccessor(T ...vals) : vptrs_({ pointer_of(vals)... }) {}
 
     inline operator bool() const {
-        return vptrs_ [0] != nullptr;
+        return vptrs_[0] != nullptr;
     }
 
     /*
@@ -614,8 +642,14 @@ public:
         return vptr;
     }
 
-    static constexpr const auto split_of(int index, NamedColumn column) {
-        return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+    inline static constexpr const auto split_of(int index, NamedColumn column) {
+        if (index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if (index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
     }
 
     const auto cell_of(NamedColumn column) const {
@@ -826,13 +860,16 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::c_ids;
 }
 
-struct SplitTable {
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr auto Size = 1;
-    using SplitPolicy = int;
-    static constexpr SplitPolicy Splits[Size][ColCount] = {
-        { 0 },
-    };
+    static constexpr int policy[ColCount] = { 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
 };
 
 template <NamedColumn Column>
@@ -856,7 +893,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = customer_idx_value_datatypes::NamedColumn;
-    using SplitTable = customer_idx_value_datatypes::SplitTable;
+    //using SplitTable = customer_idx_value_datatypes::SplitTable;
     using SplitType = customer_idx_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<customer_idx_value>;
     //template <NamedColumn Column>
@@ -865,14 +902,14 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICY_COUNT = SplitTable::Size;
+    static constexpr auto POLICIES = 1;
 
     RecordAccessor() = default;
     template <typename... T>
     RecordAccessor(T ...vals) : vptrs_({ pointer_of(vals)... }) {}
 
     inline operator bool() const {
-        return vptrs_ [0] != nullptr;
+        return vptrs_[0] != nullptr;
     }
 
     /*
@@ -885,8 +922,11 @@ public:
         return vptr;
     }
 
-    static constexpr const auto split_of(int index, NamedColumn column) {
-        return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+    inline static constexpr const auto split_of(int index, NamedColumn column) {
+        if (index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        return 0;
     }
 
     const auto cell_of(NamedColumn column) const {
@@ -1084,14 +1124,25 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::c_data;
 }
 
-struct SplitTable {
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr auto Size = 2;
-    using SplitPolicy = int;
-    static constexpr SplitPolicy Splits[Size][ColCount] = {
-        { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-        { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0 },
-    };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
 };
 
 template <NamedColumn Column>
@@ -1285,7 +1336,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = customer_value_datatypes::NamedColumn;
-    using SplitTable = customer_value_datatypes::SplitTable;
+    //using SplitTable = customer_value_datatypes::SplitTable;
     using SplitType = customer_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<customer_value>;
     //template <NamedColumn Column>
@@ -1294,14 +1345,14 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICY_COUNT = SplitTable::Size;
+    static constexpr auto POLICIES = 2;
 
     RecordAccessor() = default;
     template <typename... T>
     RecordAccessor(T ...vals) : vptrs_({ pointer_of(vals)... }) {}
 
     inline operator bool() const {
-        return vptrs_ [0] != nullptr;
+        return vptrs_[0] != nullptr;
     }
 
     /*
@@ -1314,8 +1365,14 @@ public:
         return vptr;
     }
 
-    static constexpr const auto split_of(int index, NamedColumn column) {
-        return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+    inline static constexpr const auto split_of(int index, NamedColumn column) {
+        if (index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if (index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
     }
 
     const auto cell_of(NamedColumn column) const {
@@ -1701,13 +1758,16 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::h_data;
 }
 
-struct SplitTable {
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr auto Size = 1;
-    using SplitPolicy = int;
-    static constexpr SplitPolicy Splits[Size][ColCount] = {
-        { 0, 0, 0, 0, 0, 0, 0, 0 },
-    };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
 };
 
 template <NamedColumn Column>
@@ -1801,7 +1861,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = history_value_datatypes::NamedColumn;
-    using SplitTable = history_value_datatypes::SplitTable;
+    //using SplitTable = history_value_datatypes::SplitTable;
     using SplitType = history_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<history_value>;
     //template <NamedColumn Column>
@@ -1810,14 +1870,14 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICY_COUNT = SplitTable::Size;
+    static constexpr auto POLICIES = 1;
 
     RecordAccessor() = default;
     template <typename... T>
     RecordAccessor(T ...vals) : vptrs_({ pointer_of(vals)... }) {}
 
     inline operator bool() const {
-        return vptrs_ [0] != nullptr;
+        return vptrs_[0] != nullptr;
     }
 
     /*
@@ -1830,8 +1890,11 @@ public:
         return vptr;
     }
 
-    static constexpr const auto split_of(int index, NamedColumn column) {
-        return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+    inline static constexpr const auto split_of(int index, NamedColumn column) {
+        if (index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        return 0;
     }
 
     const auto cell_of(NamedColumn column) const {
@@ -2062,14 +2125,25 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::o_carrier_id;
 }
 
-struct SplitTable {
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr auto Size = 2;
-    using SplitPolicy = int;
-    static constexpr SplitPolicy Splits[Size][ColCount] = {
-        { 0, 0, 0, 0, 0 },
-        { 0, 0, 0, 0, 1 },
-    };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 1 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
 };
 
 template <NamedColumn Column>
@@ -2133,7 +2207,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = order_value_datatypes::NamedColumn;
-    using SplitTable = order_value_datatypes::SplitTable;
+    //using SplitTable = order_value_datatypes::SplitTable;
     using SplitType = order_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<order_value>;
     //template <NamedColumn Column>
@@ -2142,14 +2216,14 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICY_COUNT = SplitTable::Size;
+    static constexpr auto POLICIES = 2;
 
     RecordAccessor() = default;
     template <typename... T>
     RecordAccessor(T ...vals) : vptrs_({ pointer_of(vals)... }) {}
 
     inline operator bool() const {
-        return vptrs_ [0] != nullptr;
+        return vptrs_[0] != nullptr;
     }
 
     /*
@@ -2162,8 +2236,14 @@ public:
         return vptr;
     }
 
-    static constexpr const auto split_of(int index, NamedColumn column) {
-        return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+    inline static constexpr const auto split_of(int index, NamedColumn column) {
+        if (index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if (index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
     }
 
     const auto cell_of(NamedColumn column) const {
@@ -2357,14 +2437,25 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::ol_delivery_d;
 }
 
-struct SplitTable {
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr auto Size = 2;
-    using SplitPolicy = int;
-    static constexpr SplitPolicy Splits[Size][ColCount] = {
-        { 0, 0, 0, 0, 0, 0 },
-        { 1, 1, 1, 1, 1, 0 },
-    };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
 };
 
 template <NamedColumn Column>
@@ -2438,7 +2529,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = orderline_value_datatypes::NamedColumn;
-    using SplitTable = orderline_value_datatypes::SplitTable;
+    //using SplitTable = orderline_value_datatypes::SplitTable;
     using SplitType = orderline_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<orderline_value>;
     //template <NamedColumn Column>
@@ -2447,14 +2538,14 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICY_COUNT = SplitTable::Size;
+    static constexpr auto POLICIES = 2;
 
     RecordAccessor() = default;
     template <typename... T>
     RecordAccessor(T ...vals) : vptrs_({ pointer_of(vals)... }) {}
 
     inline operator bool() const {
-        return vptrs_ [0] != nullptr;
+        return vptrs_[0] != nullptr;
     }
 
     /*
@@ -2467,8 +2558,14 @@ public:
         return vptr;
     }
 
-    static constexpr const auto split_of(int index, NamedColumn column) {
-        return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+    inline static constexpr const auto split_of(int index, NamedColumn column) {
+        if (index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if (index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
     }
 
     const auto cell_of(NamedColumn column) const {
@@ -2666,13 +2763,16 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::i_data;
 }
 
-struct SplitTable {
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr auto Size = 1;
-    using SplitPolicy = int;
-    static constexpr SplitPolicy Splits[Size][ColCount] = {
-        { 0, 0, 0, 0 },
-    };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
 };
 
 template <NamedColumn Column>
@@ -2726,7 +2826,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = item_value_datatypes::NamedColumn;
-    using SplitTable = item_value_datatypes::SplitTable;
+    //using SplitTable = item_value_datatypes::SplitTable;
     using SplitType = item_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<item_value>;
     //template <NamedColumn Column>
@@ -2735,14 +2835,14 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICY_COUNT = SplitTable::Size;
+    static constexpr auto POLICIES = 1;
 
     RecordAccessor() = default;
     template <typename... T>
     RecordAccessor(T ...vals) : vptrs_({ pointer_of(vals)... }) {}
 
     inline operator bool() const {
-        return vptrs_ [0] != nullptr;
+        return vptrs_[0] != nullptr;
     }
 
     /*
@@ -2755,8 +2855,11 @@ public:
         return vptr;
     }
 
-    static constexpr const auto split_of(int index, NamedColumn column) {
-        return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+    inline static constexpr const auto split_of(int index, NamedColumn column) {
+        if (index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        return 0;
     }
 
     const auto cell_of(NamedColumn column) const {
@@ -2936,14 +3039,25 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::s_remote_cnt;
 }
 
-struct SplitTable {
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr auto Size = 2;
-    using SplitPolicy = int;
-    static constexpr SplitPolicy Splits[Size][ColCount] = {
-        { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-        { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0 },
-    };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
 };
 
 template <NamedColumn Column>
@@ -3017,7 +3131,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = stock_value_datatypes::NamedColumn;
-    using SplitTable = stock_value_datatypes::SplitTable;
+    //using SplitTable = stock_value_datatypes::SplitTable;
     using SplitType = stock_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<stock_value>;
     //template <NamedColumn Column>
@@ -3026,14 +3140,14 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICY_COUNT = SplitTable::Size;
+    static constexpr auto POLICIES = 2;
 
     RecordAccessor() = default;
     template <typename... T>
     RecordAccessor(T ...vals) : vptrs_({ pointer_of(vals)... }) {}
 
     inline operator bool() const {
-        return vptrs_ [0] != nullptr;
+        return vptrs_[0] != nullptr;
     }
 
     /*
@@ -3046,8 +3160,14 @@ public:
         return vptr;
     }
 
-    static constexpr const auto split_of(int index, NamedColumn column) {
-        return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+    inline static constexpr const auto split_of(int index, NamedColumn column) {
+        if (index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if (index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
     }
 
     const auto cell_of(NamedColumn column) const {

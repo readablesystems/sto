@@ -79,13 +79,16 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::odd_columns;
 }
 
-struct SplitTable {
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr auto Size = 1;
-    using SplitPolicy = int;
-    static constexpr SplitPolicy Splits[Size][ColCount] = {
-        { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
 };
 
 template <NamedColumn Column>
@@ -119,7 +122,7 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
 class RecordAccessor {
 public:
     using NamedColumn = ycsb_value_datatypes::NamedColumn;
-    using SplitTable = ycsb_value_datatypes::SplitTable;
+    //using SplitTable = ycsb_value_datatypes::SplitTable;
     using SplitType = ycsb_value_datatypes::SplitType;
     //using StatsType = ::sto::adapter::Stats<ycsb_value>;
     //template <NamedColumn Column>
@@ -128,14 +131,14 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICY_COUNT = SplitTable::Size;
+    static constexpr auto POLICIES = 1;
 
     RecordAccessor() = default;
     template <typename... T>
     RecordAccessor(T ...vals) : vptrs_({ pointer_of(vals)... }) {}
 
     inline operator bool() const {
-        return vptrs_ [0] != nullptr;
+        return vptrs_[0] != nullptr;
     }
 
     /*
@@ -148,8 +151,11 @@ public:
         return vptr;
     }
 
-    static constexpr const auto split_of(int index, NamedColumn column) {
-        return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+    inline static constexpr const auto split_of(int index, NamedColumn column) {
+        if (index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        return 0;
     }
 
     const auto cell_of(NamedColumn column) const {

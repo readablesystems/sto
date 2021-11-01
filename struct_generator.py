@@ -132,7 +132,7 @@ class {raccessor} {{\
         self.indent()
         self.writelns('''\
 using NamedColumn = {ns}::NamedColumn;
-using SplitTable = {ns}::SplitTable;
+//using SplitTable = {ns}::SplitTable;
 using SplitType = {ns}::SplitType;
 //using StatsType = {statstype};
 //template <NamedColumn Column>
@@ -141,8 +141,9 @@ using ValueType = {struct};
 static constexpr auto DEFAULT_SPLIT = {defaultsplit};
 static constexpr auto MAX_SPLITS = 2;
 static constexpr auto MAX_POINTERS = MAX_SPLITS;
-static constexpr auto POLICY_COUNT = SplitTable::Size;
-''', defaultsplit=self.mdata.get('split', '0'))
+static constexpr auto POLICIES = {variants};
+''', defaultsplit=self.mdata.get('split', '0'),
+     variants=len(self.mdata['splits']))
 
         self.writelns('''\
 {raccessor}() = default;
@@ -295,28 +296,23 @@ if constexpr (Column < NamedColumn::{nextmember}) {{
 
     def convert_splits(self):
         '''Output the valid split options.'''
-        self.writeln('struct SplitTable {{')
-
-        self.indent()
         self.writelns('''\
-static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-static constexpr auto Size = {size};
-using SplitPolicy = int;
-static constexpr SplitPolicy Splits[Size][ColCount] = {{\
-''', size=len(self.mdata['splits']))
+template <size_t Variant>
+struct SplitPolicy;
+''')
 
-        self.indent()
-        for split in self.mdata['splits']:
-            self.writeln(
-                    '{{ {split} }},',
-                    split=', '.join(str(cell) for cell in split))
-        self.unindent()
-
-        self.writeln('}};')
-        self.unindent()
-
-        self.writeln('}};')
-        self.writeln()
+        for variant, split in enumerate(self.mdata['splits'], start=0):
+            self.writelns('''\
+template <>
+struct SplitPolicy<{variant}> {{
+{indent}static constexpr auto ColCount = \
+static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+{indent}static constexpr int policy[ColCount] = {{ {split} }};
+{indent}inline static constexpr int column_to_cell(NamedColumn column) {{
+{indent}{indent}return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+{indent}}}
+}};
+''', split=', '.join(str(cell) for cell in split), variant=variant)
 
     def convert_column_accessors(self):
         '''Output the accessor wrapper for each column.'''
@@ -359,7 +355,7 @@ struct {infostruct} : {infostruct}<RoundedNamedColumn<ColumnValue>()> {{
         '''Output the type coercions.'''
         self.writelns('''\
 inline operator bool() const {{
-{indent}return vptrs_ [0] != nullptr;
+{indent}return vptrs_[0] != nullptr;
 }}
 
 /*
@@ -377,8 +373,20 @@ inline ValueType* pointer_of(ValueType* vptr) {{
         '''Output the accessors.'''
 
         self.writelns('''\
-static constexpr const auto split_of(int index, NamedColumn column) {{
-{indent}return SplitTable::Splits[index][static_cast<std::underlying_type_t<NamedColumn>>(column)];
+inline static constexpr const auto split_of(int index, NamedColumn column) {{\
+''')
+
+        self.indent(1)
+        for variant, _ in enumerate(self.mdata['splits'], start=0):
+            self.writelns('''\
+if (index == {variant}) {{
+{indent}return SplitPolicy<{variant}>::column_to_cell(column);
+}}\
+''', variant=variant)
+        self.unindent(1)
+
+        self.writelns('''\
+{indent}return 0;
 }}
 
 const auto cell_of(NamedColumn column) const {{

@@ -187,7 +187,7 @@ public:
             (void) col_n;
             return 0;
         } else {
-            return split_of(std::min(DefaultSplit, RecordAccessor::POLICY_COUNT - 1), nc(col_n));
+            return split_of(DefaultSplit, nc(col_n));
         }
     }
 
