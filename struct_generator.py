@@ -120,9 +120,11 @@ class {raccessor};
 
         self.convert_namedcolumns()
 
-        self.convert_splits()
-
         self.convert_column_accessors()
+
+        self.convert_struct_accessors()
+
+        self.convert_splits()
 
         self.writelns('''\
 class {raccessor} {{\
@@ -294,26 +296,6 @@ if constexpr (Column < NamedColumn::{nextmember}) {{
 
         self.writeln('}}\n')
 
-    def convert_splits(self):
-        '''Output the valid split options.'''
-        self.writelns('''\
-template <size_t Variant>
-struct SplitPolicy;
-''')
-
-        for variant, split in enumerate(self.mdata['splits'], start=0):
-            self.writelns('''\
-template <>
-struct SplitPolicy<{variant}> {{
-{indent}static constexpr auto ColCount = \
-static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-{indent}static constexpr int policy[ColCount] = {{ {split} }};
-{indent}inline static constexpr int column_to_cell(NamedColumn column) {{
-{indent}{indent}return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-{indent}}}
-}};
-''', split=', '.join(str(cell) for cell in split), variant=variant)
-
     def convert_column_accessors(self):
         '''Output the accessor wrapper for each column.'''
 
@@ -351,6 +333,90 @@ struct {infostruct} : {infostruct}<RoundedNamedColumn<ColumnValue>()> {{
 }};
 ''')
 
+    def convert_struct_accessors(self):
+        '''Output the struct accessors.'''
+        keys = tuple(self.sdata.keys()) + ('COLCOUNT',)
+
+        self.writeln('struct StructAccessor {{')
+
+        self.indent()
+
+        self.writelns('''\
+template <NamedColumn Column>
+static inline typename {infostruct}<RoundedNamedColumn<Column>()>::type& get_value(
+{indent}{indent}{struct}* ptr) {{\
+''')
+        self.indent()
+        for index in range(len(keys) - 1):
+            member, _, count = Output.extract_member_type(keys[index])
+            nextmember = Output.extract_member_type(keys[index + 1])[0]
+            indexing = ''
+            if count > 1:
+                indexing = '''\
+[static_cast<std::underlying_type_t<NamedColumn>>(Column - NamedColumn::{member})]\
+'''.format(member=member)
+            self.writelns('''\
+if constexpr (NamedColumn::{member} <= Column && Column < NamedColumn::{nextmember}) {{
+{indent}return ptr->{member}{indexing};
+}}\
+''', indexing=indexing, member=member, nextmember=nextmember)
+        self.writeln('static_assert(Column < NamedColumn::COLCOUNT);')
+        self.unindent()
+        self.writeln('}}')
+        self.unindent()
+        self.writeln('}};\n')
+
+    def convert_splits(self):
+        '''Output the valid split options.'''
+        import collections
+        self.writelns('''\
+template <size_t Variant>
+struct SplitPolicy;
+''')
+        index = 0
+        members = ()
+        for member, ctype in self.sdata.items():
+            member, _, count = Output.extract_member_type(member)
+            assert count
+            if count == 1:
+                members += (member,)
+            else:
+                for k in range(count):
+                    members += ('{}[{}]'.format(member, k),)
+            index += count
+
+        for variant, split in enumerate(self.mdata['splits'], start=0):
+            self.writelns('''\
+template <>
+struct SplitPolicy<{variant}> {{
+{indent}static constexpr auto ColCount = \
+static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+{indent}static constexpr int policy[ColCount] = {{ {split} }};
+{indent}inline static constexpr int column_to_cell(NamedColumn column) {{
+{indent}{indent}return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+{indent}}}
+{indent}template <int Cell>
+{indent}inline static constexpr void copy_cell({struct}* dest, {struct}* src) {{\
+''', split=', '.join(str(cell) for cell in split), variant=variant)
+
+            self.indent(2)
+            cells = collections.defaultdict(tuple)
+            for col, cell in enumerate(split, start=0):
+                cells[cell] += (col,)
+            for cell, columns in cells.items():
+                self.writeln('if constexpr(Cell == {cell}) {{', cell=cell)
+                self.indent()
+                for column in columns:
+                    self.writeln(
+                            'dest->{column} = src->{column};',
+                            column=members[column])
+                self.unindent()
+                self.writeln('}}')
+            self.unindent(2)
+
+            self.writeln('{indent}}}')
+            self.writeln('}};\n')
+
     def convert_coercions(self):
         '''Output the type coercions.'''
         self.writelns('''\
@@ -373,17 +439,34 @@ inline ValueType* pointer_of(ValueType* vptr) {{
         '''Output the accessors.'''
 
         self.writelns('''\
+template <int Index>
+inline static constexpr const auto split_of(NamedColumn column) {{\
+''')
+
+        self.indent()
+        for variant, _ in enumerate(self.mdata['splits'], start=0):
+            self.writelns('''\
+if constexpr (Index == {variant}) {{
+{indent}return SplitPolicy<{variant}>::column_to_cell(column);
+}}\
+''', variant=variant)
+        self.unindent()
+
+        self.writelns('''\
+{indent}return 0;
+}}
+
 inline static constexpr const auto split_of(int index, NamedColumn column) {{\
 ''')
 
-        self.indent(1)
+        self.indent()
         for variant, _ in enumerate(self.mdata['splits'], start=0):
             self.writelns('''\
 if (index == {variant}) {{
 {indent}return SplitPolicy<{variant}>::column_to_cell(column);
 }}\
 ''', variant=variant)
-        self.unindent(1)
+        self.unindent()
 
         self.writelns('''\
 {indent}return 0;
@@ -391,6 +474,77 @@ if (index == {variant}) {{
 
 const auto cell_of(NamedColumn column) const {{
 {indent}return split_of(splitindex_, column);
+}}
+
+template <int Index>
+inline static constexpr void copy_cell(int cell, ValueType* dest, ValueType* src) {{
+{indent}if constexpr (Index >= 0 && Index < POLICIES) {{\
+''')
+
+        self.indent(2)
+        max_splits = 0
+        for _, splits in enumerate(self.mdata['splits'], start=0):
+            max_splits = max(max_splits, *splits)
+        for cell in range(max_splits + 1):
+            self.writelns('''\
+if (cell == {cell}) {{
+{indent}SplitPolicy<Index>::template copy_cell<{cell}>(dest, src);
+{indent}return;
+}}\
+''', cell=cell)
+        self.unindent(2)
+
+        '''
+{indent}if constexpr (Index >= 0 && Index < POLICIES) {{
+{indent}{indent}if (Cell == cell) {{
+{indent}{indent}{indent}SplitPolicy<Index>::template copy_cell<Cell>(dest, src);
+{indent}{indent}{indent}return;
+{indent}{indent}}}
+{indent}{indent}if constexpr (Cell + 1 < MAX_SPLITS) {{
+{indent}{indent}{indent}copy_cell<Index, Cell + 1>(cell, dest, src);
+{indent}{indent}}}
+{indent}}} else {{
+{indent}{indent}(void) dest;
+{indent}{indent}(void) src;
+{indent}}}
+'''
+        self.writelns('''\
+{indent}}} else {{
+{indent}{indent}(void) dest;
+{indent}{indent}(void) src;
+{indent}}}
+}}
+
+inline static constexpr void copy_cell(int index, int cell, ValueType* dest, ValueType* src) {{\
+''')
+
+        self.indent()
+        for variant, _ in enumerate(self.mdata['splits'], start=0):
+            self.writelns('''\
+if (index == {variant}) {{
+{indent}copy_cell<{variant}>(cell, dest, src);
+{indent}return;
+}}\
+''', variant=variant)
+        self.unindent()
+
+        '''
+{indent}if constexpr (Index >= 0 && Index < POLICIES) {{
+{indent}{indent}if (Index == index) {{
+{indent}{indent}{indent}copy_cell<Index>(cell, dest, src);
+{indent}{indent}{indent}return;
+{indent}{indent}}}
+{indent}{indent}if constexpr (Index + 1 < POLICIES) {{
+{indent}{indent}{indent}copy_cell<Index + 1>(index, cell, dest, src);
+{indent}{indent}}}
+{indent}}} else {{
+{indent}{indent}(void) index;
+{indent}{indent}(void) cell;
+{indent}{indent}(void) dest;
+{indent}{indent}(void) src;
+{indent}}}
+'''
+        self.writelns('''\
 }}
 
 void copy_into({struct}* vptr) {{
@@ -433,33 +587,15 @@ if constexpr (NamedColumn::{member} <= Column && Column < NamedColumn::{nextmemb
 ''', member=member, nextmember=nextmember)
         self.writeln('static_assert(Column < NamedColumn::COLCOUNT);')
         self.unindent()
-        self.writeln('}}')
-        self.writeln()
+        self.writeln('}}\n')
 
-        self.writelns('''\
-template <NamedColumn Column>
+        self.writelns('''
+template <NamedColumn Column, typename... Args>
 static inline typename {infostruct}<RoundedNamedColumn<Column>()>::type& get_value(
-{indent}{indent}{struct}* ptr) {{\
+{indent}{indent}Args&&... args) {{
+{indent}return StructAccessor::template get_value<Column>(std::forward<Args>(args)...);
+}}
 ''')
-        self.indent()
-        for index in range(len(keys) - 1):
-            member, _, count = Output.extract_member_type(keys[index])
-            nextmember = Output.extract_member_type(keys[index + 1])[0]
-            indexing = ''
-            if count > 1:
-                indexing = '''\
-[static_cast<std::underlying_type_t<NamedColumn>>(Column - NamedColumn::{member})]\
-'''.format(member=member)
-            self.writelns('''\
-if constexpr (NamedColumn::{member} <= Column && Column < NamedColumn::{nextmember}) {{
-{indent}return ptr->{member}{indexing};
-}}\
-''', indexing=indexing, member=member, nextmember=nextmember)
-        self.writeln('static_assert(Column < NamedColumn::COLCOUNT);')
-        self.unindent()
-        self.writeln('}}')
-        self.writeln()
-
     def convert_members(self):
         '''Output the member variables.'''
 

@@ -107,27 +107,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::w_ytd;
 }
 
-template <size_t Variant>
-struct SplitPolicy;
-
-template <>
-struct SplitPolicy<0> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
-template <>
-struct SplitPolicy<1> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -216,6 +195,87 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
     static constexpr NamedColumn Column = ColumnValue;
 };
 
+struct StructAccessor {
+    template <NamedColumn Column>
+    static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
+            warehouse_value* ptr) {
+        if constexpr (NamedColumn::w_name <= Column && Column < NamedColumn::w_street_1) {
+            return ptr->w_name;
+        }
+        if constexpr (NamedColumn::w_street_1 <= Column && Column < NamedColumn::w_street_2) {
+            return ptr->w_street_1;
+        }
+        if constexpr (NamedColumn::w_street_2 <= Column && Column < NamedColumn::w_city) {
+            return ptr->w_street_2;
+        }
+        if constexpr (NamedColumn::w_city <= Column && Column < NamedColumn::w_state) {
+            return ptr->w_city;
+        }
+        if constexpr (NamedColumn::w_state <= Column && Column < NamedColumn::w_zip) {
+            return ptr->w_state;
+        }
+        if constexpr (NamedColumn::w_zip <= Column && Column < NamedColumn::w_tax) {
+            return ptr->w_zip;
+        }
+        if constexpr (NamedColumn::w_tax <= Column && Column < NamedColumn::w_ytd) {
+            return ptr->w_tax;
+        }
+        if constexpr (NamedColumn::w_ytd <= Column && Column < NamedColumn::COLCOUNT) {
+            return ptr->w_ytd;
+        }
+        static_assert(Column < NamedColumn::COLCOUNT);
+    }
+};
+
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(warehouse_value* dest, warehouse_value* src) {
+        if constexpr(Cell == 0) {
+            dest->w_name = src->w_name;
+            dest->w_street_1 = src->w_street_1;
+            dest->w_street_2 = src->w_street_2;
+            dest->w_city = src->w_city;
+            dest->w_state = src->w_state;
+            dest->w_zip = src->w_zip;
+            dest->w_tax = src->w_tax;
+            dest->w_ytd = src->w_ytd;
+        }
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(warehouse_value* dest, warehouse_value* src) {
+        if constexpr(Cell == 1) {
+            dest->w_name = src->w_name;
+            dest->w_street_1 = src->w_street_1;
+            dest->w_street_2 = src->w_street_2;
+            dest->w_city = src->w_city;
+            dest->w_state = src->w_state;
+            dest->w_zip = src->w_zip;
+            dest->w_tax = src->w_tax;
+        }
+        if constexpr(Cell == 0) {
+            dest->w_ytd = src->w_ytd;
+        }
+    }
+};
+
 class RecordAccessor {
 public:
     using NamedColumn = warehouse_value_datatypes::NamedColumn;
@@ -248,6 +308,17 @@ public:
         return vptr;
     }
 
+    template <int Index>
+    inline static constexpr const auto split_of(NamedColumn column) {
+        if constexpr (Index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if constexpr (Index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
+    }
+
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
@@ -260,6 +331,34 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    template <int Index>
+    inline static constexpr void copy_cell(int cell, ValueType* dest, ValueType* src) {
+        if constexpr (Index >= 0 && Index < POLICIES) {
+            if (cell == 0) {
+                SplitPolicy<Index>::template copy_cell<0>(dest, src);
+                return;
+            }
+            if (cell == 1) {
+                SplitPolicy<Index>::template copy_cell<1>(dest, src);
+                return;
+            }
+        } else {
+            (void) dest;
+            (void) src;
+        }
+    }
+
+    inline static constexpr void copy_cell(int index, int cell, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            copy_cell<0>(cell, dest, src);
+            return;
+        }
+        if (index == 1) {
+            copy_cell<1>(cell, dest, src);
+            return;
+        }
     }
 
     void copy_into(warehouse_value* vptr) {
@@ -359,34 +458,11 @@ public:
         static_assert(Column < NamedColumn::COLCOUNT);
     }
 
-    template <NamedColumn Column>
+
+    template <NamedColumn Column, typename... Args>
     static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
-            warehouse_value* ptr) {
-        if constexpr (NamedColumn::w_name <= Column && Column < NamedColumn::w_street_1) {
-            return ptr->w_name;
-        }
-        if constexpr (NamedColumn::w_street_1 <= Column && Column < NamedColumn::w_street_2) {
-            return ptr->w_street_1;
-        }
-        if constexpr (NamedColumn::w_street_2 <= Column && Column < NamedColumn::w_city) {
-            return ptr->w_street_2;
-        }
-        if constexpr (NamedColumn::w_city <= Column && Column < NamedColumn::w_state) {
-            return ptr->w_city;
-        }
-        if constexpr (NamedColumn::w_state <= Column && Column < NamedColumn::w_zip) {
-            return ptr->w_state;
-        }
-        if constexpr (NamedColumn::w_zip <= Column && Column < NamedColumn::w_tax) {
-            return ptr->w_zip;
-        }
-        if constexpr (NamedColumn::w_tax <= Column && Column < NamedColumn::w_ytd) {
-            return ptr->w_tax;
-        }
-        if constexpr (NamedColumn::w_ytd <= Column && Column < NamedColumn::COLCOUNT) {
-            return ptr->w_ytd;
-        }
-        static_assert(Column < NamedColumn::COLCOUNT);
+            Args&&... args) {
+        return StructAccessor::template get_value<Column>(std::forward<Args>(args)...);
     }
 
     std::array<warehouse_value*, MAX_POINTERS> vptrs_ = { nullptr, };
@@ -501,27 +577,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::d_ytd;
 }
 
-template <size_t Variant>
-struct SplitPolicy;
-
-template <>
-struct SplitPolicy<0> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
-template <>
-struct SplitPolicy<1> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -610,6 +665,87 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
     static constexpr NamedColumn Column = ColumnValue;
 };
 
+struct StructAccessor {
+    template <NamedColumn Column>
+    static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
+            district_value* ptr) {
+        if constexpr (NamedColumn::d_name <= Column && Column < NamedColumn::d_street_1) {
+            return ptr->d_name;
+        }
+        if constexpr (NamedColumn::d_street_1 <= Column && Column < NamedColumn::d_street_2) {
+            return ptr->d_street_1;
+        }
+        if constexpr (NamedColumn::d_street_2 <= Column && Column < NamedColumn::d_city) {
+            return ptr->d_street_2;
+        }
+        if constexpr (NamedColumn::d_city <= Column && Column < NamedColumn::d_state) {
+            return ptr->d_city;
+        }
+        if constexpr (NamedColumn::d_state <= Column && Column < NamedColumn::d_zip) {
+            return ptr->d_state;
+        }
+        if constexpr (NamedColumn::d_zip <= Column && Column < NamedColumn::d_tax) {
+            return ptr->d_zip;
+        }
+        if constexpr (NamedColumn::d_tax <= Column && Column < NamedColumn::d_ytd) {
+            return ptr->d_tax;
+        }
+        if constexpr (NamedColumn::d_ytd <= Column && Column < NamedColumn::COLCOUNT) {
+            return ptr->d_ytd;
+        }
+        static_assert(Column < NamedColumn::COLCOUNT);
+    }
+};
+
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(district_value* dest, district_value* src) {
+        if constexpr(Cell == 0) {
+            dest->d_name = src->d_name;
+            dest->d_street_1 = src->d_street_1;
+            dest->d_street_2 = src->d_street_2;
+            dest->d_city = src->d_city;
+            dest->d_state = src->d_state;
+            dest->d_zip = src->d_zip;
+            dest->d_tax = src->d_tax;
+            dest->d_ytd = src->d_ytd;
+        }
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(district_value* dest, district_value* src) {
+        if constexpr(Cell == 1) {
+            dest->d_name = src->d_name;
+            dest->d_street_1 = src->d_street_1;
+            dest->d_street_2 = src->d_street_2;
+            dest->d_city = src->d_city;
+            dest->d_state = src->d_state;
+            dest->d_zip = src->d_zip;
+            dest->d_tax = src->d_tax;
+        }
+        if constexpr(Cell == 0) {
+            dest->d_ytd = src->d_ytd;
+        }
+    }
+};
+
 class RecordAccessor {
 public:
     using NamedColumn = district_value_datatypes::NamedColumn;
@@ -642,6 +778,17 @@ public:
         return vptr;
     }
 
+    template <int Index>
+    inline static constexpr const auto split_of(NamedColumn column) {
+        if constexpr (Index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if constexpr (Index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
+    }
+
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
@@ -654,6 +801,34 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    template <int Index>
+    inline static constexpr void copy_cell(int cell, ValueType* dest, ValueType* src) {
+        if constexpr (Index >= 0 && Index < POLICIES) {
+            if (cell == 0) {
+                SplitPolicy<Index>::template copy_cell<0>(dest, src);
+                return;
+            }
+            if (cell == 1) {
+                SplitPolicy<Index>::template copy_cell<1>(dest, src);
+                return;
+            }
+        } else {
+            (void) dest;
+            (void) src;
+        }
+    }
+
+    inline static constexpr void copy_cell(int index, int cell, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            copy_cell<0>(cell, dest, src);
+            return;
+        }
+        if (index == 1) {
+            copy_cell<1>(cell, dest, src);
+            return;
+        }
     }
 
     void copy_into(district_value* vptr) {
@@ -753,34 +928,11 @@ public:
         static_assert(Column < NamedColumn::COLCOUNT);
     }
 
-    template <NamedColumn Column>
+
+    template <NamedColumn Column, typename... Args>
     static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
-            district_value* ptr) {
-        if constexpr (NamedColumn::d_name <= Column && Column < NamedColumn::d_street_1) {
-            return ptr->d_name;
-        }
-        if constexpr (NamedColumn::d_street_1 <= Column && Column < NamedColumn::d_street_2) {
-            return ptr->d_street_1;
-        }
-        if constexpr (NamedColumn::d_street_2 <= Column && Column < NamedColumn::d_city) {
-            return ptr->d_street_2;
-        }
-        if constexpr (NamedColumn::d_city <= Column && Column < NamedColumn::d_state) {
-            return ptr->d_city;
-        }
-        if constexpr (NamedColumn::d_state <= Column && Column < NamedColumn::d_zip) {
-            return ptr->d_state;
-        }
-        if constexpr (NamedColumn::d_zip <= Column && Column < NamedColumn::d_tax) {
-            return ptr->d_zip;
-        }
-        if constexpr (NamedColumn::d_tax <= Column && Column < NamedColumn::d_ytd) {
-            return ptr->d_tax;
-        }
-        if constexpr (NamedColumn::d_ytd <= Column && Column < NamedColumn::COLCOUNT) {
-            return ptr->d_ytd;
-        }
-        static_assert(Column < NamedColumn::COLCOUNT);
+            Args&&... args) {
+        return StructAccessor::template get_value<Column>(std::forward<Args>(args)...);
     }
 
     std::array<district_value*, MAX_POINTERS> vptrs_ = { nullptr, };
@@ -860,18 +1012,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::c_ids;
 }
 
-template <size_t Variant>
-struct SplitPolicy;
-
-template <>
-struct SplitPolicy<0> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -888,6 +1028,35 @@ struct accessor_info<NamedColumn::c_ids> {
 template <NamedColumn ColumnValue>
 struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
     static constexpr NamedColumn Column = ColumnValue;
+};
+
+struct StructAccessor {
+    template <NamedColumn Column>
+    static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
+            customer_idx_value* ptr) {
+        if constexpr (NamedColumn::c_ids <= Column && Column < NamedColumn::COLCOUNT) {
+            return ptr->c_ids;
+        }
+        static_assert(Column < NamedColumn::COLCOUNT);
+    }
+};
+
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(customer_idx_value* dest, customer_idx_value* src) {
+        if constexpr(Cell == 0) {
+            dest->c_ids = src->c_ids;
+        }
+    }
 };
 
 class RecordAccessor {
@@ -922,6 +1091,14 @@ public:
         return vptr;
     }
 
+    template <int Index>
+    inline static constexpr const auto split_of(NamedColumn column) {
+        if constexpr (Index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        return 0;
+    }
+
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
@@ -931,6 +1108,26 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    template <int Index>
+    inline static constexpr void copy_cell(int cell, ValueType* dest, ValueType* src) {
+        if constexpr (Index >= 0 && Index < POLICIES) {
+            if (cell == 0) {
+                SplitPolicy<Index>::template copy_cell<0>(dest, src);
+                return;
+            }
+        } else {
+            (void) dest;
+            (void) src;
+        }
+    }
+
+    inline static constexpr void copy_cell(int index, int cell, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            copy_cell<0>(cell, dest, src);
+            return;
+        }
     }
 
     void copy_into(customer_idx_value* vptr) {
@@ -953,13 +1150,11 @@ public:
         static_assert(Column < NamedColumn::COLCOUNT);
     }
 
-    template <NamedColumn Column>
+
+    template <NamedColumn Column, typename... Args>
     static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
-            customer_idx_value* ptr) {
-        if constexpr (NamedColumn::c_ids <= Column && Column < NamedColumn::COLCOUNT) {
-            return ptr->c_ids;
-        }
-        static_assert(Column < NamedColumn::COLCOUNT);
+            Args&&... args) {
+        return StructAccessor::template get_value<Column>(std::forward<Args>(args)...);
     }
 
     std::array<customer_idx_value*, MAX_POINTERS> vptrs_ = { nullptr, };
@@ -1123,27 +1318,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     }
     return NamedColumn::c_data;
 }
-
-template <size_t Variant>
-struct SplitPolicy;
-
-template <>
-struct SplitPolicy<0> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
-template <>
-struct SplitPolicy<1> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
 
 template <NamedColumn Column>
 struct accessor_info;
@@ -1333,6 +1507,137 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
     static constexpr NamedColumn Column = ColumnValue;
 };
 
+struct StructAccessor {
+    template <NamedColumn Column>
+    static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
+            customer_value* ptr) {
+        if constexpr (NamedColumn::c_first <= Column && Column < NamedColumn::c_middle) {
+            return ptr->c_first;
+        }
+        if constexpr (NamedColumn::c_middle <= Column && Column < NamedColumn::c_last) {
+            return ptr->c_middle;
+        }
+        if constexpr (NamedColumn::c_last <= Column && Column < NamedColumn::c_street_1) {
+            return ptr->c_last;
+        }
+        if constexpr (NamedColumn::c_street_1 <= Column && Column < NamedColumn::c_street_2) {
+            return ptr->c_street_1;
+        }
+        if constexpr (NamedColumn::c_street_2 <= Column && Column < NamedColumn::c_city) {
+            return ptr->c_street_2;
+        }
+        if constexpr (NamedColumn::c_city <= Column && Column < NamedColumn::c_state) {
+            return ptr->c_city;
+        }
+        if constexpr (NamedColumn::c_state <= Column && Column < NamedColumn::c_zip) {
+            return ptr->c_state;
+        }
+        if constexpr (NamedColumn::c_zip <= Column && Column < NamedColumn::c_phone) {
+            return ptr->c_zip;
+        }
+        if constexpr (NamedColumn::c_phone <= Column && Column < NamedColumn::c_since) {
+            return ptr->c_phone;
+        }
+        if constexpr (NamedColumn::c_since <= Column && Column < NamedColumn::c_credit) {
+            return ptr->c_since;
+        }
+        if constexpr (NamedColumn::c_credit <= Column && Column < NamedColumn::c_credit_lim) {
+            return ptr->c_credit;
+        }
+        if constexpr (NamedColumn::c_credit_lim <= Column && Column < NamedColumn::c_discount) {
+            return ptr->c_credit_lim;
+        }
+        if constexpr (NamedColumn::c_discount <= Column && Column < NamedColumn::c_balance) {
+            return ptr->c_discount;
+        }
+        if constexpr (NamedColumn::c_balance <= Column && Column < NamedColumn::c_ytd_payment) {
+            return ptr->c_balance;
+        }
+        if constexpr (NamedColumn::c_ytd_payment <= Column && Column < NamedColumn::c_payment_cnt) {
+            return ptr->c_ytd_payment;
+        }
+        if constexpr (NamedColumn::c_payment_cnt <= Column && Column < NamedColumn::c_delivery_cnt) {
+            return ptr->c_payment_cnt;
+        }
+        if constexpr (NamedColumn::c_delivery_cnt <= Column && Column < NamedColumn::c_data) {
+            return ptr->c_delivery_cnt;
+        }
+        if constexpr (NamedColumn::c_data <= Column && Column < NamedColumn::COLCOUNT) {
+            return ptr->c_data;
+        }
+        static_assert(Column < NamedColumn::COLCOUNT);
+    }
+};
+
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(customer_value* dest, customer_value* src) {
+        if constexpr(Cell == 0) {
+            dest->c_first = src->c_first;
+            dest->c_middle = src->c_middle;
+            dest->c_last = src->c_last;
+            dest->c_street_1 = src->c_street_1;
+            dest->c_street_2 = src->c_street_2;
+            dest->c_city = src->c_city;
+            dest->c_state = src->c_state;
+            dest->c_zip = src->c_zip;
+            dest->c_phone = src->c_phone;
+            dest->c_since = src->c_since;
+            dest->c_credit = src->c_credit;
+            dest->c_credit_lim = src->c_credit_lim;
+            dest->c_discount = src->c_discount;
+            dest->c_balance = src->c_balance;
+            dest->c_ytd_payment = src->c_ytd_payment;
+            dest->c_payment_cnt = src->c_payment_cnt;
+            dest->c_delivery_cnt = src->c_delivery_cnt;
+            dest->c_data = src->c_data;
+        }
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(customer_value* dest, customer_value* src) {
+        if constexpr(Cell == 1) {
+            dest->c_first = src->c_first;
+            dest->c_middle = src->c_middle;
+            dest->c_last = src->c_last;
+            dest->c_street_1 = src->c_street_1;
+            dest->c_street_2 = src->c_street_2;
+            dest->c_city = src->c_city;
+            dest->c_state = src->c_state;
+            dest->c_zip = src->c_zip;
+            dest->c_phone = src->c_phone;
+            dest->c_since = src->c_since;
+            dest->c_credit = src->c_credit;
+            dest->c_credit_lim = src->c_credit_lim;
+            dest->c_discount = src->c_discount;
+        }
+        if constexpr(Cell == 0) {
+            dest->c_balance = src->c_balance;
+            dest->c_ytd_payment = src->c_ytd_payment;
+            dest->c_payment_cnt = src->c_payment_cnt;
+            dest->c_delivery_cnt = src->c_delivery_cnt;
+            dest->c_data = src->c_data;
+        }
+    }
+};
+
 class RecordAccessor {
 public:
     using NamedColumn = customer_value_datatypes::NamedColumn;
@@ -1365,6 +1670,17 @@ public:
         return vptr;
     }
 
+    template <int Index>
+    inline static constexpr const auto split_of(NamedColumn column) {
+        if constexpr (Index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if constexpr (Index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
+    }
+
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
@@ -1377,6 +1693,34 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    template <int Index>
+    inline static constexpr void copy_cell(int cell, ValueType* dest, ValueType* src) {
+        if constexpr (Index >= 0 && Index < POLICIES) {
+            if (cell == 0) {
+                SplitPolicy<Index>::template copy_cell<0>(dest, src);
+                return;
+            }
+            if (cell == 1) {
+                SplitPolicy<Index>::template copy_cell<1>(dest, src);
+                return;
+            }
+        } else {
+            (void) dest;
+            (void) src;
+        }
+    }
+
+    inline static constexpr void copy_cell(int index, int cell, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            copy_cell<0>(cell, dest, src);
+            return;
+        }
+        if (index == 1) {
+            copy_cell<1>(cell, dest, src);
+            return;
+        }
     }
 
     void copy_into(customer_value* vptr) {
@@ -1586,64 +1930,11 @@ public:
         static_assert(Column < NamedColumn::COLCOUNT);
     }
 
-    template <NamedColumn Column>
+
+    template <NamedColumn Column, typename... Args>
     static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
-            customer_value* ptr) {
-        if constexpr (NamedColumn::c_first <= Column && Column < NamedColumn::c_middle) {
-            return ptr->c_first;
-        }
-        if constexpr (NamedColumn::c_middle <= Column && Column < NamedColumn::c_last) {
-            return ptr->c_middle;
-        }
-        if constexpr (NamedColumn::c_last <= Column && Column < NamedColumn::c_street_1) {
-            return ptr->c_last;
-        }
-        if constexpr (NamedColumn::c_street_1 <= Column && Column < NamedColumn::c_street_2) {
-            return ptr->c_street_1;
-        }
-        if constexpr (NamedColumn::c_street_2 <= Column && Column < NamedColumn::c_city) {
-            return ptr->c_street_2;
-        }
-        if constexpr (NamedColumn::c_city <= Column && Column < NamedColumn::c_state) {
-            return ptr->c_city;
-        }
-        if constexpr (NamedColumn::c_state <= Column && Column < NamedColumn::c_zip) {
-            return ptr->c_state;
-        }
-        if constexpr (NamedColumn::c_zip <= Column && Column < NamedColumn::c_phone) {
-            return ptr->c_zip;
-        }
-        if constexpr (NamedColumn::c_phone <= Column && Column < NamedColumn::c_since) {
-            return ptr->c_phone;
-        }
-        if constexpr (NamedColumn::c_since <= Column && Column < NamedColumn::c_credit) {
-            return ptr->c_since;
-        }
-        if constexpr (NamedColumn::c_credit <= Column && Column < NamedColumn::c_credit_lim) {
-            return ptr->c_credit;
-        }
-        if constexpr (NamedColumn::c_credit_lim <= Column && Column < NamedColumn::c_discount) {
-            return ptr->c_credit_lim;
-        }
-        if constexpr (NamedColumn::c_discount <= Column && Column < NamedColumn::c_balance) {
-            return ptr->c_discount;
-        }
-        if constexpr (NamedColumn::c_balance <= Column && Column < NamedColumn::c_ytd_payment) {
-            return ptr->c_balance;
-        }
-        if constexpr (NamedColumn::c_ytd_payment <= Column && Column < NamedColumn::c_payment_cnt) {
-            return ptr->c_ytd_payment;
-        }
-        if constexpr (NamedColumn::c_payment_cnt <= Column && Column < NamedColumn::c_delivery_cnt) {
-            return ptr->c_payment_cnt;
-        }
-        if constexpr (NamedColumn::c_delivery_cnt <= Column && Column < NamedColumn::c_data) {
-            return ptr->c_delivery_cnt;
-        }
-        if constexpr (NamedColumn::c_data <= Column && Column < NamedColumn::COLCOUNT) {
-            return ptr->c_data;
-        }
-        static_assert(Column < NamedColumn::COLCOUNT);
+            Args&&... args) {
+        return StructAccessor::template get_value<Column>(std::forward<Args>(args)...);
     }
 
     std::array<customer_value*, MAX_POINTERS> vptrs_ = { nullptr, };
@@ -1758,18 +2049,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::h_data;
 }
 
-template <size_t Variant>
-struct SplitPolicy;
-
-template <>
-struct SplitPolicy<0> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -1858,6 +2137,63 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
     static constexpr NamedColumn Column = ColumnValue;
 };
 
+struct StructAccessor {
+    template <NamedColumn Column>
+    static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
+            history_value* ptr) {
+        if constexpr (NamedColumn::h_c_id <= Column && Column < NamedColumn::h_c_d_id) {
+            return ptr->h_c_id;
+        }
+        if constexpr (NamedColumn::h_c_d_id <= Column && Column < NamedColumn::h_c_w_id) {
+            return ptr->h_c_d_id;
+        }
+        if constexpr (NamedColumn::h_c_w_id <= Column && Column < NamedColumn::h_d_id) {
+            return ptr->h_c_w_id;
+        }
+        if constexpr (NamedColumn::h_d_id <= Column && Column < NamedColumn::h_w_id) {
+            return ptr->h_d_id;
+        }
+        if constexpr (NamedColumn::h_w_id <= Column && Column < NamedColumn::h_date) {
+            return ptr->h_w_id;
+        }
+        if constexpr (NamedColumn::h_date <= Column && Column < NamedColumn::h_amount) {
+            return ptr->h_date;
+        }
+        if constexpr (NamedColumn::h_amount <= Column && Column < NamedColumn::h_data) {
+            return ptr->h_amount;
+        }
+        if constexpr (NamedColumn::h_data <= Column && Column < NamedColumn::COLCOUNT) {
+            return ptr->h_data;
+        }
+        static_assert(Column < NamedColumn::COLCOUNT);
+    }
+};
+
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(history_value* dest, history_value* src) {
+        if constexpr(Cell == 0) {
+            dest->h_c_id = src->h_c_id;
+            dest->h_c_d_id = src->h_c_d_id;
+            dest->h_c_w_id = src->h_c_w_id;
+            dest->h_d_id = src->h_d_id;
+            dest->h_w_id = src->h_w_id;
+            dest->h_date = src->h_date;
+            dest->h_amount = src->h_amount;
+            dest->h_data = src->h_data;
+        }
+    }
+};
+
 class RecordAccessor {
 public:
     using NamedColumn = history_value_datatypes::NamedColumn;
@@ -1890,6 +2226,14 @@ public:
         return vptr;
     }
 
+    template <int Index>
+    inline static constexpr const auto split_of(NamedColumn column) {
+        if constexpr (Index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        return 0;
+    }
+
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
@@ -1899,6 +2243,26 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    template <int Index>
+    inline static constexpr void copy_cell(int cell, ValueType* dest, ValueType* src) {
+        if constexpr (Index >= 0 && Index < POLICIES) {
+            if (cell == 0) {
+                SplitPolicy<Index>::template copy_cell<0>(dest, src);
+                return;
+            }
+        } else {
+            (void) dest;
+            (void) src;
+        }
+    }
+
+    inline static constexpr void copy_cell(int index, int cell, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            copy_cell<0>(cell, dest, src);
+            return;
+        }
     }
 
     void copy_into(history_value* vptr) {
@@ -1998,34 +2362,11 @@ public:
         static_assert(Column < NamedColumn::COLCOUNT);
     }
 
-    template <NamedColumn Column>
+
+    template <NamedColumn Column, typename... Args>
     static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
-            history_value* ptr) {
-        if constexpr (NamedColumn::h_c_id <= Column && Column < NamedColumn::h_c_d_id) {
-            return ptr->h_c_id;
-        }
-        if constexpr (NamedColumn::h_c_d_id <= Column && Column < NamedColumn::h_c_w_id) {
-            return ptr->h_c_d_id;
-        }
-        if constexpr (NamedColumn::h_c_w_id <= Column && Column < NamedColumn::h_d_id) {
-            return ptr->h_c_w_id;
-        }
-        if constexpr (NamedColumn::h_d_id <= Column && Column < NamedColumn::h_w_id) {
-            return ptr->h_d_id;
-        }
-        if constexpr (NamedColumn::h_w_id <= Column && Column < NamedColumn::h_date) {
-            return ptr->h_w_id;
-        }
-        if constexpr (NamedColumn::h_date <= Column && Column < NamedColumn::h_amount) {
-            return ptr->h_date;
-        }
-        if constexpr (NamedColumn::h_amount <= Column && Column < NamedColumn::h_data) {
-            return ptr->h_amount;
-        }
-        if constexpr (NamedColumn::h_data <= Column && Column < NamedColumn::COLCOUNT) {
-            return ptr->h_data;
-        }
-        static_assert(Column < NamedColumn::COLCOUNT);
+            Args&&... args) {
+        return StructAccessor::template get_value<Column>(std::forward<Args>(args)...);
     }
 
     std::array<history_value*, MAX_POINTERS> vptrs_ = { nullptr, };
@@ -2125,27 +2466,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::o_carrier_id;
 }
 
-template <size_t Variant>
-struct SplitPolicy;
-
-template <>
-struct SplitPolicy<0> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
-template <>
-struct SplitPolicy<1> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 1 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -2204,6 +2524,72 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
     static constexpr NamedColumn Column = ColumnValue;
 };
 
+struct StructAccessor {
+    template <NamedColumn Column>
+    static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
+            order_value* ptr) {
+        if constexpr (NamedColumn::o_c_id <= Column && Column < NamedColumn::o_entry_d) {
+            return ptr->o_c_id;
+        }
+        if constexpr (NamedColumn::o_entry_d <= Column && Column < NamedColumn::o_ol_cnt) {
+            return ptr->o_entry_d;
+        }
+        if constexpr (NamedColumn::o_ol_cnt <= Column && Column < NamedColumn::o_all_local) {
+            return ptr->o_ol_cnt;
+        }
+        if constexpr (NamedColumn::o_all_local <= Column && Column < NamedColumn::o_carrier_id) {
+            return ptr->o_all_local;
+        }
+        if constexpr (NamedColumn::o_carrier_id <= Column && Column < NamedColumn::COLCOUNT) {
+            return ptr->o_carrier_id;
+        }
+        static_assert(Column < NamedColumn::COLCOUNT);
+    }
+};
+
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(order_value* dest, order_value* src) {
+        if constexpr(Cell == 0) {
+            dest->o_c_id = src->o_c_id;
+            dest->o_entry_d = src->o_entry_d;
+            dest->o_ol_cnt = src->o_ol_cnt;
+            dest->o_all_local = src->o_all_local;
+            dest->o_carrier_id = src->o_carrier_id;
+        }
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 1 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(order_value* dest, order_value* src) {
+        if constexpr(Cell == 0) {
+            dest->o_c_id = src->o_c_id;
+            dest->o_entry_d = src->o_entry_d;
+            dest->o_ol_cnt = src->o_ol_cnt;
+            dest->o_all_local = src->o_all_local;
+        }
+        if constexpr(Cell == 1) {
+            dest->o_carrier_id = src->o_carrier_id;
+        }
+    }
+};
+
 class RecordAccessor {
 public:
     using NamedColumn = order_value_datatypes::NamedColumn;
@@ -2236,6 +2622,17 @@ public:
         return vptr;
     }
 
+    template <int Index>
+    inline static constexpr const auto split_of(NamedColumn column) {
+        if constexpr (Index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if constexpr (Index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
+    }
+
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
@@ -2248,6 +2645,34 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    template <int Index>
+    inline static constexpr void copy_cell(int cell, ValueType* dest, ValueType* src) {
+        if constexpr (Index >= 0 && Index < POLICIES) {
+            if (cell == 0) {
+                SplitPolicy<Index>::template copy_cell<0>(dest, src);
+                return;
+            }
+            if (cell == 1) {
+                SplitPolicy<Index>::template copy_cell<1>(dest, src);
+                return;
+            }
+        } else {
+            (void) dest;
+            (void) src;
+        }
+    }
+
+    inline static constexpr void copy_cell(int index, int cell, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            copy_cell<0>(cell, dest, src);
+            return;
+        }
+        if (index == 1) {
+            copy_cell<1>(cell, dest, src);
+            return;
+        }
     }
 
     void copy_into(order_value* vptr) {
@@ -2314,25 +2739,11 @@ public:
         static_assert(Column < NamedColumn::COLCOUNT);
     }
 
-    template <NamedColumn Column>
+
+    template <NamedColumn Column, typename... Args>
     static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
-            order_value* ptr) {
-        if constexpr (NamedColumn::o_c_id <= Column && Column < NamedColumn::o_entry_d) {
-            return ptr->o_c_id;
-        }
-        if constexpr (NamedColumn::o_entry_d <= Column && Column < NamedColumn::o_ol_cnt) {
-            return ptr->o_entry_d;
-        }
-        if constexpr (NamedColumn::o_ol_cnt <= Column && Column < NamedColumn::o_all_local) {
-            return ptr->o_ol_cnt;
-        }
-        if constexpr (NamedColumn::o_all_local <= Column && Column < NamedColumn::o_carrier_id) {
-            return ptr->o_all_local;
-        }
-        if constexpr (NamedColumn::o_carrier_id <= Column && Column < NamedColumn::COLCOUNT) {
-            return ptr->o_carrier_id;
-        }
-        static_assert(Column < NamedColumn::COLCOUNT);
+            Args&&... args) {
+        return StructAccessor::template get_value<Column>(std::forward<Args>(args)...);
     }
 
     std::array<order_value*, MAX_POINTERS> vptrs_ = { nullptr, };
@@ -2437,27 +2848,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::ol_delivery_d;
 }
 
-template <size_t Variant>
-struct SplitPolicy;
-
-template <>
-struct SplitPolicy<0> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
-template <>
-struct SplitPolicy<1> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -2526,6 +2916,77 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
     static constexpr NamedColumn Column = ColumnValue;
 };
 
+struct StructAccessor {
+    template <NamedColumn Column>
+    static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
+            orderline_value* ptr) {
+        if constexpr (NamedColumn::ol_i_id <= Column && Column < NamedColumn::ol_supply_w_id) {
+            return ptr->ol_i_id;
+        }
+        if constexpr (NamedColumn::ol_supply_w_id <= Column && Column < NamedColumn::ol_quantity) {
+            return ptr->ol_supply_w_id;
+        }
+        if constexpr (NamedColumn::ol_quantity <= Column && Column < NamedColumn::ol_amount) {
+            return ptr->ol_quantity;
+        }
+        if constexpr (NamedColumn::ol_amount <= Column && Column < NamedColumn::ol_dist_info) {
+            return ptr->ol_amount;
+        }
+        if constexpr (NamedColumn::ol_dist_info <= Column && Column < NamedColumn::ol_delivery_d) {
+            return ptr->ol_dist_info;
+        }
+        if constexpr (NamedColumn::ol_delivery_d <= Column && Column < NamedColumn::COLCOUNT) {
+            return ptr->ol_delivery_d;
+        }
+        static_assert(Column < NamedColumn::COLCOUNT);
+    }
+};
+
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(orderline_value* dest, orderline_value* src) {
+        if constexpr(Cell == 0) {
+            dest->ol_i_id = src->ol_i_id;
+            dest->ol_supply_w_id = src->ol_supply_w_id;
+            dest->ol_quantity = src->ol_quantity;
+            dest->ol_amount = src->ol_amount;
+            dest->ol_dist_info = src->ol_dist_info;
+            dest->ol_delivery_d = src->ol_delivery_d;
+        }
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(orderline_value* dest, orderline_value* src) {
+        if constexpr(Cell == 1) {
+            dest->ol_i_id = src->ol_i_id;
+            dest->ol_supply_w_id = src->ol_supply_w_id;
+            dest->ol_quantity = src->ol_quantity;
+            dest->ol_amount = src->ol_amount;
+            dest->ol_dist_info = src->ol_dist_info;
+        }
+        if constexpr(Cell == 0) {
+            dest->ol_delivery_d = src->ol_delivery_d;
+        }
+    }
+};
+
 class RecordAccessor {
 public:
     using NamedColumn = orderline_value_datatypes::NamedColumn;
@@ -2558,6 +3019,17 @@ public:
         return vptr;
     }
 
+    template <int Index>
+    inline static constexpr const auto split_of(NamedColumn column) {
+        if constexpr (Index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if constexpr (Index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
+    }
+
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
@@ -2570,6 +3042,34 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    template <int Index>
+    inline static constexpr void copy_cell(int cell, ValueType* dest, ValueType* src) {
+        if constexpr (Index >= 0 && Index < POLICIES) {
+            if (cell == 0) {
+                SplitPolicy<Index>::template copy_cell<0>(dest, src);
+                return;
+            }
+            if (cell == 1) {
+                SplitPolicy<Index>::template copy_cell<1>(dest, src);
+                return;
+            }
+        } else {
+            (void) dest;
+            (void) src;
+        }
+    }
+
+    inline static constexpr void copy_cell(int index, int cell, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            copy_cell<0>(cell, dest, src);
+            return;
+        }
+        if (index == 1) {
+            copy_cell<1>(cell, dest, src);
+            return;
+        }
     }
 
     void copy_into(orderline_value* vptr) {
@@ -2647,28 +3147,11 @@ public:
         static_assert(Column < NamedColumn::COLCOUNT);
     }
 
-    template <NamedColumn Column>
+
+    template <NamedColumn Column, typename... Args>
     static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
-            orderline_value* ptr) {
-        if constexpr (NamedColumn::ol_i_id <= Column && Column < NamedColumn::ol_supply_w_id) {
-            return ptr->ol_i_id;
-        }
-        if constexpr (NamedColumn::ol_supply_w_id <= Column && Column < NamedColumn::ol_quantity) {
-            return ptr->ol_supply_w_id;
-        }
-        if constexpr (NamedColumn::ol_quantity <= Column && Column < NamedColumn::ol_amount) {
-            return ptr->ol_quantity;
-        }
-        if constexpr (NamedColumn::ol_amount <= Column && Column < NamedColumn::ol_dist_info) {
-            return ptr->ol_amount;
-        }
-        if constexpr (NamedColumn::ol_dist_info <= Column && Column < NamedColumn::ol_delivery_d) {
-            return ptr->ol_dist_info;
-        }
-        if constexpr (NamedColumn::ol_delivery_d <= Column && Column < NamedColumn::COLCOUNT) {
-            return ptr->ol_delivery_d;
-        }
-        static_assert(Column < NamedColumn::COLCOUNT);
+            Args&&... args) {
+        return StructAccessor::template get_value<Column>(std::forward<Args>(args)...);
     }
 
     std::array<orderline_value*, MAX_POINTERS> vptrs_ = { nullptr, };
@@ -2763,18 +3246,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::i_data;
 }
 
-template <size_t Variant>
-struct SplitPolicy;
-
-template <>
-struct SplitPolicy<0> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -2823,6 +3294,47 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
     static constexpr NamedColumn Column = ColumnValue;
 };
 
+struct StructAccessor {
+    template <NamedColumn Column>
+    static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
+            item_value* ptr) {
+        if constexpr (NamedColumn::i_im_id <= Column && Column < NamedColumn::i_price) {
+            return ptr->i_im_id;
+        }
+        if constexpr (NamedColumn::i_price <= Column && Column < NamedColumn::i_name) {
+            return ptr->i_price;
+        }
+        if constexpr (NamedColumn::i_name <= Column && Column < NamedColumn::i_data) {
+            return ptr->i_name;
+        }
+        if constexpr (NamedColumn::i_data <= Column && Column < NamedColumn::COLCOUNT) {
+            return ptr->i_data;
+        }
+        static_assert(Column < NamedColumn::COLCOUNT);
+    }
+};
+
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(item_value* dest, item_value* src) {
+        if constexpr(Cell == 0) {
+            dest->i_im_id = src->i_im_id;
+            dest->i_price = src->i_price;
+            dest->i_name = src->i_name;
+            dest->i_data = src->i_data;
+        }
+    }
+};
+
 class RecordAccessor {
 public:
     using NamedColumn = item_value_datatypes::NamedColumn;
@@ -2855,6 +3367,14 @@ public:
         return vptr;
     }
 
+    template <int Index>
+    inline static constexpr const auto split_of(NamedColumn column) {
+        if constexpr (Index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        return 0;
+    }
+
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
@@ -2864,6 +3384,26 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    template <int Index>
+    inline static constexpr void copy_cell(int cell, ValueType* dest, ValueType* src) {
+        if constexpr (Index >= 0 && Index < POLICIES) {
+            if (cell == 0) {
+                SplitPolicy<Index>::template copy_cell<0>(dest, src);
+                return;
+            }
+        } else {
+            (void) dest;
+            (void) src;
+        }
+    }
+
+    inline static constexpr void copy_cell(int index, int cell, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            copy_cell<0>(cell, dest, src);
+            return;
+        }
     }
 
     void copy_into(item_value* vptr) {
@@ -2919,22 +3459,11 @@ public:
         static_assert(Column < NamedColumn::COLCOUNT);
     }
 
-    template <NamedColumn Column>
+
+    template <NamedColumn Column, typename... Args>
     static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
-            item_value* ptr) {
-        if constexpr (NamedColumn::i_im_id <= Column && Column < NamedColumn::i_price) {
-            return ptr->i_im_id;
-        }
-        if constexpr (NamedColumn::i_price <= Column && Column < NamedColumn::i_name) {
-            return ptr->i_price;
-        }
-        if constexpr (NamedColumn::i_name <= Column && Column < NamedColumn::i_data) {
-            return ptr->i_name;
-        }
-        if constexpr (NamedColumn::i_data <= Column && Column < NamedColumn::COLCOUNT) {
-            return ptr->i_data;
-        }
-        static_assert(Column < NamedColumn::COLCOUNT);
+            Args&&... args) {
+        return StructAccessor::template get_value<Column>(std::forward<Args>(args)...);
     }
 
     std::array<item_value*, MAX_POINTERS> vptrs_ = { nullptr, };
@@ -3039,27 +3568,6 @@ constexpr NamedColumn RoundedNamedColumn() {
     return NamedColumn::s_remote_cnt;
 }
 
-template <size_t Variant>
-struct SplitPolicy;
-
-template <>
-struct SplitPolicy<0> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
-template <>
-struct SplitPolicy<1> {
-    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0 };
-    inline static constexpr int column_to_cell(NamedColumn column) {
-        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
-    }
-};
-
 template <NamedColumn Column>
 struct accessor_info;
 
@@ -3128,6 +3636,95 @@ struct accessor_info : accessor_info<RoundedNamedColumn<ColumnValue>()> {
     static constexpr NamedColumn Column = ColumnValue;
 };
 
+struct StructAccessor {
+    template <NamedColumn Column>
+    static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
+            stock_value* ptr) {
+        if constexpr (NamedColumn::s_dists <= Column && Column < NamedColumn::s_data) {
+            return ptr->s_dists[static_cast<std::underlying_type_t<NamedColumn>>(Column - NamedColumn::s_dists)];
+        }
+        if constexpr (NamedColumn::s_data <= Column && Column < NamedColumn::s_quantity) {
+            return ptr->s_data;
+        }
+        if constexpr (NamedColumn::s_quantity <= Column && Column < NamedColumn::s_ytd) {
+            return ptr->s_quantity;
+        }
+        if constexpr (NamedColumn::s_ytd <= Column && Column < NamedColumn::s_order_cnt) {
+            return ptr->s_ytd;
+        }
+        if constexpr (NamedColumn::s_order_cnt <= Column && Column < NamedColumn::s_remote_cnt) {
+            return ptr->s_order_cnt;
+        }
+        if constexpr (NamedColumn::s_remote_cnt <= Column && Column < NamedColumn::COLCOUNT) {
+            return ptr->s_remote_cnt;
+        }
+        static_assert(Column < NamedColumn::COLCOUNT);
+    }
+};
+
+template <size_t Variant>
+struct SplitPolicy;
+
+template <>
+struct SplitPolicy<0> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(stock_value* dest, stock_value* src) {
+        if constexpr(Cell == 0) {
+            dest->s_dists[0] = src->s_dists[0];
+            dest->s_dists[1] = src->s_dists[1];
+            dest->s_dists[2] = src->s_dists[2];
+            dest->s_dists[3] = src->s_dists[3];
+            dest->s_dists[4] = src->s_dists[4];
+            dest->s_dists[5] = src->s_dists[5];
+            dest->s_dists[6] = src->s_dists[6];
+            dest->s_dists[7] = src->s_dists[7];
+            dest->s_dists[8] = src->s_dists[8];
+            dest->s_dists[9] = src->s_dists[9];
+            dest->s_data = src->s_data;
+            dest->s_quantity = src->s_quantity;
+            dest->s_ytd = src->s_ytd;
+            dest->s_order_cnt = src->s_order_cnt;
+            dest->s_remote_cnt = src->s_remote_cnt;
+        }
+    }
+};
+
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(stock_value* dest, stock_value* src) {
+        if constexpr(Cell == 1) {
+            dest->s_dists[0] = src->s_dists[0];
+            dest->s_dists[1] = src->s_dists[1];
+            dest->s_dists[2] = src->s_dists[2];
+            dest->s_dists[3] = src->s_dists[3];
+            dest->s_dists[4] = src->s_dists[4];
+            dest->s_dists[5] = src->s_dists[5];
+            dest->s_dists[6] = src->s_dists[6];
+            dest->s_dists[7] = src->s_dists[7];
+            dest->s_dists[8] = src->s_dists[8];
+            dest->s_dists[9] = src->s_dists[9];
+            dest->s_data = src->s_data;
+        }
+        if constexpr(Cell == 0) {
+            dest->s_quantity = src->s_quantity;
+            dest->s_ytd = src->s_ytd;
+            dest->s_order_cnt = src->s_order_cnt;
+            dest->s_remote_cnt = src->s_remote_cnt;
+        }
+    }
+};
+
 class RecordAccessor {
 public:
     using NamedColumn = stock_value_datatypes::NamedColumn;
@@ -3160,6 +3757,17 @@ public:
         return vptr;
     }
 
+    template <int Index>
+    inline static constexpr const auto split_of(NamedColumn column) {
+        if constexpr (Index == 0) {
+            return SplitPolicy<0>::column_to_cell(column);
+        }
+        if constexpr (Index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
+        return 0;
+    }
+
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
@@ -3172,6 +3780,34 @@ public:
 
     const auto cell_of(NamedColumn column) const {
         return split_of(splitindex_, column);
+    }
+
+    template <int Index>
+    inline static constexpr void copy_cell(int cell, ValueType* dest, ValueType* src) {
+        if constexpr (Index >= 0 && Index < POLICIES) {
+            if (cell == 0) {
+                SplitPolicy<Index>::template copy_cell<0>(dest, src);
+                return;
+            }
+            if (cell == 1) {
+                SplitPolicy<Index>::template copy_cell<1>(dest, src);
+                return;
+            }
+        } else {
+            (void) dest;
+            (void) src;
+        }
+    }
+
+    inline static constexpr void copy_cell(int index, int cell, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            copy_cell<0>(cell, dest, src);
+            return;
+        }
+        if (index == 1) {
+            copy_cell<1>(cell, dest, src);
+            return;
+        }
     }
 
     void copy_into(stock_value* vptr) {
@@ -3259,28 +3895,11 @@ public:
         static_assert(Column < NamedColumn::COLCOUNT);
     }
 
-    template <NamedColumn Column>
+
+    template <NamedColumn Column, typename... Args>
     static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
-            stock_value* ptr) {
-        if constexpr (NamedColumn::s_dists <= Column && Column < NamedColumn::s_data) {
-            return ptr->s_dists[static_cast<std::underlying_type_t<NamedColumn>>(Column - NamedColumn::s_dists)];
-        }
-        if constexpr (NamedColumn::s_data <= Column && Column < NamedColumn::s_quantity) {
-            return ptr->s_data;
-        }
-        if constexpr (NamedColumn::s_quantity <= Column && Column < NamedColumn::s_ytd) {
-            return ptr->s_quantity;
-        }
-        if constexpr (NamedColumn::s_ytd <= Column && Column < NamedColumn::s_order_cnt) {
-            return ptr->s_ytd;
-        }
-        if constexpr (NamedColumn::s_order_cnt <= Column && Column < NamedColumn::s_remote_cnt) {
-            return ptr->s_order_cnt;
-        }
-        if constexpr (NamedColumn::s_remote_cnt <= Column && Column < NamedColumn::COLCOUNT) {
-            return ptr->s_remote_cnt;
-        }
-        static_assert(Column < NamedColumn::COLCOUNT);
+            Args&&... args) {
+        return StructAccessor::template get_value<Column>(std::forward<Args>(args)...);
     }
 
     std::array<stock_value*, MAX_POINTERS> vptrs_ = { nullptr, };

@@ -139,6 +139,7 @@ public:
     static constexpr auto num_versions = RowType::RecordAccessor::MAX_SPLITS;
     static constexpr auto NUM_VERSIONS = RowType::RecordAccessor::MAX_SPLITS;
     static constexpr auto NUM_POINTERS = RowType::RecordAccessor::MAX_POINTERS;
+    static constexpr auto NUM_POLICIES = RowType::RecordAccessor::POLICIES;
     //static constexpr auto split_width = static_cast<size_t>(std::ceil(std::log2l(NUM_VERSIONS)));
 
     struct ColumnAccess {
@@ -186,8 +187,10 @@ public:
         if constexpr (DefaultSplit == 0) {
             (void) col_n;
             return 0;
+        } else if constexpr (DefaultSplit < NUM_POLICIES) {
+            return RecordAccessor::template split_of<DefaultSplit>(static_cast<nc>(col_n));
         } else {
-            return split_of(DefaultSplit, nc(col_n));
+            return RecordAccessor::template split_of<NUM_POLICIES - 1>(static_cast<nc>(col_n));
         }
     }
 
@@ -270,8 +273,14 @@ public:
     }
 
     void install_cell(int cell, RowType* const new_row) {
-        install_by_cell_at_runtime(split(), cell, new_row);
-        //install_by_split_cell(split(), cell, new_row);
+        if constexpr (UseATS) {
+            RecordAccessor::template copy_cell(split(), cell, &row, new_row);
+            //install_by_cell_at_runtime(split(), cell, new_row);
+            //install_by_split_cell(split(), cell, new_row);
+        } else {
+            RecordAccessor::template copy_cell<DefaultSplit>(cell, &row, new_row);
+            //install_by_cell_at_runtime(DefaultSplit, cell, new_row);
+        }
     }
 
     version_type& row_version() {
