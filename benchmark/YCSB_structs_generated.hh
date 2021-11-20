@@ -220,7 +220,7 @@ public:
     }
 
     void copy_into(ycsb_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::even_columns>::value_type& even_columns() {

@@ -294,7 +294,7 @@ public:
     }
 
     void copy_into(index_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::data>::value_type& data() {

@@ -318,7 +318,7 @@ public:
     }
 
     void copy_into(ordered_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::ro>::value_type& ro() {
@@ -719,7 +719,7 @@ public:
     }
 
     void copy_into(unordered_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::ro>::value_type& ro() {

@@ -548,7 +548,7 @@ if (index == {variant}) {{
 }}
 
 void copy_into({struct}* vptr) {{
-{indent}memcpy(vptr, vptrs_[0], sizeof *vptr);
+{indent}memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
 }}
 ''')
 

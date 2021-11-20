@@ -554,7 +554,7 @@ public:
             h->status_.store(UNUSED, std::memory_order_release);
         } else {
 #if MVCC_GARBAGE_DEBUG
-            memset(h, 0xFF, sizeof(MvHistoryBase));
+            memset((void*)h, 0xFF, sizeof(MvHistoryBase));
 #endif
             delete h;
         }

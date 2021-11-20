@@ -362,7 +362,7 @@ public:
     }
 
     void copy_into(warehouse_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::w_name>::value_type& w_name() {
@@ -832,7 +832,7 @@ public:
     }
 
     void copy_into(district_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::d_name>::value_type& d_name() {
@@ -1131,7 +1131,7 @@ public:
     }
 
     void copy_into(customer_idx_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::c_ids>::value_type& c_ids() {
@@ -1724,7 +1724,7 @@ public:
     }
 
     void copy_into(customer_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::c_first>::value_type& c_first() {
@@ -2266,7 +2266,7 @@ public:
     }
 
     void copy_into(history_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::h_c_id>::value_type& h_c_id() {
@@ -2676,7 +2676,7 @@ public:
     }
 
     void copy_into(order_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::o_c_id>::value_type& o_c_id() {
@@ -3073,7 +3073,7 @@ public:
     }
 
     void copy_into(orderline_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::ol_i_id>::value_type& ol_i_id() {
@@ -3407,7 +3407,7 @@ public:
     }
 
     void copy_into(item_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::i_im_id>::value_type& i_im_id() {
@@ -3811,7 +3811,7 @@ public:
     }
 
     void copy_into(stock_value* vptr) {
-        memcpy(vptr, vptrs_[0], sizeof *vptr);
+        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
     }
 
     inline typename accessor_info<NamedColumn::s_dists>::value_type& s_dists() {
