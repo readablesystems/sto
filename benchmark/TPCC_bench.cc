@@ -210,9 +210,9 @@ int main(int argc, const char *const *argv) {
         } else if (node_tracking) {
             ret_code = tpcc_mn(argc, argv);
         } else if (enable_commute) {
-            ret_code = tpcc_mc(argc, argv);
+            ret_code = tpcc_mc(argc, argv, split_type);
         } else {
-            ret_code = tpcc_m(argc, argv);
+            ret_code = tpcc_m(argc, argv, split_type);
         }
         break;
     default:
