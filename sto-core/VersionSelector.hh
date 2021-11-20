@@ -123,24 +123,27 @@ inline AccessType& operator|=(AccessType& lhs, const AccessType& rhs) {
 };
 
 // Container for adaptively-split value containers
-template <typename RowType, typename VersImpl,
-          typename RowType::RecordAccessor::SplitType DefaultSplit=
-               RowType::RecordAccessor::DEFAULT_SPLIT,
-          bool UseATS=false>
+template <typename ValueType, typename VersImpl,
+          typename ValueType::RecordAccessor::SplitType DefaultSplit=
+               ValueType::RecordAccessor::DEFAULT_SPLIT,
+          bool UseMVCC=false, bool UseATS=false>
 class AdaptiveValueContainer {
 public:
-    using comm_type = commutators::Commutator<RowType>;
-    using nc = typename RowType::NamedColumn;
-    using RecordAccessor = typename RowType::RecordAccessor;
+    using comm_type = commutators::Commutator<ValueType>;
+    using nc = typename ValueType::NamedColumn;
+    using RecordAccessor = typename ValueType::RecordAccessor;
     using type = TransactionTid::type;
     using version_type = VersImpl;
-    using ValueType = RowType;
-    using SplitType = typename RowType::RecordAccessor::SplitType;
-    static constexpr auto num_versions = RowType::RecordAccessor::MAX_SPLITS;
-    static constexpr auto NUM_VERSIONS = RowType::RecordAccessor::MAX_SPLITS;
-    static constexpr auto NUM_POINTERS = RowType::RecordAccessor::MAX_POINTERS;
-    static constexpr auto NUM_POLICIES = RowType::RecordAccessor::POLICIES;
+    using access_type = AccessType;
+    using SplitType = typename RecordAccessor::SplitType;
+    static constexpr auto num_versions = RecordAccessor::MAX_SPLITS;
+    static constexpr auto NUM_VERSIONS = RecordAccessor::MAX_SPLITS;
+    static constexpr auto NUM_POINTERS = RecordAccessor::MAX_POINTERS;
+    static constexpr auto NUM_POLICIES = RecordAccessor::POLICIES;
+    static constexpr auto INDEX_POINTERS = std::make_index_sequence<NUM_POINTERS>{};
     //static constexpr auto split_width = static_cast<size_t>(std::ceil(std::log2l(NUM_VERSIONS)));
+    using RowType = std::conditional_t<
+        UseMVCC, std::array<MvObject<ValueType>, NUM_POINTERS>, ValueType>;
 
     struct ColumnAccess {
         ColumnAccess(nc column, AccessType access)
@@ -150,10 +153,36 @@ public:
         AccessType access;
     };
 
-    AdaptiveValueContainer(type v, const RowType& r) : row(r), versions_() {
+    template <bool B=UseMVCC, std::enable_if_t<!B, bool> = true>
+    AdaptiveValueContainer(type v, const ValueType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v);
     }
-    AdaptiveValueContainer(type v, bool insert, const RowType& r) : row(r), versions_() {
+
+    template <bool B=UseMVCC, std::enable_if_t<!B, bool> = true>
+    AdaptiveValueContainer(type v, bool insert, const ValueType& r) : row(r), versions_() {
+        new (&versions_[0]) version_type(v, insert);
+    }
+
+    template <bool B=UseMVCC, std::enable_if_t<B, bool> = true>
+    AdaptiveValueContainer(type v, const ValueType& r)
+        : AdaptiveValueContainer(v, r, std::make_index_sequence<NUM_POINTERS>{}) {}
+
+    template <bool B=UseMVCC, std::enable_if_t<B, bool> = true>
+    AdaptiveValueContainer(type v, bool insert, const ValueType& r)
+        : AdaptiveValueContainer(v, insert, r, std::make_index_sequence<NUM_POINTERS>{}) {}
+
+    template <bool B=UseMVCC, std::enable_if_t<B, bool> = true, size_t... I>
+    AdaptiveValueContainer(
+            type v, const ValueType& r, std::index_sequence<I...>)
+        : row{ MvObject(*(&r + 0 * I))... }, versions_() {
+        new (&versions_[0]) version_type(v);
+    }
+
+    template <bool B=UseMVCC, std::enable_if_t<B, bool> = true, size_t... I>
+    AdaptiveValueContainer(
+            type v, bool insert, const ValueType& r,
+            std::index_sequence<I...>)
+        : row{ MvObject(*(&r + 0 * I))... }, versions_() {
         new (&versions_[0]) version_type(v, insert);
     }
 
@@ -207,27 +236,31 @@ public:
         return split_accesses;
     }
 
-    inline RecordAccessor get() {
-        return get(std::make_index_sequence<NUM_POINTERS>());
-    }
-
     inline RecordAccessor get(const SplitType& split) {
-        return get(split, std::make_index_sequence<NUM_POINTERS>());
+        return get(split, INDEX_POINTERS);
     }
 
-    template <size_t... Indexes>
-    inline RecordAccessor get(std::index_sequence<Indexes...>) {
-        return get(index_to_ptr<Indexes>()...);
+    inline RecordAccessor get(const SplitType& split, std::array<ValueType*, NUM_POINTERS>& vptrs) {
+        return get(split, vptrs, INDEX_POINTERS);
     }
 
-    template <size_t... Indexes>
-    inline RecordAccessor get(const SplitType& split, std::index_sequence<Indexes...>) {
+    template <size_t... Indexes, bool B=UseMVCC>
+    inline std::enable_if_t<!B, RecordAccessor>
+    get(const SplitType& split, std::index_sequence<Indexes...>) {
         return get(split, index_to_ptr<Indexes>()...);
     }
 
     template <size_t... Indexes>
-    inline RecordAccessor get(const SplitType& split, RowType* ptr, std::index_sequence<Indexes...>) {
+    inline RecordAccessor get(const SplitType& split, ValueType* ptr, std::index_sequence<Indexes...>) {
         return get(split, index_to_ptr<Indexes>(ptr)...);
+    }
+
+    template <size_t... Indexes>
+    inline RecordAccessor get(
+            const SplitType& split,
+            std::array<ValueType*, NUM_POINTERS>& vptrs,
+            std::index_sequence<Indexes...>) {
+        return get(split, index_to_ptr<Indexes>(vptrs[Indexes])...);
     }
 
     template <typename... Args>
@@ -238,9 +271,7 @@ public:
     template <typename... Args>
     inline RecordAccessor get(const SplitType& split, Args&&... args) {
         if constexpr (sizeof...(args) == 1 && NUM_POINTERS > 1) {
-            return get(
-                    split, std::forward<Args>(args)...,
-                    std::make_index_sequence<NUM_POINTERS>());
+            return get(split, std::forward<Args>(args)..., INDEX_POINTERS);
         } else {
             RecordAccessor accessor(std::forward<Args>(args)...);
             accessor.splitindex_ = split;
@@ -248,13 +279,13 @@ public:
         }
     }
 
-    template <size_t Index>
-    inline RowType* index_to_ptr() {
+    template <size_t Index, bool B=UseMVCC>
+    inline std::enable_if_t<!B, ValueType*> index_to_ptr() {
         return &row;
     }
 
     template <size_t Index>
-    inline RowType* index_to_ptr(RowType* ptr) {
+    inline ValueType* index_to_ptr(ValueType* ptr) {
         return ptr;
     }
 
@@ -262,7 +293,7 @@ public:
         comm.operate(row);
     }
 
-    void install(RowType* new_row) {
+    void install(ValueType* new_row) {
         row = *new_row;
         //install_by_cell(0, new_row);
         //install_by_cell(1, new_row);
@@ -272,7 +303,7 @@ public:
         comm.operate(row);
     }
 
-    void install_cell(int cell, RowType* const new_row) {
+    void install_cell(int cell, ValueType* const new_row) {
         if constexpr (UseATS) {
             RecordAccessor::template copy_cell(split(), cell, &row, new_row);
             //install_by_cell_at_runtime(split(), cell, new_row);
@@ -319,7 +350,7 @@ public:
 
 private:
     template <nc Column=nc(0)>
-    inline void install_by_cell_at_runtime(const SplitType& split, int cell, RowType* const new_row) {
+    inline void install_by_cell_at_runtime(const SplitType& split, int cell, ValueType* const new_row) {
         static_assert(Column < nc::COLCOUNT);
 
         if (split_of(split, Column) == cell) {

@@ -154,7 +154,28 @@ public:
     static constexpr bool MVCC = true;
 };
 
+class db_mvcc_sts_params : public db_mvcc_params {
+public:
+    static constexpr db_split_type Split = db_split_type::Static;
+};
+
+class db_mvcc_ats_params : public db_mvcc_params {
+public:
+    static constexpr db_split_type Split = db_split_type::Adaptive;
+    static constexpr bool UseATS = true;
+};
+
 class db_mvcc_commute_params : public db_mvcc_params {
+public:
+    static constexpr bool Commute = true;
+};
+
+class db_mvcc_sts_commute_params : public db_mvcc_sts_params {
+public:
+    static constexpr bool Commute = true;
+};
+
+class db_mvcc_ats_commute_params : public db_mvcc_ats_params {
 public:
     static constexpr bool Commute = true;
 };

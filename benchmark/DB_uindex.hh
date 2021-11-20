@@ -46,25 +46,7 @@ public:
 
     // our hashtable is an array of linked lists.
     // an internal_elem is the node type for these linked lists
-    struct internal_elem {
-        internal_elem *next;
-        key_type key;
-        value_container_type row_container;
-        bool deleted;
-
-        internal_elem(const key_type& k, const value_type& v, bool valid)
-            : next(nullptr), key(k),
-              row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)), !valid, v),
-              deleted(false) {}
-
-        version_type& version() {
-            return row_container.row_version();
-        }
-
-        bool valid() {
-            return !(version().value() & invalid_bit);
-        }
-    };
+    using internal_elem = typename C::UnorderedInternalElement;
 
     static void thread_init() {}
     ~unordered_index() override {}

@@ -291,6 +291,56 @@ public:
         return { any_has_write, items };
     }
 
+    template <typename T>
+    static std::pair<bool, std::array<typename T::ValueType*, T::NUM_VERSIONS>>
+    mvcc_extract_and_access(
+            const std::array<typename T::access_type, T::NUM_VERSIONS>& accesses,
+            TObject *tobj, internal_elem *e,
+            const typename T::SplitType& current_split,
+            const typename T::SplitType& preferred_split) {
+        static_assert(T::NUM_VERSIONS == T::NUM_POINTERS);
+        using AccessType = typename T::access_type;
+        bool any_accessed = false;
+        std::array<typename T::ValueType*, T::NUM_VERSIONS> values { nullptr };
+        std::fill(values.begin(), values.end(), nullptr);
+        auto& row = e->row_container.row;
+
+        for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
+            if (accesses[i] != AccessType::none) {
+                auto item = Sto::item(tobj, item_key_t(e, i));
+                any_accessed = true;
+                if (preferred_split >= 0) {
+                    item.set_preferred_split(preferred_split);
+                }
+                if ((access & AccessType::read) != AccessType::none) {
+                    auto h = row[i].find(Sto::read_tid());
+                    if (h->status_is(COMMITTED_DELETED)) {
+                        MvAccess::template read<T::ValueType>(item, h);
+                        return { false, values };
+                    } else if (!IndexType::template is_phantom<T::ValueType>(h, item)) {
+                        // XXX No read-my-write stuff for now.
+                        MvAccess::template read<T::ValueType>(item, h);
+
+                        auto vp = h->vp();
+                        assert(vp);
+                        values[i] = vp;
+                    }
+                }
+                if ((access & AccessType::write) != AccessType::none) {
+                    item.add_write();
+                }
+            }
+        }
+
+        if (any_accessed) {
+            if (current_split != preferred_split) {
+                Sto::set_stats();
+            }
+        }
+
+        return { true, values };
+    }
+
     // mvcc_*_loop() methods: Template meta-programs that iterates through all version "splits" at compile time.
     // Template parameters:
     // C: size of split (should be constant throughout the recursive instantiation)
@@ -657,7 +707,8 @@ public:
     typedef typename value_type::NamedColumn NamedColumn;
     typedef typename get_version<DBParams>::type version_type;
     using value_container_type = AdaptiveValueContainer<
-        V, version_type, (static_cast<int>(DBParams::Split) > 0), DBParams::UseATS>;
+        V, version_type, (static_cast<int>(DBParams::Split) > 0),
+        DBParams::MVCC, DBParams::UseATS>;
     typedef commutators::Commutator<value_type> comm_type;
     using RecordAccessor = typename value_container_type::RecordAccessor;
     using ColumnAccess = typename value_container_type::ColumnAccess;
@@ -694,7 +745,56 @@ public:
         return (item.flags() & row_cell_bit) != 0;
     }
 
-    struct MvInternalElement {
+    struct OrderedInternalElement {
+        key_type key;
+        value_container_type row_container;
+
+        AdaptiveValueContainer<
+            V, version_type, (static_cast<int>(DBParams::Split) > 0),
+            true, DBParams::UseATS> test;
+
+        bool deleted;
+
+        OrderedInternalElement(const key_type& k, const value_type& v, bool valid)
+            : key(k),
+              row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)),
+                            !valid, v),
+              test((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)),
+                            !valid, v),
+              deleted(false) {}
+
+        version_type& version() {
+            return row_container.row_version();
+        }
+
+        bool valid() {
+            return !(version().value() & invalid_bit);
+        }
+    };
+
+    // our hashtable is an array of linked lists.
+    // an internal_elem is the node type for these linked lists
+    struct UnorderedInternalElement {
+        UnorderedInternalElement *next;
+        key_type key;
+        value_container_type row_container;
+        bool deleted;
+
+        UnorderedInternalElement(const key_type& k, const value_type& v, bool valid)
+            : next(nullptr), key(k),
+              row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)), !valid, v),
+              deleted(false) {}
+
+        version_type& version() {
+            return row_container.row_version();
+        }
+
+        bool valid() {
+            return !(version().value() & invalid_bit);
+        }
+    };
+
+    struct MvStaticInternalElement {
         typedef typename SplitParams<value_type>::layout_type split_layout_type;
         using object0_type = std::tuple_element_t<0, split_layout_type>;
 
@@ -702,12 +802,12 @@ public:
         key_type key;
         void* table;
 
-        MvInternalElement(void* t, const key_type& k)
+        MvStaticInternalElement(void* t, const key_type& k)
             : split_row(), key(k), table(t) {
         }
 
         template <typename... Args>
-        MvInternalElement(void* t, const key_type& k, Args... args)
+        MvStaticInternalElement(void* t, const key_type& k, Args... args)
             : split_row(std::forward<Args>(args)...), key(k), table(t) {
         }
 
@@ -720,15 +820,54 @@ public:
             void* base = nullptr;
             const auto base_address = reinterpret_cast<intptr_t>(base);
             const auto chain_address = reinterpret_cast<intptr_t>(
-                    reinterpret_cast<MvInternalElement*>(base)->chain_at<0>());
+                    reinterpret_cast<MvStaticInternalElement*>(base)->chain_at<0>());
             return chain_address - base_address;
         }
 
-        static MvInternalElement* from_chain(std::tuple_element_t<0, split_layout_type>* chain) {
-            return reinterpret_cast<MvInternalElement*>(
+        static MvStaticInternalElement* from_chain(std::tuple_element_t<0, split_layout_type>* chain) {
+            return reinterpret_cast<MvStaticInternalElement*>(
                     reinterpret_cast<intptr_t>(chain) - row_chain_offset());
         }
     };
+
+    struct MvAdaptiveInternalElement {
+        typedef typename std::tuple<value_type, value_type> split_layout_type;
+        using object0_type = std::tuple_element_t<0, split_layout_type>;
+
+        split_layout_type split_row;
+        key_type key;
+        void* table;
+
+        MvAdaptiveInternalElement(void* t, const key_type& k)
+            : split_row(), key(k), table(t) {
+        }
+
+        template <typename... Args>
+        MvAdaptiveInternalElement(void* t, const key_type& k, Args... args)
+            : split_row(std::forward<Args>(args)...), key(k), table(t) {
+        }
+
+        template <int I>
+        std::tuple_element_t<I, split_layout_type>* chain_at() {
+            return &std::get<I>(split_row);
+        }
+
+        static intptr_t row_chain_offset() {
+            void* base = nullptr;
+            const auto base_address = reinterpret_cast<intptr_t>(base);
+            const auto chain_address = reinterpret_cast<intptr_t>(
+                    reinterpret_cast<MvAdaptiveInternalElement*>(base)->chain_at<0>());
+            return chain_address - base_address;
+        }
+
+        static MvAdaptiveInternalElement* from_chain(std::tuple_element_t<0, split_layout_type>* chain) {
+            return reinterpret_cast<MvAdaptiveInternalElement*>(
+                    reinterpret_cast<intptr_t>(chain) - row_chain_offset());
+        }
+    };
+
+    using MvInternalElement = std::conditional_t<
+        DBParams::UseATS, MvAdaptiveInternalElement, MvStaticInternalElement>;
 };
 
 template <typename K, typename V, typename DBParams>

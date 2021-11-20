@@ -46,25 +46,7 @@ public:
 
     static constexpr bool value_is_small = is_small<V>::value;
 
-    struct internal_elem {
-        key_type key;
-        value_container_type row_container;
-        bool deleted;
-
-        internal_elem(const key_type& k, const value_type& v, bool valid)
-            : key(k),
-              row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)),
-                            !valid, v),
-              deleted(false) {}
-
-        version_type& version() {
-            return row_container.row_version();
-        }
-
-        bool valid() {
-            return !(version().value() & invalid_bit);
-        }
-    };
+    using internal_elem = typename C::OrderedInternalElement;
 
     struct table_params : public Masstree::nodeparams<15,15> {
         typedef internal_elem* value_type;
@@ -1165,7 +1147,8 @@ public:
 
     static constexpr uintptr_t internode_bit = 1;
 
-    typedef typename index_common<K, V, DBParams>::MvInternalElement internal_elem;
+    using internal_elem = std::conditional_t<
+        DBParams::UseATS, typename C::OrderedInternalElement, typename C::MvInternalElement>;
 
     struct table_params : public Masstree::nodeparams<15,15> {
         typedef internal_elem* value_type;
@@ -1189,6 +1172,8 @@ public:
         split_version_helpers<index_t>::template mvcc_column_to_cell_accesses<T>;
     template <typename T> static constexpr auto extract_item_list =
         split_version_helpers<index_t>::template extract_item_list<T>;
+    template <typename T> static constexpr auto mvcc_extract_and_access =
+        split_version_helpers<index_t>::template mvcc_extract_and_access<T>;
     using MvSplitAccessAll = typename split_version_helpers<index_t>::template MvSplitAccessAll<SplitParams<value_type>>;
 
     static __thread typename table_params::threadinfo_type *ti;
@@ -1273,6 +1258,27 @@ public:
                 accessor_t({ nullptr })
             };
         }
+    }
+
+    sel_return_type
+    select_row(uintptr_t rid,
+               std::initializer_list<ColumnAccess> accesses,
+               int preferred_split=-1) {
+        auto e = reinterpret_cast<internal_elem *>(rid);
+        const auto split = e->row_container.split();  // This is a ~2% overhead
+        TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+        auto cell_accesses = e->row_container.split_accesses(split, accesses);
+
+        std::array<value_type*, value_container_type::NUM_VERSIONS> cell_values {};
+        bool ok;
+        std::tie(ok, cell_values) = mvcc_extract_and_access<value_container_type>(
+                cell_accesses, this, e, split, preferred_split);
+
+        if (!ok) {
+            return { false, false, 0, nullptr };
+        }
+
+        return { true, true, rid, e->row_container.get(split, cell_values) };
     }
 
     sel_split_return_type
