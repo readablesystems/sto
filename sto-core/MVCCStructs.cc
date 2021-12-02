@@ -26,11 +26,12 @@ std::ostream& operator<<(std::ostream& w, MvStatus s) {
     }
 }
 
-void MvHistoryBase::print_prevs(size_t max) const {
+/*
+void MvHistoryBase::print_prevs(size_t max, size_t cell) const {
     auto h = this;
     for (size_t i = 0;
          h && i < max;
-         ++i, h = h->prev_.load(std::memory_order_relaxed)) {
+         ++i, h = h->prev_[cell].load(std::memory_order_relaxed)) {
         std::cerr << i << ". " << (void*) h << " ";
         uintptr_t oaddr = reinterpret_cast<uintptr_t>(h->obj_);
         if (reinterpret_cast<uintptr_t>(h) == oaddr + 24) {
@@ -47,3 +48,4 @@ void MvHistoryBase::assert_status_fail(const char* description) {
     assert(false);
 }
 #endif
+*/

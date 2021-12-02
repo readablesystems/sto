@@ -14,10 +14,10 @@
 class MvHistoryBase;
 
 // History list item for MVCC
-template <typename T> class MvHistory;
+template <typename T, size_t Cells=1> class MvHistory;
 
 // Generic contained for MVCC abstractions applied to a given object
-template <typename T> class MvObject;
+template <typename T, size_t Cells=1> class MvObject;
 #ifndef MVCC_INLINING
 #define MVCC_INLINING 0
 #endif

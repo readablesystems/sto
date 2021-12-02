@@ -43,8 +43,48 @@ public:
 
     MvHistoryBase() = delete;
     MvHistoryBase(void* obj, tid_type tid, MvStatus status)
-        : status_(status), wtid_(tid), rtid_(tid), prev_(nullptr),
-          obj_(obj) {
+        : status_(status), wtid_(tid), rtid_(tid), obj_(obj) {
+    }
+
+    std::atomic<MvStatus> status_;  // Status of this element
+    tid_type wtid_;  // Write TID
+    std::atomic<tid_type> rtid_;  // Read TID
+    void* obj_;  // Parent object
+};
+
+template <typename T, size_t Cells>
+class MvHistory : public MvHistoryBase {
+public:
+    typedef TransactionTid::type tid_type;
+    typedef TRcuSet::epoch_type epoch_type;
+    typedef MvHistoryBase base_type;
+    typedef MvHistory<T, Cells> history_type;
+    typedef MvObject<T, Cells> object_type;
+    typedef commutators::Commutator<T> comm_type;
+
+    MvHistory() = delete;
+    explicit MvHistory(object_type *obj)
+        : MvHistory(obj, 0, nullptr) {
+    }
+    explicit MvHistory(
+            object_type *obj, tid_type ntid, const T& nv)
+        : base_type(obj, ntid, PENDING),
+          prev_(), v_(nv) {
+    }
+    explicit MvHistory(
+            object_type *obj, tid_type ntid, T&& nv)
+        : base_type(obj, ntid, PENDING),
+          prev_(), v_(std::move(nv)) {
+    }
+    explicit MvHistory(
+            object_type *obj, tid_type ntid, T *nvp)
+        : base_type(obj, ntid, PENDING),
+          prev_(), v_(nvp ? *nvp : v_ /*XXXXXXX*/) {
+    }
+    explicit MvHistory(
+            object_type *obj, tid_type ntid, comm_type &&c)
+        : base_type(obj, ntid, PENDING_DELTA),
+          prev_(), c_(std::move(c)), v_() {
     }
 
 #if NDEBUG
@@ -56,51 +96,12 @@ public:
             assert_status_fail(description);
         }
     }
-    void assert_status_fail(const char* description);
+    void assert_status_fail(const char* description) {
+        std::cerr << "MvHistoryBase::assert_status_fail: " << description << "\n";
+        print_prevs(5);
+        assert(false);
+    }
 #endif
-
-    void print_prevs(size_t max = 1000) const;
-
-    std::atomic<MvStatus> status_;  // Status of this element
-    tid_type wtid_;  // Write TID
-    std::atomic<tid_type> rtid_;  // Read TID
-    std::atomic<MvHistoryBase*> prev_;
-    void* obj_;  // Parent object
-};
-
-template <typename T>
-class MvHistory : protected MvHistoryBase {
-public:
-    typedef TransactionTid::type tid_type;
-    typedef TRcuSet::epoch_type epoch_type;
-    typedef MvHistory<T> history_type;
-    typedef MvObject<T> object_type;
-    typedef commutators::Commutator<T> comm_type;
-
-    MvHistory() = delete;
-    explicit MvHistory(object_type *obj)
-        : MvHistory(obj, 0, nullptr) {
-    }
-    explicit MvHistory(
-            object_type *obj, tid_type ntid, const T& nv)
-        : MvHistoryBase(obj, ntid, PENDING),
-          v_(nv) {
-    }
-    explicit MvHistory(
-            object_type *obj, tid_type ntid, T&& nv)
-        : MvHistoryBase(obj, ntid, PENDING),
-          v_(std::move(nv)) {
-    }
-    explicit MvHistory(
-            object_type *obj, tid_type ntid, T *nvp)
-        : MvHistoryBase(obj, ntid, PENDING),
-          v_(nvp ? *nvp : v_ /*XXXXXXX*/) {
-    }
-    explicit MvHistory(
-            object_type *obj, tid_type ntid, comm_type &&c)
-        : MvHistoryBase(obj, ntid, PENDING_DELTA),
-          c_(std::move(c)), v_() {
-    }
 
     // Whether this version can be late-inserted in front of hnext
     bool can_precede(const history_type* hnext) const {
@@ -122,8 +123,27 @@ public:
         return static_cast<object_type*>(obj_);
     }
 
+    template <size_t Cell=0>
     inline history_type* prev() const {
-        return reinterpret_cast<history_type*>(prev_.load());
+        return reinterpret_cast<history_type*>(prev_[Cell].load());
+    }
+
+    inline history_type* prev(const size_t cell=0) const {
+        return reinterpret_cast<history_type*>(prev_[cell].load());
+    }
+
+    void print_prevs(size_t max=1000, size_t cell=0) const {
+        auto h = this;
+        for (size_t i = 0;
+             h && i < max;
+             ++i, h = h->prev_relaxed(cell)) {
+            std::cerr << i << ". " << (void*) h << " ";
+            uintptr_t oaddr = reinterpret_cast<uintptr_t>(h->obj_);
+            if (reinterpret_cast<uintptr_t>(h) == oaddr + 24) {
+                std::cerr << "INLINE ";
+            }
+            std::cerr << h->status_.load(std::memory_order_relaxed) << " W" << h->wtid_ << " R" << h->rtid_.load(std::memory_order_relaxed) << "\n";
+        }
     }
 
     // Returns the current rtid
@@ -132,8 +152,13 @@ public:
     }
 
 private:
+    template <size_t Cell=0>
     inline history_type* prev_relaxed() const {
-        return reinterpret_cast<history_type*>(prev_.load(std::memory_order_relaxed));
+        return reinterpret_cast<history_type*>(prev_[Cell].load(std::memory_order_relaxed));
+    }
+
+    inline history_type* prev_relaxed(size_t cell=0) const {
+        return reinterpret_cast<history_type*>(prev_[cell].load(std::memory_order_relaxed));
     }
 
     inline void update_rtid(tid_type minimum_new_rtid) {
@@ -368,16 +393,18 @@ private:
         }
     }
 
+    std::array<std::atomic<MvHistoryBase*>, Cells> prev_;
     comm_type c_;
     T v_;
 
     friend class MvObject<T>;
 };
 
-template <typename T>
+template <typename T, size_t Cells>
 class MvObject {
 public:
-    typedef MvHistory<T> history_type;
+    typedef MvHistory<T, Cells> history_type;
+    typedef typename history_type::base_type base_type;
     typedef const T& read_type;
     typedef TransactionTid::type tid_type;
 
@@ -449,25 +476,25 @@ public:
     // "Lock" step: pending version installation & version consistency check;
     //              returns true if successful, false if aborted
     template <bool may_commute = true>
-    bool cp_lock(const tid_type tid, history_type* hw) {
+    bool cp_lock(const tid_type tid, history_type* hw, size_t cell=0) {
         // Can only install pending versions
         hw->assert_status(hw->status_is(PENDING), "cp_lock pending");
 
-        std::atomic<MvHistoryBase*>* target = &h_;
+        std::atomic<base_type*>* target = &h_;
         while (true) {
             // Discover target atomic on which to do CAS
-            MvHistoryBase* t = *target;
+            base_type* t = *target;
             if (t->wtid_ > tid) {
-                if (may_commute && !hw->can_precede(static_cast<history_type*>(t))) {
+                if (may_commute && !hw->can_precede(reinterpret_cast<history_type*>(t))) {
                     return false;
                 }
-                target = &t->prev_;
+                target = &reinterpret_cast<history_type*>(t)->prev_[cell];
             } else if (!(t->status_.load(std::memory_order_acquire) & ABORTED)
                        && t->rtid_.load(std::memory_order_acquire) > tid) {
                 return false;
             } else {
                 // Properly link h's prev_
-                hw->prev_.store(t, std::memory_order_release);
+                hw->prev_[cell].store(t, std::memory_order_release);
 
                 // Attempt to CAS onto the target
                 if (target->compare_exchange_strong(t, hw)) {
@@ -554,7 +581,7 @@ public:
             h->status_.store(UNUSED, std::memory_order_release);
         } else {
 #if MVCC_GARBAGE_DEBUG
-            memset((void*)h, 0xFF, sizeof(MvHistoryBase));
+            memset((void*)h, 0xFF, sizeof(base_type));
 #endif
             delete h;
         }
@@ -696,7 +723,7 @@ protected:
         }
     }
 
-    std::atomic<MvHistoryBase*> h_;
+    std::atomic<base_type*> h_;
     std::atomic<int> cuctr_ = 0;  // For gc-time flattening
     std::atomic<tid_type> flattenv_;
 
