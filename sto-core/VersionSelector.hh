@@ -143,7 +143,7 @@ public:
     static constexpr auto INDEX_POINTERS = std::make_index_sequence<NUM_POINTERS>{};
     //static constexpr auto split_width = static_cast<size_t>(std::ceil(std::log2l(NUM_VERSIONS)));
     using RowType = std::conditional_t<
-        UseMVCC, std::array<MvObject<ValueType>, NUM_POINTERS>, ValueType>;
+        UseMVCC, MvObject<ValueType, NUM_POINTERS>, ValueType>;
 
     struct ColumnAccess {
         ColumnAccess(nc column, AccessType access)
@@ -153,16 +153,17 @@ public:
         AccessType access;
     };
 
-    template <bool B=UseMVCC, std::enable_if_t<!B, bool> = true>
+    //template <bool B=UseMVCC, std::enable_if_t<!B, bool> = true>
     AdaptiveValueContainer(type v, const ValueType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v);
     }
 
-    template <bool B=UseMVCC, std::enable_if_t<!B, bool> = true>
+    //template <bool B=UseMVCC, std::enable_if_t<!B, bool> = true>
     AdaptiveValueContainer(type v, bool insert, const ValueType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v, insert);
     }
 
+    /*
     template <bool B=UseMVCC, std::enable_if_t<B, bool> = true>
     AdaptiveValueContainer(type v, const ValueType& r)
         : AdaptiveValueContainer(v, r, std::make_index_sequence<NUM_POINTERS>{}) {}
@@ -185,6 +186,7 @@ public:
         : row{ MvObject(*(&r + 0 * I))... }, versions_() {
         new (&versions_[0]) version_type(v, insert);
     }
+    */
 
     template <typename KeyType>
     bool access(
@@ -245,8 +247,7 @@ public:
     }
 
     template <size_t... Indexes, bool B=UseMVCC>
-    inline std::enable_if_t<!B, RecordAccessor>
-    get(const SplitType& split, std::index_sequence<Indexes...>) {
+    inline RecordAccessor get(const SplitType& split, std::index_sequence<Indexes...>) {
         return get(split, index_to_ptr<Indexes>()...);
     }
 
@@ -279,9 +280,13 @@ public:
         }
     }
 
-    template <size_t Index, bool B=UseMVCC>
-    inline std::enable_if_t<!B, ValueType*> index_to_ptr() {
-        return &row;
+    template <size_t Index>
+    inline ValueType* index_to_ptr() {
+        if constexpr (UseMVCC) {
+            return row.find(Sto::read_tid(), Index)->vp();
+        } else {
+            return &row;
+        }
     }
 
     template <size_t Index>
@@ -300,12 +305,19 @@ public:
     }
 
     void install_cell(const comm_type& comm) {
-        comm.operate(row);
+        if constexpr (UseMVCC) {
+            (void) comm;  //XXX: Implement
+        } else {
+            comm.operate(row);
+        }
     }
 
     void install_cell(int cell, ValueType* const new_row) {
-        if constexpr (UseATS) {
-            RecordAccessor::template copy_cell(split(), cell, &row, new_row);
+        if constexpr (UseMVCC) {
+            (void) cell;  // XXX: implement
+            (void) new_row;
+        } else if constexpr (UseATS) {
+            RecordAccessor::copy_cell(split(), cell, &row, new_row);
             //install_by_cell_at_runtime(split(), cell, new_row);
             //install_by_split_cell(split(), cell, new_row);
         } else {

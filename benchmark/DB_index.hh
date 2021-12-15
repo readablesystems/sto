@@ -659,24 +659,24 @@ struct SplitParams {
 
 // Helper method, turning a user-provided row into split row representation (array of pointers)
 // allocated in the transactional scratch space.
-template <size_t C, size_t I, typename RowType>
+template <size_t C, size_t I, typename RowType, bool EnableSplit>
 void TxSplitIntoHelper(std::array<void*, C>& value_ptrs, const RowType* whole_row) {
     if constexpr (I == C) {
         (void)whole_row;
         return;
     } else {
-        auto p = Sto::tx_alloc<std::tuple_element_t<I, typename SplitParams<RowType>::split_type_list>>();
-        *p = std::get<I>(SplitParams<RowType>::split_builder)(*whole_row);
+        auto p = Sto::tx_alloc<std::tuple_element_t<I, typename SplitParams<RowType, EnableSplit>::split_type_list>>();
+        *p = std::get<I>(SplitParams<RowType, EnableSplit>::split_builder)(*whole_row);
         value_ptrs[I] = p;
 
-        TxSplitIntoHelper<C, I+1, RowType>(value_ptrs, whole_row);
+        TxSplitIntoHelper<C, I+1, RowType, EnableSplit>(value_ptrs, whole_row);
     }
 }
 
-template<typename RowType>
-std::array<void*, SplitParams<RowType>::num_splits> TxSplitInto(const RowType* whole_row) {
-    std::array<void*, SplitParams<RowType>::num_splits> value_ptrs;
-    TxSplitIntoHelper<SplitParams<RowType>::num_splits, 0, RowType>(value_ptrs, whole_row);
+template<typename RowType, bool EnableSplit>
+std::array<void*, SplitParams<RowType, EnableSplit>::num_splits> TxSplitInto(const RowType* whole_row) {
+    std::array<void*, SplitParams<RowType, EnableSplit>::num_splits> value_ptrs;
+    TxSplitIntoHelper<SplitParams<RowType, EnableSplit>::num_splits, 0, RowType, EnableSplit>(value_ptrs, whole_row);
     return value_ptrs;
 }
 
@@ -703,21 +703,21 @@ public:
     static constexpr uintptr_t item_key_tag = 1;
 
     static constexpr bool Commute = DBParams::Commute;
+    static constexpr bool EnableSplit = static_cast<int>(DBParams::Split) > 0;
 
     typedef typename value_type::NamedColumn NamedColumn;
     typedef typename get_version<DBParams>::type version_type;
     using value_container_type = AdaptiveValueContainer<
-        V, version_type, (static_cast<int>(DBParams::Split) > 0),
-        DBParams::MVCC, DBParams::UseATS>;
+        V, version_type, EnableSplit, DBParams::MVCC, DBParams::UseATS>;
     typedef commutators::Commutator<value_type> comm_type;
     using RecordAccessor = typename value_container_type::RecordAccessor;
     using ColumnAccess = typename value_container_type::ColumnAccess;
 
     typedef typename std::conditional_t<DBParams::MVCC,
-      SplitRecordAccessor<V, (static_cast<int>(DBParams::Split) > 0)>,
-      UniRecordAccessor<V>> accessor_t;
+      SplitRecordAccessor<V, EnableSplit>, UniRecordAccessor<V, EnableSplit>> accessor_t;
+    using split_params_t = SplitParams<V, EnableSplit>;
     typedef typename std::conditional_t<DBParams::MVCC,
-      void*, std::array<void*, SplitParams<V>::num_splits>> scan_value_t;
+      void*, std::array<void*, split_params_t::num_splits>> scan_value_t;
 
     typedef std::tuple<bool, bool, uintptr_t, RecordAccessor>     sel_return_type;
     typedef std::tuple<bool, bool>                                ins_return_type;
@@ -749,17 +749,11 @@ public:
         key_type key;
         value_container_type row_container;
 
-        AdaptiveValueContainer<
-            V, version_type, (static_cast<int>(DBParams::Split) > 0),
-            true, DBParams::UseATS> test;
-
         bool deleted;
 
         OrderedInternalElement(const key_type& k, const value_type& v, bool valid)
             : key(k),
               row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)),
-                            !valid, v),
-              test((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)),
                             !valid, v),
               deleted(false) {}
 
@@ -795,7 +789,7 @@ public:
     };
 
     struct MvStaticInternalElement {
-        typedef typename SplitParams<value_type>::layout_type split_layout_type;
+        typedef typename split_params_t::layout_type split_layout_type;
         using object0_type = std::tuple_element_t<0, split_layout_type>;
 
         split_layout_type split_row;

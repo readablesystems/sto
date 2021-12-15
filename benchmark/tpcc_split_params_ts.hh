@@ -105,6 +105,7 @@ class RecordAccessor<A, tpcc::warehouse_value, true> {
 template <>
 class UniRecordAccessor<tpcc::warehouse_value, true> : public RecordAccessor<UniRecordAccessor<tpcc::warehouse_value, true>, tpcc::warehouse_value, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::warehouse_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -174,6 +175,7 @@ class SplitRecordAccessor<tpcc::warehouse_value, true> : public RecordAccessor<S
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::warehouse_value, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::warehouse_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::warehouse_value_frequpd*>(vptrs[1])) {}
 
@@ -351,6 +353,7 @@ class RecordAccessor<A, tpcc::district_value, true> {
 template <>
 class UniRecordAccessor<tpcc::district_value, true> : public RecordAccessor<UniRecordAccessor<tpcc::district_value, true>, tpcc::district_value, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::district_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -420,6 +423,7 @@ class SplitRecordAccessor<tpcc::district_value, true> : public RecordAccessor<Sp
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::district_value, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::district_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::district_value_frequpd*>(vptrs[1])) {}
 
@@ -667,6 +671,7 @@ class RecordAccessor<A, tpcc::customer_value, true> {
 template <>
 class UniRecordAccessor<tpcc::customer_value, true> : public RecordAccessor<UniRecordAccessor<tpcc::customer_value, true>, tpcc::customer_value, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::customer_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -796,6 +801,7 @@ class SplitRecordAccessor<tpcc::customer_value, true> : public RecordAccessor<Sp
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::customer_value, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::customer_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::customer_value_frequpd*>(vptrs[1])) {}
 
@@ -1027,6 +1033,7 @@ class RecordAccessor<A, tpcc::history_value, true> {
 template <>
 class UniRecordAccessor<tpcc::history_value, true> : public RecordAccessor<UniRecordAccessor<tpcc::history_value, true>, tpcc::history_value, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::history_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -1096,6 +1103,7 @@ class SplitRecordAccessor<tpcc::history_value, true> : public RecordAccessor<Spl
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::history_value, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::history_value*>(vptrs[0])) {}
 
@@ -1247,6 +1255,7 @@ class RecordAccessor<A, tpcc::order_value, true> {
 template <>
 class UniRecordAccessor<tpcc::order_value, true> : public RecordAccessor<UniRecordAccessor<tpcc::order_value, true>, tpcc::order_value, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::order_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -1298,6 +1307,7 @@ class SplitRecordAccessor<tpcc::order_value, true> : public RecordAccessor<Split
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::order_value, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::order_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::order_value_frequpd*>(vptrs[1])) {}
 
@@ -1443,6 +1453,7 @@ class RecordAccessor<A, tpcc::orderline_value, true> {
 template <>
 class UniRecordAccessor<tpcc::orderline_value, true> : public RecordAccessor<UniRecordAccessor<tpcc::orderline_value, true>, tpcc::orderline_value, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::orderline_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -1500,6 +1511,7 @@ class SplitRecordAccessor<tpcc::orderline_value, true> : public RecordAccessor<S
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::orderline_value, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::orderline_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::orderline_value_frequpd*>(vptrs[1])) {}
 
@@ -1631,6 +1643,7 @@ class RecordAccessor<A, tpcc::item_value, true> {
 template <>
 class UniRecordAccessor<tpcc::item_value, true> : public RecordAccessor<UniRecordAccessor<tpcc::item_value, true>, tpcc::item_value, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::item_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -1676,6 +1689,7 @@ class SplitRecordAccessor<tpcc::item_value, true> : public RecordAccessor<SplitR
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::item_value, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::item_value*>(vptrs[0])) {}
 
@@ -1810,6 +1824,7 @@ class RecordAccessor<A, tpcc::stock_value, true> {
 template <>
 class UniRecordAccessor<tpcc::stock_value, true> : public RecordAccessor<UniRecordAccessor<tpcc::stock_value, true>, tpcc::stock_value, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::stock_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -1867,6 +1882,7 @@ class SplitRecordAccessor<tpcc::stock_value, true> : public RecordAccessor<Split
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::stock_value, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::stock_value_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<tpcc::stock_value_frequpd*>(vptrs[1])) {}
 
@@ -1977,6 +1993,7 @@ class RecordAccessor<A, tpcc::customer_idx_value, true> {
 template <>
 class UniRecordAccessor<tpcc::customer_idx_value, true> : public RecordAccessor<UniRecordAccessor<tpcc::customer_idx_value, true>, tpcc::customer_idx_value, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const tpcc::customer_idx_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -2004,6 +2021,7 @@ class SplitRecordAccessor<tpcc::customer_idx_value, true> : public RecordAccesso
  public:
    static constexpr size_t num_splits = SplitParams<tpcc::customer_idx_value, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<tpcc::customer_idx_value*>(vptrs[0])) {}
 

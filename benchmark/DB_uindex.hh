@@ -230,10 +230,15 @@ public:
             }
             if (has_row_update(row_item)) {
                 value_type *vptr;
-                if (has_insert(row_item))
-                    vptr = &e->row_container.row;
-                else
+                if (has_insert(row_item)) {
+                    if constexpr (DBParams::MVCC) {
+                        vptr = e->row_container.row.find(Sto::read_tid())->vp();
+                    } else {
+                        vptr = &e->row_container.row;
+                    }
+                } else {
                     vptr = row_item.template raw_write_value<value_type*>();
+                }
                 return { true, true, rid, e->row_container.get(split, vptr) };
             }
         }
@@ -656,12 +661,22 @@ private:
     }
 
     static void copy_row(internal_elem *e, comm_type &comm) {
-        comm.operate(e->row_container.row);
+        if constexpr (DBParams::MVCC) {
+            (void)e;
+            (void)comm;
+            // XXX: implement
+        } else {
+            comm.operate(e->row_container.row);
+        }
     }
     static void copy_row(internal_elem *table_row, const value_type *value) {
         if (value == nullptr)
             return;
-        table_row->row_container.row = *value;
+        if constexpr (DBParams::MVCC) {
+            table_row->row_container.row.nontrans_access() = *value;
+        } else {
+            table_row->row_container.row = *value;
+        }
     }
 };
 
@@ -700,6 +715,9 @@ public:
 
     using C::index_read_my_write;
 
+    using C::EnableSplit;
+    using typename C::split_params_t;
+
     using internal_elem = typename C::MvInternalElement;
 
     typedef typename get_occ_version<DBParams>::type bucket_version_type;
@@ -711,7 +729,7 @@ public:
     // our hashtable is an array of linked lists.
     // an internal_elem is the node type for these linked lists
     struct internal_elem {
-        typedef typename SplitParams<value_type>::layout_type split_layout_type;
+        typedef typename split_params_t::layout_type split_layout_type;
 
         internal_elem* next;
         key_type key;
@@ -782,7 +800,7 @@ public:
         split_version_helpers<index_t>::template mvcc_column_to_cell_accesses<T>;
     template <typename T> static constexpr auto extract_item_list =
         split_version_helpers<index_t>::template extract_item_list<T>;
-    using MvSplitAccessAll = typename split_version_helpers<index_t>::template MvSplitAccessAll<SplitParams<value_type>>;
+    using MvSplitAccessAll = typename split_version_helpers<index_t>::template MvSplitAccessAll<split_params_t>;
 
     // Main constructor
     mvcc_unordered_index(size_t size, Hash h = Hash(), Pred p = Pred()) :
@@ -898,9 +916,8 @@ public:
 
     sel_split_return_type
     select_splits(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
-        using split_params = SplitParams<value_type>;
         auto e = reinterpret_cast<internal_elem*>(rid);
-        auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
+        auto cell_accesses = mvcc_column_to_cell_accesses<split_params_t>(accesses);
         bool found;
         auto result = MvSplitAccessAll::run_select(&found, cell_accesses, this, e);
         return {true, found, rid, accessor_t(result)};
@@ -951,8 +968,8 @@ public:
         auto h = e->template chain_at<0>()->find(txn_read_tid());
         if (is_phantom(h, row_item)) {
             MvAccess::read(row_item, h);
-            auto val_ptrs = TxSplitInto<value_type>(vptr);
-            for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
+            auto val_ptrs = TxSplitInto<value_type, EnableSplit>(vptr);
+            for (size_t cell_id = 0; cell_id < split_params_t::num_splits; ++cell_id) {
                 TransProxy cell_item = Sto::item(this, item_key_t(e, cell_id));
                 cell_item.add_write(val_ptrs[cell_id]);
                 cell_item.add_flags(insert_bit);
@@ -968,7 +985,7 @@ public:
         }
 
         if (overwrite) {
-            for (size_t i = 0; i < SplitParams<V>::num_splits; ++i) {
+            for (size_t i = 0; i < split_params_t::num_splits; ++i) {
                 auto item = Sto::item(this, item_key_t(e, i));
                 item.add_write();
             }
@@ -1013,7 +1030,7 @@ public:
             MvAccess::read(row_item, h);
             if (h->status_is(DELETED))
                 return { true, false };
-            for (size_t i = 0; i < SplitParams<value_type>::num_splits; ++i) {
+            for (size_t i = 0; i < split_params_t::num_splits; ++i) {
                 auto item = Sto::item(this, item_key_t(e, i));
                 item.add_write();
                 item.add_flags(delete_bit);

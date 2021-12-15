@@ -397,7 +397,7 @@ private:
     comm_type c_;
     T v_;
 
-    friend class MvObject<T>;
+    friend class MvObject<T, Cells>;
 };
 
 template <typename T, size_t Cells>
@@ -412,43 +412,67 @@ public:
     static constexpr int gc_flattening_length = 257;
 
 #if MVCC_INLINING
-    MvObject() : h_(&ih_), ih_(this) {
+    MvObject() : h_({&ih_}), ih_(this) {
+        for (auto& h : h_) {
+            h.store(&ih_, std::memory_order::memory_order_relaxed);
+        }
         if (std::is_trivial<T>::value) {
             ih_.v_ = T();
         }
         ih_.status(COMMITTED_DELETED);
     }
     explicit MvObject(const T& value)
-            : h_(&ih_), ih_(this, 0, value) {
+            : h_({&ih_}), ih_(this, 0, value) {
+        for (auto& h : h_) {
+            h.store(&ih_, std::memory_order::memory_order_relaxed);
+        }
         ih_.status(COMMITTED);
     }
     explicit MvObject(T&& value)
-            : h_(&ih_), ih_(this, 0, std::move(value)) {
+            : h_({&ih_}), ih_(this, 0, std::move(value)) {
+        for (auto& h : h_) {
+            h.store(&ih_, std::memory_order::memory_order_relaxed);
+        }
         ih_.status(COMMITTED);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(&ih_), ih_(this, 0, T(std::forward<Args>(args)...)) {
+            : h_({&ih_}), ih_(this, 0, T(std::forward<Args>(args)...)) {
+        for (auto& h : h_) {
+            h.store(&ih_, std::memory_order::memory_order_relaxed);
+        }
         ih_.status(COMMITTED);
     }
 #else
-    MvObject() : h_(new history_type(this)) {
+    MvObject() : h_({new history_type(this)}) {
+        for (auto& h : h_) {
+            h.store(head(), std::memory_order::memory_order_relaxed);
+        }
         if (std::is_trivial<T>::value) {
             head()->v_ = T(); /* XXXX */
         }
         head()->status(COMMITTED_DELETED);
     }
     explicit MvObject(const T& value)
-            : h_(new history_type(this, 0, value)) {
+            : h_({new history_type(this, 0, value)}) {
+        for (auto& h : h_) {
+            h.store(head(), std::memory_order::memory_order_relaxed);
+        }
         head()->status(COMMITTED);
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(this, 0, std::move(value))) {
+            : h_({new history_type(this, 0, std::move(value))}) {
+        for (auto& h : h_) {
+            h.store(head(), std::memory_order::memory_order_relaxed);
+        }
         head()->status(COMMITTED);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(new history_type(this, 0, T(std::forward<Args>(args)...))) {
+            : h_({new history_type(this, 0, T(std::forward<Args>(args)...))}) {
+        for (auto& h : h_) {
+            h.store(head(), std::memory_order::memory_order_relaxed);
+        }
         head()->status(COMMITTED);
     }
 #endif
@@ -480,7 +504,7 @@ public:
         // Can only install pending versions
         hw->assert_status(hw->status_is(PENDING), "cp_lock pending");
 
-        std::atomic<base_type*>* target = &h_;
+        std::atomic<base_type*>* target = &h_[cell];
         while (true) {
             // Discover target atomic on which to do CAS
             base_type* t = *target;
@@ -590,7 +614,7 @@ public:
     // Finds the current visible version, based on tid; by default, waits on
     // pending versions, but if toggled off, will simply return first version,
     // regardless of status
-    history_type* find(const tid_type tid, const bool wait=true) const {
+    history_type* find(const tid_type tid, const size_t cell=0, const bool wait=true) const {
         history_type* h = head();
 
         /* TODO: use something smarter than a linear scan */
@@ -610,7 +634,7 @@ public:
                     break;
                 }
             }
-            h = h->prev();
+            h = h->prev(cell);
         }
 
         assert(h);
@@ -618,8 +642,8 @@ public:
         return h;
     }
 
-    history_type* head() const {
-        return reinterpret_cast<history_type*>(h_.load(std::memory_order_acquire));
+    history_type* head(size_t cell=0) const {
+        return reinterpret_cast<history_type*>(h_[cell].load(std::memory_order_acquire));
     }
 
     history_type* find_latest(const bool wait = true) const {
@@ -704,7 +728,7 @@ public:
 
 protected:
     static void gc_flatten_cb(void* ptr) {
-        auto object = static_cast<MvObject<T>*>(ptr);
+        auto object = static_cast<MvObject<T, Cells>*>(ptr);
         auto flattenv = object->flattenv_.load(std::memory_order_relaxed);
         object->flattenv_.store(0, std::memory_order_relaxed);
         if (flattenv) {
@@ -723,7 +747,7 @@ protected:
         }
     }
 
-    std::atomic<base_type*> h_;
+    std::array<std::atomic<base_type*>, Cells> h_;
     std::atomic<int> cuctr_ = 0;  // For gc-time flattening
     std::atomic<tid_type> flattenv_;
 
@@ -731,5 +755,5 @@ protected:
     history_type ih_;  // Inlined version
 #endif
 
-    friend class MvHistory<T>;
+    friend class MvHistory<T, Cells>;
 };

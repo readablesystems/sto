@@ -694,7 +694,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         out_o_carrier_id = value.o_carrier_id();
 
         auto ol_scan_callback = [&] (const orderline_key&, const auto& scan_value) -> bool {
-            auto olv = (typename std::remove_reference_t<decltype(db)>::ol_table_type::accessor_t)(scan_value);
+            auto olv = Record<orderline_value>(scan_value);
             out_ol_i_id = olv.ol_i_id();
             out_ol_supply_w_id = olv.ol_supply_w_id();
             out_ol_quantity = olv.ol_quantity();
@@ -923,7 +923,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     (void)out_count;
 
     auto ol_scan_callback = [ &ol_iids] (const orderline_key&, const auto& scan_value) -> bool {
-        auto olv = (typename std::remove_reference_t<decltype(db)>::ol_table_type::accessor_t)(scan_value);
+        auto olv = Record<orderline_value>(scan_value);
         ol_iids.insert(olv.ol_i_id());
         return true;
     };

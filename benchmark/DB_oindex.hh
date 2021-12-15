@@ -228,10 +228,15 @@ public:
             }
             if (has_row_update(row_item)) {
                 value_type *vptr;
-                if (has_insert(row_item))
-                    vptr = &e->row_container.row;
-                else
+                if (has_insert(row_item)) {
+                    if constexpr (DBParams::MVCC) {
+                        vptr = e->row_container.row.find(Sto::read_tid())->vp();
+                    } else {
+                        vptr = &e->row_container.row;
+                    }
+                } else {
                     vptr = row_item.template raw_write_value<value_type*>();
+                }
                 return { true, true, rid, e->row_container.get(split, vptr) };
             }
         }
@@ -486,10 +491,15 @@ public:
                     return true;
                 }
                 if (any_has_write) {
-                    if (has_insert(row_item))
-                        ret = callback(key_type(key), &(e->row_container.row));
-                    else
+                    if (has_insert(row_item)) {
+                        if constexpr (DBParams::MVCC) {
+                            ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
+                        } else {
+                            ret = callback(key_type(key), &(e->row_container.row));
+                        }
+                    } else {
                         ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
+                    }
                     return true;
                 }
             }
@@ -511,7 +521,11 @@ public:
                 return true;
             }
 
-            ret = callback(key_type(key), &(e->row_container.row));
+            if constexpr (DBParams::MVCC) {
+                ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
+            } else {
+                ret = callback(key_type(key), &(e->row_container.row));
+            }
             return true;
         };
 
@@ -544,10 +558,15 @@ public:
                     return true;
                 }
                 if (has_row_update(row_item)) {
-                    if (has_insert(row_item))
-                        ret = callback(key_type(key), &(e->row_container.row));
-                    else
+                    if (has_insert(row_item)) {
+                        if constexpr (DBParams::MVCC) {
+                            ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
+                        } else {
+                            ret = callback(key_type(key), &(e->row_container.row));
+                        }
+                    } else {
                         ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
+                    }
                     return true;
                 }
             }
@@ -575,7 +594,11 @@ public:
                 return true;
             }
 
-            ret = callback(key_type(key), &(e->row_container.row));
+            if constexpr (DBParams::MVCC) {
+                ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
+            } else {
+                ret = callback(key_type(key), &(e->row_container.row));
+            }
             return true;
         };
 
@@ -617,10 +640,15 @@ public:
                     return true;
                 }
                 if (any_has_write) {
-                    if (has_insert(row_item))
-                        ret = callback(key_type(key), &(e->row_container.row));
-                    else
+                    if (has_insert(row_item)) {
+                        if constexpr (DBParams::MVCC) {
+                            ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
+                        } else {
+                            ret = callback(key_type(key), &(e->row_container.row));
+                        }
+                    } else {
                         ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
+                    }
                     return true;
                 }
             }
@@ -642,7 +670,11 @@ public:
                 return true;
             }
 
-            ret = callback(key_type(key), &(e->row_container.row));
+            if constexpr (DBParams::MVCC) {
+                ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
+            } else {
+                ret = callback(key_type(key), &(e->row_container.row));
+            }
             return true;
         };
 
@@ -670,10 +702,15 @@ public:
         bool found = lp.find_insert(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            if (value_is_small)
-                e->row_container.row = v;
-            else
+            if (value_is_small) {
+                if constexpr (DBParams::MVCC) {
+                    e->row_container.row.nontrans_access() = v;
+                } else {
+                    e->row_container.row = v;
+                }
+            } else {
                copy_row(e, &v);
+            }
             if (preferred_split >= 0) {
                 e->row_container.set_split(preferred_split);
             }
@@ -739,68 +776,80 @@ public:
         }
 
         auto key = item.key<item_key_t>();
-        auto e = key.internal_elem_ptr();
 
-        if (key.is_row_item()) {
-            //assert(e->version.is_locked());
-            if (has_delete(item)) {
-                assert(e->valid() && !e->deleted);
-                e->deleted = true;
-                txn.set_version(e->version());
-                return;
-            }
-
-            if (!has_insert(item)) {
-                if (item.has_commute()) {
-                    comm_type &comm = item.write_value<comm_type>();
-                    if (has_row_update(item)) {
-                        copy_row(e, comm);
-                    } else if (has_row_cell(item)) {
-                        e->row_container.install_cell(comm);
-                    }
-                } else {
-                    value_type *vptr;
-                    if (value_is_small) {
-                        vptr = &(item.write_value<value_type>());
-                    } else {
-                        vptr = item.write_value<value_type *>();
-                    }
-
-                    if (has_row_update(item)) {
-                        if (value_is_small) {
-                            e->row_container.row = *vptr;
-                        } else {
-                            copy_row(e, vptr);
-                        }
-                    } else if (has_row_cell(item)) {
-                        // install only the difference part
-                        // not sure if works when there are more than 1 minor version fields
-                        // should still work
-                        e->row_container.install_cell(0, vptr);
-                    }
+        if constexpr (DBParams::MVCC) {
+            using history_type = typename MvObject<value_type>::history_type;
+            auto h = item.template write_value<history_type*>();
+            if (h->status_is(MvStatus::PENDING)) {
+                h->object()->cp_install(h);
+                if (key.is_row_item()) {
+                    Transaction::rcu_call(_mvcc_delete_callback, h);
                 }
             }
-            txn.set_version_unlock(e->version(), item);
+            return;
         } else {
-            // skip installation if row-level update is present
-            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-            if (!has_row_update(row_item)) {
-                if (row_item.has_commute()) {
-                    comm_type &comm = row_item.template write_value<comm_type>();
-                    assert(&comm);
-                    e->row_container.install_cell(comm);
-                } else {
-                    value_type *vptr;
-                    if (value_is_small)
-                        vptr = &(row_item.template raw_write_value<value_type>());
-                    else
-                        vptr = row_item.template raw_write_value<value_type *>();
-
-                    e->row_container.install_cell(key.cell_num(), vptr);
+            auto e = key.internal_elem_ptr();
+            if (key.is_row_item()) {
+                //assert(e->version.is_locked());
+                if (has_delete(item)) {
+                    assert(e->valid() && !e->deleted);
+                    e->deleted = true;
+                    txn.set_version(e->version());
+                    return;
                 }
-            }
 
-            txn.set_version_unlock(e->row_container.version_at(key.cell_num()), item);
+                if (!has_insert(item)) {
+                    if (item.has_commute()) {
+                        comm_type &comm = item.write_value<comm_type>();
+                        if (has_row_update(item)) {
+                            copy_row(e, comm);
+                        } else if (has_row_cell(item)) {
+                            e->row_container.install_cell(comm);
+                        }
+                    } else {
+                        value_type *vptr;
+                        if (value_is_small) {
+                            vptr = &(item.write_value<value_type>());
+                        } else {
+                            vptr = item.write_value<value_type *>();
+                        }
+
+                        if (has_row_update(item)) {
+                            if (value_is_small) {
+                                e->row_container.row = *vptr;
+                            } else {
+                                copy_row(e, vptr);
+                            }
+                        } else if (has_row_cell(item)) {
+                            // install only the difference part
+                            // not sure if works when there are more than 1 minor version fields
+                            // should still work
+                            e->row_container.install_cell(0, vptr);
+                        }
+                    }
+                }
+                txn.set_version_unlock(e->version(), item);
+            } else {
+                // skip installation if row-level update is present
+                auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+                if (!has_row_update(row_item)) {
+                    if (row_item.has_commute()) {
+                        comm_type &comm = row_item.template write_value<comm_type>();
+                        assert(&comm);
+                        e->row_container.install_cell(comm);
+                    } else {
+                        value_type *vptr;
+                        if (value_is_small)
+                            vptr = &(row_item.template raw_write_value<value_type>());
+                        else
+                            vptr = row_item.template raw_write_value<value_type *>();
+
+                        e->row_container.install_cell(key.cell_num(), vptr);
+                    }
+                }
+
+                txn.set_version_unlock(e->row_container.version_at(key.cell_num()), item);
+            }
         }
     }
 
@@ -1072,6 +1121,32 @@ private:
         return found;
     }
 
+    static void _mvcc_delete_callback(void* history_ptr) {
+        (void) history_ptr;
+        /*
+        using history_type = MvHistory<value_type>;
+        auto hp = reinterpret_cast<history_type*>(history_ptr);
+        auto obj = hp->object();
+        if (obj->find_latest(false) == hp) {
+            auto el = internal_elem::from_chain(obj);
+            auto table = reinterpret_cast<mvcc_ordered_index<K, V, DBParams>*>(el->table);
+            cursor_type lp(table->table_, el->key);
+            if (lp.find_locked(*table->ti) && lp.value() == el) {
+                hp->status_poisoned();
+                if (obj->find_latest(true) == hp) {
+                    lp.finish(-1, *table->ti);
+                    Transaction::rcu_call(gc_internal_elem, el);
+                } else {
+                    hp->status_unpoisoned();
+                    lp.finish(0, *table->ti);
+                }
+            } else {
+                lp.finish(0, *table->ti);
+            }
+        }
+        */
+    }
+
     static uintptr_t get_internode_key(node_type* node) {
         return reinterpret_cast<uintptr_t>(node) | internode_bit;
     }
@@ -1101,7 +1176,11 @@ private:
     static void copy_row(internal_elem *e, const value_type *new_row) {
         if (new_row == nullptr)
             return;
-        e->row_container.row = *new_row;
+        if constexpr (DBParams::MVCC) {
+            e->row_container.row.nontrans_access() = *new_row;
+        } else {
+            e->row_container.row = *new_row;
+        }
     }
 };
 
@@ -1144,6 +1223,8 @@ public:
     using C::index_read_my_write;
 
     static constexpr bool Commute = DBParams::Commute;
+    using C::EnableSplit;
+    using typename C::split_params_t;
 
     static constexpr uintptr_t internode_bit = 1;
 
@@ -1174,7 +1255,7 @@ public:
         split_version_helpers<index_t>::template extract_item_list<T>;
     template <typename T> static constexpr auto mvcc_extract_and_access =
         split_version_helpers<index_t>::template mvcc_extract_and_access<T>;
-    using MvSplitAccessAll = typename split_version_helpers<index_t>::template MvSplitAccessAll<SplitParams<value_type>>;
+    using MvSplitAccessAll = typename split_version_helpers<index_t>::template MvSplitAccessAll<split_params_t>;
 
     static __thread typename table_params::threadinfo_type *ti;
 
@@ -1283,9 +1364,8 @@ public:
 
     sel_split_return_type
     select_splits(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
-        using split_params = SplitParams<value_type>;
         auto e = reinterpret_cast<internal_elem*>(rid);
-        auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
+        auto cell_accesses = mvcc_column_to_cell_accesses<split_params_t>(accesses);
         bool found;
         auto result = MvSplitAccessAll::run_select(&found, cell_accesses, this, e);
         return {true, found, rid, accessor_t(result)};
@@ -1363,8 +1443,8 @@ public:
             found = !h->status_is(DELETED);
             if (is_phantom(h, row_item)) {
                 MvAccess::read(row_item, h);
-                auto val_ptrs = TxSplitInto<value_type>(vptr);
-                for (size_t cell_id = 0; cell_id < SplitParams<value_type>::num_splits; ++cell_id) {
+                auto val_ptrs = TxSplitInto<value_type, EnableSplit>(vptr);
+                for (size_t cell_id = 0; cell_id < split_params_t::num_splits; ++cell_id) {
                     TransProxy cell_item = Sto::item(this, item_key_t(e, cell_id));
                     cell_item.add_write(val_ptrs[cell_id]);
                     cell_item.add_flags(insert_bit);
@@ -1381,7 +1461,7 @@ public:
             }
 
             if (overwrite) {
-                for (size_t i = 0; i < SplitParams<V>::num_splits; ++i) {
+                for (size_t i = 0; i < split_params_t::num_splits; ++i) {
                     auto item = Sto::item(this, item_key_t(e, i));
                     item.add_write();
                 }
@@ -1418,7 +1498,7 @@ public:
                 if (has_delete(row_item))
                     return del_return_type(true, false);
                 if (h->status_is(DELETED) && has_insert(row_item)) {
-                    for (size_t i = 0; i < SplitParams<V>::num_splits; i++) {
+                    for (size_t i = 0; i < split_params_t::num_splits; i++) {
                         auto item = Sto::item(this, item_key_t(e, i));
                         item.add_flags(delete_bit);
                     }
@@ -1429,7 +1509,7 @@ public:
             MvAccess::read(row_item, h);
             if (h->status_is(DELETED))
                 return del_return_type(true, false);
-            for (size_t i = 0; i < SplitParams<value_type>::num_splits; i++) {
+            for (size_t i = 0; i < split_params_t::num_splits; i++) {
                 auto item = Sto::item(this, item_key_t(e, i));
                 item.add_write(0);
                 item.add_flags(delete_bit);
@@ -1451,7 +1531,7 @@ public:
                     bool phantom_protection = true, int limit = -1, int preferred_split = -1) {
         (void) preferred_split;
         assert((limit == -1) || (limit > 0));
-        auto cell_accesses = mvcc_column_to_cell_accesses<SplitParams<value_type>>(accesses);
+        auto cell_accesses = mvcc_column_to_cell_accesses<split_params_t>(accesses);
         auto node_callback = [&] (leaf_type* node,
                                   typename unlocked_cursor_type::nodeversion_value_type version) {
             return ((!phantom_protection) || register_internode_version(node, version));
@@ -1483,7 +1563,7 @@ public:
             each_cell = access_t::update;
         }
 
-        std::array<access_t, SplitParams<value_type>::num_splits> cell_accesses;
+        std::array<access_t, split_params_t::num_splits> cell_accesses;
         std::fill(cell_accesses.begin(), cell_accesses.end(), each_cell);
 
         auto node_callback = [&] (leaf_type* node,

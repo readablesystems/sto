@@ -151,13 +151,13 @@ template <typename DBParams>
 class tpcc_db {
 public:
     template <typename K, typename V>
-    using OIndex = typename std::conditional<DBParams::MVCC,
+    using OIndex = typename std::conditional<DBParams::MVCC && !DBParams::UseATS,
           mvcc_ordered_index<K, V, DBParams>,
           ordered_index<K, V, DBParams>>::type;
 
 #if TPCC_HASH_INDEX
     template <typename K, typename V>
-    using UIndex = typename std::conditional<DBParams::MVCC,
+    using UIndex = typename std::conditional<DBParams::MVCC && !DBParams::UseATS,
           mvcc_unordered_index<K, V, DBParams>,
           unordered_index<K, V, DBParams>>::type;
 #else
@@ -252,10 +252,13 @@ template <typename DBParams>
 class tpcc_runner {
 public:
     template <typename T>
-    using Record = typename std::conditional_t<DBParams::MVCC,
-        SplitRecordAccessor<T>, std::conditional_t<
-            DBParams::Split == db_split_type::Adaptive,
-            typename T::RecordAccessor, UniRecordAccessor<T>>>;
+    using Record = typename std::conditional_t<
+        DBParams::Split == db_split_type::Adaptive,
+        typename T::RecordAccessor,
+            std::conditional_t<
+            DBParams::MVCC,
+            SplitRecordAccessor<T, (static_cast<int>(DBParams::Split) > 0)>,
+            UniRecordAccessor<T, (static_cast<int>(DBParams::Split) > 0)>>>;
 
     static constexpr bool Commute = DBParams::Commute;
     enum class txn_type : int {
