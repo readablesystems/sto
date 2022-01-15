@@ -3,7 +3,11 @@
 #include "DB_params.hh"
 #include "DB_index.hh"
 
+#include "unit-mvcc-access-structs-generated.hh"
+
 using bench::split_version_helpers;
+using bench::ordered_index;
+using bench::unordered_index;
 using bench::mvcc_ordered_index;
 using bench::mvcc_unordered_index;
 using bench::RowAccess;
@@ -22,17 +26,6 @@ struct index_key {
 
     int32_t key_1;
     int32_t key_2;
-};
-
-struct index_value {
-    enum class NamedColumn : int {
-        value_1 = 0,
-        value_2a,
-        value_2b
-    };
-    int64_t value_1;
-    int64_t value_2a;
-    int64_t value_2b;
 };
 
 struct index_value_part1 {
@@ -248,7 +241,7 @@ public:
 };
 }  // namespace commutators
 
-template <bool Ordered>
+template <bool Ordered, bool ATS>
 class MVCCIndexTester {
 public:
     void RunTests();
@@ -256,8 +249,16 @@ public:
 private:
     static constexpr size_t index_init_size = 1025;
     using key_type = typename std::conditional<Ordered, bench::masstree_key_adapter<index_key>, index_key>::type;
-    using index_type = typename std::conditional<Ordered, mvcc_ordered_index<key_type, index_value, db_params::db_mvcc_params>,
-                                                          mvcc_unordered_index<key_type, index_value, db_params::db_mvcc_params>>::type;
+    using index_type = typename std::conditional_t<ATS,
+        std::conditional_t<Ordered,
+            ordered_index<key_type, index_value, db_params::db_mvcc_ats_params>,
+            unordered_index<key_type, index_value, db_params::db_mvcc_ats_params>>,
+        std::conditional_t<Ordered,
+            mvcc_ordered_index<key_type, index_value, db_params::db_mvcc_params>,
+            mvcc_unordered_index<key_type, index_value, db_params::db_mvcc_params>>>;
+    using accessor_t = typename std::conditional_t<ATS,
+          index_value::RecordAccessor,
+          bench::SplitRecordAccessor<index_value>>;
     typedef index_value::NamedColumn nc;
 
     void PostTest() {
@@ -289,41 +290,31 @@ private:
     void UpdateTest();
 };
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::RunTests() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::RunTests() {
+    auto ts_type = ATS ? "ATS" : "STS";
     if constexpr (Ordered) {
-        printf("Testing Ordered Index (MVCC TS):\n");
+        printf("Testing Ordered Index (MVCC %s):\n", ts_type);
     } else {
-        printf("Testing Unordered Index (MVCC TS):\n");
+        printf("Testing Unordered Index (MVCC %s):\n", ts_type);
     }
-    SelectSplitTest();
-    PostTest();
-    DeleteTest();
-    PostTest();
-    CommuteTest();
-    PostTest();
-    InsertTest();
-    PostTest();
-    InsertDeleteTest();
-    PostTest();
-    InsertSameKeyTest();
-    PostTest();
-    InsertSerialTest();
-    PostTest();
-    InsertUnreadableTest();
-    PostTest();
-    UpdateTest();
-    PostTest();
-    DeleteReinsertTest();
-    PostTest();
+    SelectSplitTest(); PostTest();
+    DeleteTest(); PostTest();
+    //CommuteTest(); PostTest();
+    InsertTest(); PostTest();
+    InsertDeleteTest(); PostTest();
+    InsertSameKeyTest(); PostTest();
+    InsertSerialTest(); PostTest();
+    InsertUnreadableTest(); PostTest();
+    UpdateTest(); PostTest();
+    DeleteReinsertTest(); PostTest();
     if constexpr (Ordered) {
-        ScanTest();
-        PostTest();
+        ScanTest(); PostTest();
     }
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::SelectSplitTest() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::SelectSplitTest() {
     index_type idx(index_init_size);
     idx.thread_init();
 
@@ -332,24 +323,37 @@ void MVCCIndexTester<Ordered>::SelectSplitTest() {
     idx.nontrans_put(key, val);
 
     TestTransaction t(0);
-    auto[success, result, row, accessor]
-        = idx.select_split_row(key,
-                               {{nc::value_1,access_t::read},
-                                {nc::value_2b,access_t::read}});
-    (void)row;
-    assert(success);
-    assert(result);
+    if constexpr (ATS) {
+        auto[success, result, row, accessor]
+            = idx.select_row(key,
+                             {{nc::value_1,AccessType::read},
+                              {nc::value_2b,AccessType::read}});
+        (void)row;
+        assert(success);
+        assert(result);
 
-    assert(accessor.value_1() == 4);
-    assert(accessor.value_2b() == 6);
+        assert(accessor.value_1() == 4);
+        assert(accessor.value_2b() == 6);
+    } else {
+        auto[success, result, row, accessor]
+            = idx.select_split_row(key,
+                                   {{nc::value_1,access_t::read},
+                                    {nc::value_2b,access_t::read}});
+        (void)row;
+        assert(success);
+        assert(result);
+
+        assert(accessor.value_1() == 4);
+        assert(accessor.value_2b() == 6);
+    }
 
     assert(t.try_commit());
 
-    printf("Test pass: SelectSplitTest\n");
+    printf("Test pass: %s\n", __FUNCTION__);
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::DeleteTest() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::DeleteTest() {
     index_type idx(index_init_size);
     idx.thread_init();
 
@@ -373,13 +377,23 @@ void MVCCIndexTester<Ordered>::DeleteTest() {
         // Concurrent observation should not observe delete
         {
             t2.use();
-            auto[success, result, row, accessor]
-                = idx.select_split_row(key,
-                                       {{nc::value_1,access_t::read},
-                                        {nc::value_2b,access_t::read}});
-            (void)row; (void)accessor;
-            assert(success);
-            assert(result);
+            if constexpr (ATS) {
+                auto[success, result, row, accessor]
+                    = idx.select_row(key,
+                                     {{nc::value_1,AccessType::read},
+                                      {nc::value_2b,AccessType::read}});
+                (void)row; (void)accessor;
+                assert(success);
+                assert(result);
+            } else {
+                auto[success, result, row, accessor]
+                    = idx.select_split_row(key,
+                                           {{nc::value_1,access_t::read},
+                                            {nc::value_2b,access_t::read}});
+                (void)row; (void)accessor;
+                assert(success);
+                assert(result);
+            }
         }
 
         assert(t1.try_commit());
@@ -391,13 +405,23 @@ void MVCCIndexTester<Ordered>::DeleteTest() {
     {
         TestTransaction t(0);
         t.get_tx().mvcc_rw_upgrade();
-        auto[success, result, row, accessor]
-            = idx.select_split_row(key,
-                                   {{nc::value_1,access_t::read},
-                                    {nc::value_2b,access_t::read}});
-        (void)row; (void)accessor;
-        assert(success);
-        assert(!result);
+        if constexpr (ATS) {
+            auto[success, result, row, accessor]
+                = idx.select_row(key,
+                                 {{nc::value_1,AccessType::read},
+                                  {nc::value_2b,AccessType::read}});
+            (void)row; (void)accessor;
+            assert(success);
+            assert(!result);
+        } else {
+            auto[success, result, row, accessor]
+                = idx.select_split_row(key,
+                                       {{nc::value_1,access_t::read},
+                                        {nc::value_2b,access_t::read}});
+            (void)row; (void)accessor;
+            assert(success);
+            assert(!result);
+        }
 
         assert(t.try_commit());
     }
@@ -405,8 +429,8 @@ void MVCCIndexTester<Ordered>::DeleteTest() {
     printf("Test pass: %s\n", __FUNCTION__);
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::CommuteTest() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::CommuteTest() {
     using key_type = bench::masstree_key_adapter<index_key>;
     using index_type = mvcc_ordered_index<key_type,
                                           index_value,
@@ -458,12 +482,11 @@ void MVCCIndexTester<Ordered>::CommuteTest() {
     printf("Test pass: %s\n", __FUNCTION__);
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::ScanTest() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::ScanTest() {
     if constexpr (!Ordered) {
-        printf("Skipped: ScanTest\n");
+        printf("Skipped: %s\n", __FUNCTION__);
     } else {
-        using accessor_t = bench::SplitRecordAccessor<index_value>;
         index_type idx(index_init_size);
         idx.thread_init();
 
@@ -498,11 +521,19 @@ void MVCCIndexTester<Ordered>::ScanTest() {
             key_type k0{0, 0};
             key_type k1{1, 0};
 
-            bool success = idx.template range_scan<decltype(scan_callback), false>(k0, k1,
-                                                                                   scan_callback,
-                                                                                   {{nc::value_1,access_t::read},
-                                                                                   {nc::value_2b,access_t::read}}, true);
-            assert(success);
+            if constexpr (ATS) {
+                bool success = idx.template range_scan<decltype(scan_callback), false>(k0, k1,
+                                                                                       scan_callback,
+                                                                                       {{nc::value_1,AccessType::read},
+                                                                                       {nc::value_2b,AccessType::read}}, true);
+                assert(success);
+            } else {
+                bool success = idx.template range_scan<decltype(scan_callback), false>(k0, k1,
+                                                                                       scan_callback,
+                                                                                       {{nc::value_1,access_t::read},
+                                                                                       {nc::value_2b,access_t::read}}, true);
+                assert(success);
+            }
             assert(t.try_commit());
         }
 
@@ -520,15 +551,27 @@ void MVCCIndexTester<Ordered>::ScanTest() {
             {
                 TestTransaction t(0);
                 t.get_tx().mvcc_rw_upgrade();
-                auto [success, found, row, accessor] = idx.select_split_row(new_key, {
-                        {nc::value_1, access_t::read},
-                        {nc::value_2a, access_t::read},
-                        {nc::value_2b, access_t::read}
-                        });
-                (void)row;
-                (void)accessor;
-                assert(success);
-                assert(!found);
+                if constexpr (ATS) {
+                    auto [success, found, row, accessor] = idx.select_row(new_key, {
+                            {nc::value_1, AccessType::read},
+                            {nc::value_2a, AccessType::read},
+                            {nc::value_2b, AccessType::read}
+                            });
+                    (void)row;
+                    (void)accessor;
+                    assert(success);
+                    assert(!found);
+                } else {
+                    auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                            {nc::value_1, access_t::read},
+                            {nc::value_2a, access_t::read},
+                            {nc::value_2b, access_t::read}
+                            });
+                    (void)row;
+                    (void)accessor;
+                    assert(success);
+                    assert(!found);
+                }
                 assert(t.try_commit());
             }
 
@@ -546,13 +589,23 @@ void MVCCIndexTester<Ordered>::ScanTest() {
                     found |= true;
                     return true;
                 };
-                bool success = idx.template range_scan<decltype(scan_callback), false>(
-                        start_key, end_key, scan_callback, {
-                        {nc::value_1, access_t::read},
-                        {nc::value_2a, access_t::read},
-                        {nc::value_2b, access_t::read}
-                        });
-                assert(success);
+                if constexpr (ATS) {
+                    bool success = idx.template range_scan<decltype(scan_callback), false>(
+                            start_key, end_key, scan_callback, {
+                            {nc::value_1, AccessType::read},
+                            {nc::value_2a, AccessType::read},
+                            {nc::value_2b, AccessType::read}
+                            });
+                    assert(success);
+                } else{ 
+                    bool success = idx.template range_scan<decltype(scan_callback), false>(
+                            start_key, end_key, scan_callback, {
+                            {nc::value_1, access_t::read},
+                            {nc::value_2a, access_t::read},
+                            {nc::value_2b, access_t::read}
+                            });
+                    assert(success);
+                }
                 assert(!found);
             }
 
@@ -585,12 +638,12 @@ void MVCCIndexTester<Ordered>::ScanTest() {
             }
         }
 
-        printf("Test pass: ScanTest\n");
+        printf("Test pass: %s\n", __FUNCTION__);
     }
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::InsertTest() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::InsertTest() {
     index_type idx(index_init_size);
     idx.thread_init();
 
@@ -610,16 +663,29 @@ void MVCCIndexTester<Ordered>::InsertTest() {
         TestTransaction t(1);
         t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
-        auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::read},
-                                                                          {nc::value_2a, access_t::read},
-                                                                          {nc::value_2b, access_t::read}});
-        (void)row;
-        assert(success);
-        assert(result);
+        if constexpr (ATS) {
+            auto[success, result, row, accessor] = idx.select_row(key, {{nc::value_1, AccessType::read},
+                                                                        {nc::value_2a, AccessType::read},
+                                                                        {nc::value_2b, AccessType::read}});
+            (void)row;
+            assert(success);
+            assert(result);
 
-        assert(accessor.value_1() == 4);
-        assert(accessor.value_2a() == 5);
-        assert(accessor.value_2b() == 6);
+            assert(accessor.value_1() == 4);
+            assert(accessor.value_2a() == 5);
+            assert(accessor.value_2b() == 6);
+        } else {
+            auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::read},
+                                                                              {nc::value_2a, access_t::read},
+                                                                              {nc::value_2b, access_t::read}});
+            (void)row;
+            assert(success);
+            assert(result);
+
+            assert(accessor.value_1() == 4);
+            assert(accessor.value_2a() == 5);
+            assert(accessor.value_2b() == 6);
+        }
         assert(t.try_commit());
     }
 
@@ -637,15 +703,27 @@ void MVCCIndexTester<Ordered>::InsertTest() {
         {
             TestTransaction t(0);
             t.get_tx().mvcc_rw_upgrade();
-            auto [success, found, row, accessor] = idx.select_split_row(new_key, {
-                    {nc::value_1, access_t::read},
-                    {nc::value_2a, access_t::read},
-                    {nc::value_2b, access_t::read}
-                    });
-            (void)row;
-            (void)accessor;
-            assert(success);
-            assert(!found);
+            if constexpr (ATS) {
+                auto [success, found, row, accessor] = idx.select_row(new_key, {
+                        {nc::value_1, AccessType::read},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}
+                        });
+                (void)row;
+                (void)accessor;
+                assert(success);
+                assert(!found);
+            } else {
+                auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                        {nc::value_1, access_t::read},
+                        {nc::value_2a, access_t::read},
+                        {nc::value_2b, access_t::read}
+                        });
+                (void)row;
+                (void)accessor;
+                assert(success);
+                assert(!found);
+            }
             assert(t.try_commit());
         }
 
@@ -657,7 +735,17 @@ void MVCCIndexTester<Ordered>::InsertTest() {
         TestTransaction t2(2);
         t2.get_tx().mvcc_rw_upgrade();
 
-        {
+        if constexpr (ATS) {
+            auto [success, found, row, accessor] = idx.select_row(new_key, {
+                    {nc::value_1, AccessType::read},
+                    {nc::value_2a, AccessType::read},
+                    {nc::value_2b, AccessType::read}
+                    });
+            (void)row;
+            (void)accessor;
+            assert(success);
+            assert(!found);
+        } else {
             auto [success, found, row, accessor] = idx.select_split_row(new_key, {
                     {nc::value_1, access_t::read},
                     {nc::value_2a, access_t::read},
@@ -697,10 +785,12 @@ void MVCCIndexTester<Ordered>::InsertTest() {
             assert(val.value_2b == 14);
         }
     }
+
+    printf("Test pass: %s\n", __FUNCTION__);
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::InsertDeleteTest() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::InsertDeleteTest() {
     index_type idx(index_init_size);
     idx.thread_init();
 
@@ -719,7 +809,17 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
         TestTransaction t2(1);
         t2.get_tx().mvcc_rw_upgrade();
         key_type key2{1, 1};
-        {
+        if constexpr (ATS) {
+            auto[success, result, row, accessor] = idx.select_row(key2, {{nc::value_1, AccessType::read},
+                                                                         {nc::value_2a, AccessType::read},
+                                                                         {nc::value_2b, AccessType::read}});
+            (void)row;
+            assert(success);
+            assert(result);
+            assert(accessor.value_1() == 10 * itr + 1);
+            assert(accessor.value_2a() == 10 * itr + 2);
+            assert(accessor.value_2b() == 10 * itr + 3);
+        } else {
             auto[success, result, row, accessor] = idx.select_split_row(key2, {{nc::value_1, access_t::read},
                                                                                {nc::value_2a, access_t::read},
                                                                                {nc::value_2b, access_t::read}});
@@ -745,7 +845,15 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
         TestTransaction t4(3);
         t4.get_tx().mvcc_rw_upgrade();
         key_type key4{1, 1};
-        {
+        if constexpr (ATS) {
+            auto[success, result, row, accessor] = idx.select_row(key4, {{nc::value_1, AccessType::read},
+                                                                         {nc::value_2a, AccessType::read},
+                                                                         {nc::value_2b, AccessType::read}});
+            (void)row;
+            (void)accessor;
+            assert(success);
+            assert(!result);
+        } else {
             auto[success, result, row, accessor] = idx.select_split_row(key4, {{nc::value_1, access_t::read},
                                                                                {nc::value_2a, access_t::read},
                                                                                {nc::value_2b, access_t::read}});
@@ -757,11 +865,11 @@ void MVCCIndexTester<Ordered>::InsertDeleteTest() {
         assert(t4.try_commit());
     }
 
-    printf("Test pass: InsertDeleteTest\n");
+    printf("Test pass: %s\n", __FUNCTION__);
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::InsertSameKeyTest() {
     index_type idx(index_init_size);
     idx.thread_init();
 
@@ -795,24 +903,37 @@ void MVCCIndexTester<Ordered>::InsertSameKeyTest() {
         TestTransaction t(2);
         t.get_tx().mvcc_rw_upgrade();
         key_type key{1, 1};
-        auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::read},
-                                                                          {nc::value_2a, access_t::read},
-                                                                          {nc::value_2b, access_t::read}});
-        (void)row;
-        assert(success);
-        assert(result);
+        if constexpr (ATS) {
+            auto[success, result, row, accessor] = idx.select_row(key, {{nc::value_1, AccessType::read},
+                                                                        {nc::value_2a, AccessType::read},
+                                                                        {nc::value_2b, AccessType::read}});
+            (void)row;
+            assert(success);
+            assert(result);
 
-        assert(accessor.value_1() == 14);
-        assert(accessor.value_2a() == 15);
-        assert(accessor.value_2b() == 16);
+            assert(accessor.value_1() == 14);
+            assert(accessor.value_2a() == 15);
+            assert(accessor.value_2b() == 16);
+        } else {
+            auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::read},
+                                                                              {nc::value_2a, access_t::read},
+                                                                              {nc::value_2b, access_t::read}});
+            (void)row;
+            assert(success);
+            assert(result);
+
+            assert(accessor.value_1() == 14);
+            assert(accessor.value_2a() == 15);
+            assert(accessor.value_2b() == 16);
+        }
         assert(t.try_commit());
     }
 
-    printf("Test pass: InsertSameKeyTest\n");
+    printf("Test pass: %s\n", __FUNCTION__);
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::InsertSerialTest() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::InsertSerialTest() {
     index_type idx(index_init_size);
     idx.thread_init();
 
@@ -852,7 +973,17 @@ void MVCCIndexTester<Ordered>::InsertSerialTest() {
         TestTransaction t4(1);
         t4.get_tx().mvcc_rw_upgrade();
         key_type key4{1, 1};
-        {
+        if constexpr (ATS) {
+            auto[success, result, row, accessor] = idx.select_row(key4, {{nc::value_1, AccessType::read},
+                                                                         {nc::value_2a, AccessType::read},
+                                                                         {nc::value_2b, AccessType::read}});
+            (void)row;
+            assert(success);
+            assert(result);
+            assert(accessor.value_1() == 14);
+            assert(accessor.value_2a() == 15);
+            assert(accessor.value_2b() == 16);
+        } else {
             auto[success, result, row, accessor] = idx.select_split_row(key4, {{nc::value_1, access_t::read},
                                                                                {nc::value_2a, access_t::read},
                                                                                {nc::value_2b, access_t::read}});
@@ -866,11 +997,11 @@ void MVCCIndexTester<Ordered>::InsertSerialTest() {
         assert(t4.try_commit());
     }
 
-    printf("Test pass: InsertSerialTest\n");
+    printf("Test pass: %s\n", __FUNCTION__);
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::InsertUnreadableTest() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::InsertUnreadableTest() {
     index_type idx(index_init_size);
     idx.thread_init();
 
@@ -886,7 +1017,15 @@ void MVCCIndexTester<Ordered>::InsertUnreadableTest() {
 
         TestTransaction t2(1);
         key_type key2{1, 1};
-        {
+        if constexpr (ATS) {
+            auto[success, result, row, accessor] = idx.select_row(key2, {{nc::value_1, AccessType::read},
+                                                                         {nc::value_2a, AccessType::read},
+                                                                         {nc::value_2b, AccessType::read}});
+            (void)row;
+            (void)accessor;
+            assert(success);
+            assert(!result);
+        } else {
             auto[success, result, row, accessor] = idx.select_split_row(key2, {{nc::value_1, access_t::read},
                                                                                {nc::value_2a, access_t::read},
                                                                                {nc::value_2b, access_t::read}});
@@ -902,11 +1041,11 @@ void MVCCIndexTester<Ordered>::InsertUnreadableTest() {
         assert(t1.try_commit());
     }
 
-    printf("Test pass: InsertUnreadableTest\n");
+    printf("Test pass: %s\n", __FUNCTION__);
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::UpdateTest() {
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::UpdateTest() {
     index_type idx(index_init_size);
     idx.thread_init();
 
@@ -927,16 +1066,29 @@ void MVCCIndexTester<Ordered>::UpdateTest() {
         t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
         index_value new_val{7, 0, 0};
-        auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::update},
-                                                                          {nc::value_2a, access_t::read},
-                                                                          {nc::value_2b, access_t::read}});
-        assert(success);
-        assert(result);
-        assert(accessor.value_1() == 4);
-        assert(accessor.value_2a() == 5);
-        assert(accessor.value_2b() == 6);
+        if constexpr (ATS) {
+            auto[success, result, row, accessor] = idx.select_row(key, {{nc::value_1, AccessType::update},
+                                                                        {nc::value_2a, AccessType::read},
+                                                                        {nc::value_2b, AccessType::read}});
+            assert(success);
+            assert(result);
+            assert(accessor.value_1() == 4);
+            assert(accessor.value_2a() == 5);
+            assert(accessor.value_2b() == 6);
 
-        idx.update_row(row, &new_val);
+            idx.update_row(row, &new_val);
+        } else {
+            auto[success, result, row, accessor] = idx.select_split_row(key, {{nc::value_1, access_t::update},
+                                                                              {nc::value_2a, access_t::read},
+                                                                              {nc::value_2b, access_t::read}});
+            assert(success);
+            assert(result);
+            assert(accessor.value_1() == 4);
+            assert(accessor.value_2a() == 5);
+            assert(accessor.value_2b() == 6);
+
+            idx.update_row(row, &new_val);
+        }
 
         assert(t.try_commit());
     }
@@ -945,27 +1097,40 @@ void MVCCIndexTester<Ordered>::UpdateTest() {
         TestTransaction t(0);
         t.get_tx().mvcc_rw_upgrade();
         key_type key{0, 1};
-        auto[success, result, row, accessor] = idx.select_split_row(key,
-            {{nc::value_1, access_t::read},
-             {nc::value_2a, access_t::read},
-             {nc::value_2b, access_t::read}});
+        if constexpr (ATS) {
+            auto[success, result, row, accessor] = idx.select_row(key,
+                {{nc::value_1, AccessType::read},
+                 {nc::value_2a, AccessType::read},
+                 {nc::value_2b, AccessType::read}});
 
-        (void)row;
-        assert(success);
-        assert(result);
-        assert(accessor.value_1() == 7);
-        assert(accessor.value_2a() == 5);
-        assert(accessor.value_2b() == 6);
+            (void)row;
+            assert(success);
+            assert(result);
+            assert(accessor.value_1() == 7);
+            assert(accessor.value_2a() == 5);
+            assert(accessor.value_2b() == 6);
+        } else {
+            auto[success, result, row, accessor] = idx.select_split_row(key,
+                {{nc::value_1, access_t::read},
+                 {nc::value_2a, access_t::read},
+                 {nc::value_2b, access_t::read}});
+
+            (void)row;
+            assert(success);
+            assert(result);
+            assert(accessor.value_1() == 7);
+            assert(accessor.value_2a() == 5);
+            assert(accessor.value_2b() == 6);
+        }
 
         assert(t.try_commit());
     }
 
-    printf("Test pass: UpdateTest\n");
+    printf("Test pass: %s\n", __FUNCTION__);
 }
 
-template <bool Ordered>
-void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
-    using accessor_t = bench::SplitRecordAccessor<index_value>;
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::DeleteReinsertTest() {
     index_type idx(index_init_size);
     idx.thread_init();
 
@@ -994,13 +1159,23 @@ void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
                 assert(accessor.value_2b() == 222);
                 return true;
             };
-            bool success = idx.template range_scan<decltype(scan_callback), false>(
-                    start_key, end_key, scan_callback, {
-                    {nc::value_1, access_t::read},
-                    {nc::value_2a, access_t::read},
-                    {nc::value_2b, access_t::read}
-                    });
-            assert(success);
+            if constexpr (ATS) {
+                bool success = idx.template range_scan<decltype(scan_callback), false>(
+                        start_key, end_key, scan_callback, {
+                        {nc::value_1, AccessType::read},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}
+                        });
+                assert(success);
+            } else {
+                bool success = idx.template range_scan<decltype(scan_callback), false>(
+                        start_key, end_key, scan_callback, {
+                        {nc::value_1, access_t::read},
+                        {nc::value_2a, access_t::read},
+                        {nc::value_2b, access_t::read}
+                        });
+                assert(success);
+            }
             assert(found);
             assert(t.try_commit());
         }
@@ -1008,17 +1183,31 @@ void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
         {
             TestTransaction t(0);
             t.get_tx().mvcc_rw_upgrade();
-            auto [success, found, row, accessor] = idx.select_split_row(new_key, {
-                    {nc::value_1, access_t::read},
-                    {nc::value_2a, access_t::read},
-                    {nc::value_2b, access_t::read}
-                    });
-            (void)row;
-            assert(success);
-            assert(found);
-            assert(accessor.value_1() == 121);
-            assert(accessor.value_2a() == 13);
-            assert(accessor.value_2b() == 222);
+            if constexpr (ATS) {
+                auto [success, found, row, accessor] = idx.select_row(new_key, {
+                        {nc::value_1, AccessType::read},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}
+                        });
+                (void)row;
+                assert(success);
+                assert(found);
+                assert(accessor.value_1() == 121);
+                assert(accessor.value_2a() == 13);
+                assert(accessor.value_2b() == 222);
+            } else {
+                auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                        {nc::value_1, access_t::read},
+                        {nc::value_2a, access_t::read},
+                        {nc::value_2b, access_t::read}
+                        });
+                (void)row;
+                assert(success);
+                assert(found);
+                assert(accessor.value_1() == 121);
+                assert(accessor.value_2a() == 13);
+                assert(accessor.value_2b() == 222);
+            }
             assert(t.try_commit());
         }
 
@@ -1036,17 +1225,31 @@ void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
         TestTransaction t2(2);
         {
             t2.get_tx().mvcc_rw_upgrade();
-            auto [success, found, row, accessor] = idx.select_split_row(new_key, {
-                    {nc::value_1, access_t::read},
-                    {nc::value_2a, access_t::read},
-                    {nc::value_2b, access_t::read}
-                    });
-            (void)row;
-            assert(success);
-            assert(found);
-            assert(accessor.value_1() == 121);
-            assert(accessor.value_2a() == 13);
-            assert(accessor.value_2b() == 222);
+            if constexpr (ATS) {
+                auto [success, found, row, accessor] = idx.select_row(new_key, {
+                        {nc::value_1, AccessType::read},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}
+                        });
+                (void)row;
+                assert(success);
+                assert(found);
+                assert(accessor.value_1() == 121);
+                assert(accessor.value_2a() == 13);
+                assert(accessor.value_2b() == 222);
+            } else {
+                auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                        {nc::value_1, access_t::read},
+                        {nc::value_2a, access_t::read},
+                        {nc::value_2b, access_t::read}
+                        });
+                (void)row;
+                assert(success);
+                assert(found);
+                assert(accessor.value_1() == 121);
+                assert(accessor.value_2a() == 13);
+                assert(accessor.value_2b() == 222);
+            }
         }
 
         {
@@ -1073,13 +1276,23 @@ void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
                 found |= true;
                 return true;
             };
-            bool success = idx.template range_scan<decltype(scan_callback), false>(
-                    start_key, end_key, scan_callback, {
-                    {nc::value_1, access_t::read},
-                    {nc::value_2a, access_t::read},
-                    {nc::value_2b, access_t::read}
-                    });
-            assert(success);
+            if constexpr (ATS) {
+                bool success = idx.template range_scan<decltype(scan_callback), false>(
+                        start_key, end_key, scan_callback, {
+                        {nc::value_1, AccessType::read},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}
+                        });
+                assert(success);
+            } else {
+                bool success = idx.template range_scan<decltype(scan_callback), false>(
+                        start_key, end_key, scan_callback, {
+                        {nc::value_1, access_t::read},
+                        {nc::value_2a, access_t::read},
+                        {nc::value_2b, access_t::read}
+                        });
+                assert(success);
+            }
             assert(!found);
             assert(t.try_commit());
         }
@@ -1087,15 +1300,27 @@ void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
         {
             TestTransaction t(0);
             t.get_tx().mvcc_rw_upgrade();
-            auto [success, found, row, accessor] = idx.select_split_row(new_key, {
-                    {nc::value_1, access_t::read},
-                    {nc::value_2a, access_t::read},
-                    {nc::value_2b, access_t::read}
-                    });
-            (void)row;
-            (void)accessor;
-            assert(success);
-            assert(!found);
+            if constexpr (ATS) {
+                auto [success, found, row, accessor] = idx.select_row(new_key, {
+                        {nc::value_1, AccessType::read},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}
+                        });
+                (void)row;
+                (void)accessor;
+                assert(success);
+                assert(!found);
+            } else {
+                auto [success, found, row, accessor] = idx.select_split_row(new_key, {
+                        {nc::value_1, access_t::read},
+                        {nc::value_2a, access_t::read},
+                        {nc::value_2b, access_t::read}
+                        });
+                (void)row;
+                (void)accessor;
+                assert(success);
+                assert(!found);
+            }
             assert(t.try_commit());
         }
 
@@ -1196,16 +1421,24 @@ void MVCCIndexTester<Ordered>::DeleteReinsertTest() {
         }
     }
 
-    printf("Test pass: DeleteReinsertTest\n");
+    printf("Test pass: %s\n", __FUNCTION__);
 }
 
 int main() {
     {
-        MVCCIndexTester<true> tester;
+        MVCCIndexTester<true, false> tester;
         tester.RunTests();
     }
     {
-        MVCCIndexTester<false> tester;
+        MVCCIndexTester<true, true> tester;
+        tester.RunTests();
+    }
+    {
+        MVCCIndexTester<false, false> tester;
+        tester.RunTests();
+    }
+    {
+        MVCCIndexTester<false, true> tester;
         tester.RunTests();
     }
     printf("ALL TESTS PASS, ignore errors after this.\n");

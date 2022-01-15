@@ -13,26 +13,29 @@
 
 // Status types of MvHistory elements
 enum MvStatus {
-    UNUSED                  = 0b0000'0000'0000,
-    ABORTED                 = 0b0000'0010'0000,
-    ABORTED_RV              = 0b0001'0010'0000,
-    ABORTED_WV1             = 0b0010'0010'0000,
-    ABORTED_WV2             = 0b0011'0010'0000,
-    ABORTED_TXNV            = 0b0100'0010'0000,
-    ABORTED_POISON          = 0b0101'0010'0000,
-    DELTA                   = 0b0000'0000'1000,  // Commutative update delta
-    POISONED                = 0b1000'0000'0000,  // Standalone poison bit
-    DELETED                 = 0b0000'0000'0001,  // Not a valid state on its own, but defined as a flag
-    PENDING                 = 0b0000'0000'0010,
-    COMMITTED               = 0b0000'0000'0100,
-    PENDING_DELTA           = 0b0000'0000'1010,
-    COMMITTED_DELTA         = 0b0000'0000'1100,
-    PENDING_DELETED         = 0b0000'0000'0011,
-    COMMITTED_DELETED       = 0b0000'0000'0101,
-    LOCKED                  = 0b0000'0001'0000,
-    LOCKED_COMMITTED_DELTA  = 0b0000'0001'1100,  // Converting from delta to flattened
-    GARBAGE                 = 0b0000'0100'0000,
-    GARBAGE2                = 0b0000'1000'0000,
+    UNUSED                  = 0b0'0000'0000'0000,
+    ABORTED                 = 0b0'0000'0010'0000,
+    ABORTED_RV              = 0b0'0001'0010'0000,
+    ABORTED_WV1             = 0b0'0010'0010'0000,
+    ABORTED_WV2             = 0b0'0011'0010'0000,
+    ABORTED_TXNV            = 0b0'0100'0010'0000,
+    ABORTED_POISON          = 0b0'0101'0010'0000,
+    DELTA                   = 0b0'0000'0000'1000,  // Commutative update delta
+    POISONED                = 0b0'1000'0000'0000,  // Standalone poison bit
+    DELETED                 = 0b0'0000'0000'0001,  // Not a valid state on its own, but defined as a flag
+    RESPLIT                 = 0b1'0000'0000'0000,  // This version signals a resplit
+    PENDING                 = 0b0'0000'0000'0010,
+    COMMITTED               = 0b0'0000'0000'0100,
+    PENDING_DELTA           = 0b0'0000'0000'1010,
+    COMMITTED_DELTA         = 0b0'0000'0000'1100,
+    PENDING_DELETED         = 0b0'0000'0000'0011,
+    COMMITTED_DELETED       = 0b0'0000'0000'0101,
+    PENDING_RESPLIT         = 0b1'0000'0000'0010,
+    COMMITTED_RESPLIT       = 0b1'0000'0000'0100,
+    LOCKED                  = 0b0'0000'0001'0000,
+    LOCKED_COMMITTED_DELTA  = 0b0'0000'0001'1100,  // Converting from delta to flattened
+    GARBAGE                 = 0b0'0000'0100'0000,
+    GARBAGE2                = 0b0'0000'1000'0000,
 };
 
 std::ostream& operator<<(std::ostream& w, MvStatus s);
@@ -43,13 +46,16 @@ public:
 
     MvHistoryBase() = delete;
     MvHistoryBase(void* obj, tid_type tid, MvStatus status)
-        : status_(status), wtid_(tid), rtid_(tid), obj_(obj) {
+        : status_(status), wtid_(tid), rtid_(tid), obj_(obj), split_(),
+          hsprev_(nullptr) {
     }
 
     std::atomic<MvStatus> status_;  // Status of this element
     tid_type wtid_;  // Write TID
     std::atomic<tid_type> rtid_;  // Read TID
     void* obj_;  // Parent object
+    int split_;  // Split policy index
+    std::atomic<MvHistoryBase*> hsprev_;  // Previous resplit chain item
 };
 
 template <typename T, size_t Cells>
@@ -105,17 +111,28 @@ public:
 
     // Whether this version can be late-inserted in front of hnext
     bool can_precede(const history_type* hnext) const {
-        return !this->status_is(DELETED) || !hnext->status_is(DELTA);
+        return (!this->status_is(DELETED) || !hnext->status_is(DELTA)) &&
+            !this->status_is(RESPLIT);
     }
 
     bool can_precede_anything() const {
-        return !this->status_is(DELETED);
+        return !this->status_is(DELETED) && !this->status_is(RESPLIT);
     }
 
     // Enqueues the deleted version for future cleanup
     inline void enqueue_for_committed() {
         assert_status((status() & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
         Transaction::rcu_call(gc_committed_cb, this);
+    }
+
+    // Retrieves the previous element on the hs list
+    inline history_type* hsprev() const {
+        return reinterpret_cast<history_type*>(hsprev_.load(std::memory_order_relaxed));
+    }
+
+    // Set the previous element on the hs list
+    inline void hsprev(history_type* hs) {
+        return hsprev_.store(hs, std::memory_order_relaxed);
     }
 
     // Retrieve the object for which this history element is intended
@@ -171,6 +188,43 @@ private:
     }
 
 public:
+    // Set the corresponding value slot
+    inline void set_raw_value(comm_type& value) {
+        c_ = value;
+    }
+
+    // Set the corresponding value slot
+    inline void set_raw_value(comm_type&& value) {
+        c_ = value;
+    }
+
+    // Set the corresponding value slot
+    inline void set_raw_value(T& value) {
+        v_ = value;
+    }
+
+    // Set the corresponding value slot
+    inline void set_raw_value(T&& value) {
+        v_ = value;
+    }
+
+    // Set the corresponding value slot
+    inline void set_raw_value(T* value) {
+        if (value) {
+            v_ = *value;
+        }
+    }
+
+    // Get the split index
+    inline int split() const {
+        return split_;
+    }
+
+    // Set the split index
+    inline void split(int split) {
+        split_ = split;
+    }
+
     // Returns the status
     inline MvStatus status() const {
         return status_.load();
@@ -412,7 +466,7 @@ public:
     static constexpr int gc_flattening_length = 257;
 
 #if MVCC_INLINING
-    MvObject() : h_({&ih_}), ih_(this) {
+    MvObject() : h_(), ih_(this) {
         for (auto& h : h_) {
             h.store(&ih_, std::memory_order::memory_order_relaxed);
         }
@@ -420,60 +474,88 @@ public:
             ih_.v_ = T();
         }
         ih_.status(COMMITTED_DELETED);
+        hs_.store(
+                h_[0].load(std::memory_order::memory_order_relaxed),
+                std::memory_order::memory_order_relaxed);
     }
     explicit MvObject(const T& value)
-            : h_({&ih_}), ih_(this, 0, value) {
+            : h_(), ih_(this, 0, value) {
         for (auto& h : h_) {
             h.store(&ih_, std::memory_order::memory_order_relaxed);
         }
         ih_.status(COMMITTED);
+        hs_.store(
+                h_[0].load(std::memory_order::memory_order_relaxed),
+                std::memory_order::memory_order_relaxed);
     }
     explicit MvObject(T&& value)
-            : h_({&ih_}), ih_(this, 0, std::move(value)) {
+            : h_(), ih_(this, 0, std::move(value)) {
         for (auto& h : h_) {
             h.store(&ih_, std::memory_order::memory_order_relaxed);
         }
         ih_.status(COMMITTED);
+        hs_.store(
+                h_[0].load(std::memory_order::memory_order_relaxed),
+                std::memory_order::memory_order_relaxed);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_({&ih_}), ih_(this, 0, T(std::forward<Args>(args)...)) {
+            : h_(), ih_(this, 0, T(std::forward<Args>(args)...)) {
         for (auto& h : h_) {
             h.store(&ih_, std::memory_order::memory_order_relaxed);
         }
         ih_.status(COMMITTED);
+        hs_.store(
+                h_[0].load(std::memory_order::memory_order_relaxed),
+                std::memory_order::memory_order_relaxed);
     }
 #else
-    MvObject() : h_({new history_type(this)}) {
+    MvObject() : h_() {
+        auto* hnew = new history_type(this);
         for (auto& h : h_) {
-            h.store(head(), std::memory_order::memory_order_relaxed);
+            h.store(hnew, std::memory_order::memory_order_relaxed);
         }
         if (std::is_trivial<T>::value) {
-            head()->v_ = T(); /* XXXX */
+            hnew->v_ = T(); /* XXXX */
         }
-        head()->status(COMMITTED_DELETED);
+        hnew->status(COMMITTED_DELETED);
+        hs_.store(
+                h_[0].load(std::memory_order::memory_order_relaxed),
+                std::memory_order::memory_order_relaxed);
     }
     explicit MvObject(const T& value)
-            : h_({new history_type(this, 0, value)}) {
+            : h_() {
+        auto* hnew = new history_type(this, 0, value);
         for (auto& h : h_) {
-            h.store(head(), std::memory_order::memory_order_relaxed);
+            h.store(hnew, std::memory_order::memory_order_relaxed);
         }
-        head()->status(COMMITTED);
+        hnew->status(COMMITTED);
+        hs_.store(
+                h_[0].load(std::memory_order::memory_order_relaxed),
+                std::memory_order::memory_order_relaxed);
     }
     explicit MvObject(T&& value)
-            : h_({new history_type(this, 0, std::move(value))}) {
+            : h_() {
+        auto* hnew = new history_type(this, 0, std::move(value));
         for (auto& h : h_) {
-            h.store(head(), std::memory_order::memory_order_relaxed);
+            h.store(hnew, std::memory_order::memory_order_relaxed);
         }
-        head()->status(COMMITTED);
+        hnew->status(COMMITTED);
+        hs_.store(
+                h_[0].load(std::memory_order::memory_order_relaxed),
+                std::memory_order::memory_order_relaxed);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_({new history_type(this, 0, T(std::forward<Args>(args)...))}) {
+            : h_() {
+        auto* hnew = new history_type(this, 0, T(std::forward<Args>(args)...));
         for (auto& h : h_) {
-            h.store(head(), std::memory_order::memory_order_relaxed);
+            h.store(hnew, std::memory_order::memory_order_relaxed);
         }
-        head()->status(COMMITTED);
+        hnew->status(COMMITTED);
+        hs_.store(
+                h_[0].load(std::memory_order::memory_order_relaxed),
+                std::memory_order::memory_order_relaxed);
     }
 #endif
 
@@ -497,6 +579,14 @@ public:
         return find(tid)->v();
     }
 
+    void auxdata(void* ptr) {
+        auxdata_ = ptr;
+    }
+    template <typename Type=void>
+    Type* auxdata() const {
+        return reinterpret_cast<Type*>(auxdata_);
+    }
+
     // "Lock" step: pending version installation & version consistency check;
     //              returns true if successful, false if aborted
     template <bool may_commute = true>
@@ -518,10 +608,15 @@ public:
                 return false;
             } else {
                 // Properly link h's prev_
+                assert(hw != t);
                 hw->prev_[cell].store(t, std::memory_order_release);
+                hw->hsprev(hw->prev_relaxed(cell)->status_is(COMMITTED_RESPLIT) ?
+                    hw->prev_relaxed(cell) : hw->prev_relaxed(cell)->hsprev());
 
                 // Attempt to CAS onto the target
                 if (target->compare_exchange_strong(t, hw)) {
+                    // XXX[wqian]
+                    //printf("h: %p, t: %p, hw: %p, target: %p\n", &h_[cell], t, hw, target);
                     break;
                 }
             }
@@ -529,7 +624,7 @@ public:
 
         // Write version consistency check for CU enabling
         if (may_commute && !hw->can_precede_anything()) {
-            for (history_type* h = head(); h != hw; h = h->prev()) {
+            for (history_type* h = head(cell); h != hw; h = h->prev(cell)) {
                 if (!hw->can_precede(h)) {
                     hw->status_abort(ABORTED_WV1);
                     return false;
@@ -539,7 +634,7 @@ public:
 
         // Write version consistency check for concurrent reads + CU enabling
         history_type* h = nullptr;
-        for (h = hw->prev(); h; h = h->prev()) {
+        for (h = hw->prev(cell); h; h = h->prev(cell)) {
             if ((may_commute && !h->can_precede(hw))
                 || (h->status_is(COMMITTED) && h->rtid() > tid)) {
                 hw->status_abort(ABORTED_WV2);
@@ -560,12 +655,15 @@ public:
 
     // "Check" step: read timestamp updates and version consistency check;
     //               returns true if successful, false is aborted
-    bool cp_check(const tid_type tid, history_type* hr) {
+    bool cp_check(const tid_type tid, history_type* hr, size_t cell=0) {
         // rtid update
         hr->update_rtid(tid);
 
+        // XXX[wqian]
+        //printf("ctid: %d, check tid: %d, head: %p, hr: %p, hr->wtid: %d\n", Sto::commit_tid(), Sto::read_tid(), head(cell), hr, hr->wtid_);
+
         // Read version consistency check
-        for (history_type* h = head(); h != hr; h = h->prev()) {
+        for (history_type* h = head(cell); h != hr; h = h->prev(cell)) {
             if (!h->status_is(ABORTED) && h->wtid() < tid) {
                 return false;
             }
@@ -593,6 +691,22 @@ public:
                 Transaction::rcu_call(gc_flatten_cb, this);
             }
         }
+        if (s & RESPLIT) {
+            auto hs_p = &hs_;
+            while (true) {
+                auto hs = reinterpret_cast<history_type*>(
+                        hs_p->load(std::memory_order::memory_order_relaxed));
+                while (hs->wtid() > h->wtid()) {
+                    hs_p = &hs->hsprev_;
+                    hs = hs->hsprev();
+                }
+                assert(hs->wtid() < h->wtid());
+                MvHistoryBase* hh = reinterpret_cast<MvHistoryBase*>(hs);
+                if (hs_p->compare_exchange_strong(hh, h)) {
+                    break;
+                }
+            }
+        }
     }
 
     // Deletes the history element if it was new'ed, or set it as UNUSED if it
@@ -611,12 +725,20 @@ public:
         }
     }
 
+    template <bool B=(Cells == 1)>
+    std::enable_if_t<B, history_type*>
+    inline find(const tid_type tid, const bool wait=true) const {
+        return find(tid, 0, wait);
+    }
+
+    inline history_type* find(const tid_type tid, const size_t cell, const bool wait=true) const {
+        return find_from(head(cell), tid, cell, wait);
+    }
+
     // Finds the current visible version, based on tid; by default, waits on
     // pending versions, but if toggled off, will simply return first version,
     // regardless of status
-    history_type* find(const tid_type tid, const size_t cell=0, const bool wait=true) const {
-        history_type* h = head();
-
+    history_type* find_from(history_type* h, const tid_type tid, const size_t cell, const bool wait=true) const {
         /* TODO: use something smarter than a linear scan */
         while (h) {
             auto status = h->status();
@@ -646,7 +768,11 @@ public:
         return reinterpret_cast<history_type*>(h_[cell].load(std::memory_order_acquire));
     }
 
-    history_type* find_latest(const bool wait = true) const {
+    history_type* headhs() const {
+        return reinterpret_cast<history_type*>(hs_.load(std::memory_order_relaxed));
+    }
+
+    history_type* find_latest(const size_t cell, const bool wait) const {
         history_type* h = head();
         while (true) {
             auto status = h->status();
@@ -657,7 +783,7 @@ public:
             if (status & COMMITTED) {
                 return h;
             }
-            h = h->prev();
+            h = h->prev(cell);
         }
     }
 
@@ -748,12 +874,15 @@ protected:
     }
 
     std::array<std::atomic<base_type*>, Cells> h_;
+    std::atomic<base_type*> hs_;  // Split-changing shortchain
     std::atomic<int> cuctr_ = 0;  // For gc-time flattening
     std::atomic<tid_type> flattenv_;
 
 #if MVCC_INLINING
     history_type ih_;  // Inlined version
 #endif
+
+    void* auxdata_ = nullptr;  // Auxiliary data pointer
 
     friend class MvHistory<T, Cells>;
 };

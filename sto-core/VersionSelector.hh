@@ -142,8 +142,9 @@ public:
     static constexpr auto NUM_POLICIES = RecordAccessor::POLICIES;
     static constexpr auto INDEX_POINTERS = std::make_index_sequence<NUM_POINTERS>{};
     //static constexpr auto split_width = static_cast<size_t>(std::ceil(std::log2l(NUM_VERSIONS)));
-    using RowType = std::conditional_t<
-        UseMVCC, MvObject<ValueType, NUM_POINTERS>, ValueType>;
+    using mvobject_type = MvObject<ValueType, NUM_POINTERS>;
+    using mvhistory_type = typename mvobject_type::history_type;
+    using RowType = std::conditional_t<UseMVCC, mvobject_type, ValueType>;
 
     struct ColumnAccess {
         ColumnAccess(nc column, AccessType access)
@@ -160,6 +161,10 @@ public:
 
     //template <bool B=UseMVCC, std::enable_if_t<!B, bool> = true>
     AdaptiveValueContainer(type v, bool insert, const ValueType& r) : row(r), versions_() {
+        new (&versions_[0]) version_type(v, insert);
+    }
+
+    AdaptiveValueContainer(type v, bool insert) : row(), versions_() {
         new (&versions_[0]) version_type(v, insert);
     }
 
@@ -225,6 +230,39 @@ public:
         }
     }
 
+    template <bool B=UseMVCC>
+    std::enable_if_t<B, std::tuple<
+        mvhistory_type*, SplitType, std::array<AccessType, NUM_VERSIONS>>>
+    mvcc_split_accesses(const type& rtid, std::initializer_list<ColumnAccess> accesses) {
+        std::array<AccessType, NUM_VERSIONS> split_accesses = {};
+        std::fill(split_accesses.begin(), split_accesses.end(), AccessType::none);
+
+        auto hsprev = row.headhs();
+        mvhistory_type* hsnext = nullptr;
+        while (hsprev->wtid() > rtid) {
+            hsnext = hsprev;
+            hsprev = hsprev->hsprev();
+        }
+        auto h = hsnext ? hsnext->prev() : row.head();
+        while (h->wtid() > rtid) {
+            if (h->status_is(COMMITTED_RESPLIT)) {
+                hsnext = h;
+            }
+            h = h->prev();
+        }
+
+        hsprev = h->status_is(COMMITTED_RESPLIT) ? h : h->hsprev();
+        auto split = hsprev ? hsprev->split() : RecordAccessor::DEFAULT_SPLIT;
+        for (auto colaccess : accesses) {
+            const auto cell = split_of(split, colaccess.column);
+            split_accesses[cell] |= colaccess.access;
+        }
+
+        return {hsnext, split, split_accesses};
+    }
+
+    template <bool B=UseMVCC>
+    //std::enable_if_t<!B, std::array<AccessType, NUM_VERSIONS>>
     std::array<AccessType, NUM_VERSIONS>
     split_accesses(const SplitType& split, std::initializer_list<ColumnAccess> accesses) {
         std::array<AccessType, NUM_VERSIONS> split_accesses = {};
@@ -246,7 +284,7 @@ public:
         return get(split, vptrs, INDEX_POINTERS);
     }
 
-    template <size_t... Indexes, bool B=UseMVCC>
+    template <size_t... Indexes>
     inline RecordAccessor get(const SplitType& split, std::index_sequence<Indexes...>) {
         return get(split, index_to_ptr<Indexes>()...);
     }
@@ -265,11 +303,6 @@ public:
     }
 
     template <typename... Args>
-    inline RecordAccessor get(Args&&... args) {
-        return get(split(), std::forward<Args>(args)...);
-    }
-
-    template <typename... Args>
     inline RecordAccessor get(const SplitType& split, Args&&... args) {
         if constexpr (sizeof...(args) == 1 && NUM_POINTERS > 1) {
             return get(split, std::forward<Args>(args)..., INDEX_POINTERS);
@@ -279,6 +312,13 @@ public:
             return accessor;
         }
     }
+
+    /*
+    template <typename... Args>
+    inline RecordAccessor get(Args&&... args) {
+        return get(split(), std::forward<Args>(args)...);
+    }
+    */
 
     template <size_t Index>
     inline ValueType* index_to_ptr() {

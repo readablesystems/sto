@@ -77,6 +77,11 @@ public:
     template <typename T>
     static constexpr auto extract_items
         = split_version_helpers<ordered_index<K, V, DBParams>>::template extract_items<T>;
+    template <typename T> static constexpr auto mvcc_extract_and_access =
+        split_version_helpers<ordered_index<K, V, DBParams>>::template mvcc_extract_and_access<T>;
+
+    using mvobject_type = MvObject<value_type, value_container_type::NUM_VERSIONS>;
+    using mvhistory_type = typename mvobject_type::history_type;
 
 
     static __thread typename table_params::threadinfo_type *ti;
@@ -203,7 +208,33 @@ public:
     }
 #endif
 
-    sel_return_type
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<B, sel_return_type>
+    select_row(uintptr_t rid,
+               std::initializer_list<ColumnAccess> accesses,
+               int preferred_split=-1) {
+        auto e = reinterpret_cast<internal_elem *>(rid);
+        TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+
+        if (is_phantom(e, row_item)) {
+            return { true, false, 0, nullptr };
+        }
+
+        auto [hs, split, cell_accesses] =
+            e->row_container.mvcc_split_accesses(Sto::read_tid(), accesses);
+
+        auto [ok, values] = mvcc_extract_and_access<value_container_type>(
+                cell_accesses, this, e, hs, split, preferred_split);
+
+        if (!ok) {
+            return { true, false, 0, nullptr };
+        }
+
+        return { true, true, rid, e->row_container.get(split, values) };
+    }
+
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<!B, sel_return_type>
     select_row(uintptr_t rid,
                std::initializer_list<ColumnAccess> accesses,
                int preferred_split=-1) {
@@ -229,11 +260,7 @@ public:
             if (has_row_update(row_item)) {
                 value_type *vptr;
                 if (has_insert(row_item)) {
-                    if constexpr (DBParams::MVCC) {
-                        vptr = e->row_container.row.find(Sto::read_tid())->vp();
-                    } else {
-                        vptr = &e->row_container.row;
-                    }
+                    vptr = &e->row_container.row;
                 } else {
                     vptr = row_item.template raw_write_value<value_type*>();
                 }
@@ -290,7 +317,21 @@ public:
         return {false, false, 0, accessor_t(nullptr)};
     }
 
-    std::enable_if_t<!DBParams::UseATS, void>
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<B, void>
+    update_row(uintptr_t rid, value_type *new_row) {
+        auto e = reinterpret_cast<internal_elem*>(rid);
+        for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+            auto [found, item] = Sto::find_write_item(this, item_key_t(e, cell));
+            if (found) {
+                item.clear_write();
+                item.add_write(new_row);
+            }
+        }
+    }
+
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<!B, void>
     update_row(uintptr_t rid, value_type *new_row) {
         auto e = reinterpret_cast<internal_elem*>(rid);
         auto row_item = Sto::item(this, item_key_t::row_item_key(e));
@@ -301,19 +342,22 @@ public:
         }
     }
 
-    std::enable_if_t<DBParams::UseATS, void>
-    update_row(uintptr_t rid, value_type *new_row, int x=0) {
-        (void) x;
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<B, void>
+    update_row(uintptr_t rid, const comm_type &comm) {
+        assert(&comm);
         auto e = reinterpret_cast<internal_elem*>(rid);
-        auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-        if (value_is_small) {
-            row_item.acquire_write(e->version(), *new_row);
-        } else {
-            row_item.acquire_write(e->version(), new_row);
+        for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+            auto [found, item] = Sto::find_write_item(this, item_key_t(e, cell));
+            if (found) {
+                item.add_commute(comm);
+            }
         }
     }
 
-    void update_row(uintptr_t rid, const comm_type &comm) {
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<!B, void>
+    update_row(uintptr_t rid, const comm_type &comm) {
         assert(&comm);
         auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
         row_item.add_commute(comm);
@@ -325,59 +369,15 @@ public:
     insert_row(const key_type& key, value_type *vptr, bool overwrite = false) {
         cursor_type lp(table_, key);
         bool found = lp.find_insert(*ti);
-        if (found) {
-            // NB: the insert method only manipulates the row_item. It is possible
-            // this insert is overwriting some previous updates on selected columns
-            // The expected behavior is that this row-level operation should overwrite
-            // all changes made by previous updates (in the same transaction) on this
-            // row. We achieve this by granting this row_item a higher priority.
-            // During the install phase, if we notice that the row item has already
-            // been locked then we simply ignore installing any changes made by cell items.
-            // It should be trivial for a cell item to find the corresponding row item
-            // and figure out if the row-level version is locked.
-            internal_elem *e = lp.value();
-            lp.finish(0, *ti);
+        internal_elem *e = nullptr;
 
-            TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
-
-            if (is_phantom(e, row_item))
-                return ins_abort;
-
-            if (index_read_my_write) {
-                if (has_delete(row_item)) {
-                    auto proxy = row_item.clear_flags(delete_bit).clear_write();
-
-                    if (value_is_small)
-                        proxy.add_write(*vptr);
-                    else
-                        proxy.add_write(vptr);
-
-                    return ins_return_type(true, false);
-                }
-            }
-
-            if (overwrite) {
-                bool ok;
-                if (value_is_small)
-                    ok = version_adapter::select_for_overwrite(row_item, e->version(), *vptr);
-                else
-                    ok = version_adapter::select_for_overwrite(row_item, e->version(), vptr);
-                if (!ok)
-                    return ins_abort;
-                if (index_read_my_write) {
-                    if (has_insert(row_item)) {
-                        copy_row(e, vptr);
-                    }
-                }
+        if (!found) {
+            if constexpr (DBParams::MVCC) {
+                e = new internal_elem(this, key, true);
             } else {
-                // observes that the row exists, but nothing more
-                if (!row_item.observe(e->version()))
-                    return ins_abort;
+                e = new internal_elem(this, key, vptr ? *vptr : value_type(),
+                                           false /*!valid*/);
             }
-
-        } else {
-            auto e = new internal_elem(key, vptr ? *vptr : value_type(),
-                                       false /*!valid*/);
             lp.value() = e;
 
             node_type *node;
@@ -399,23 +399,163 @@ public:
             lp.finish(1, *ti);
             //fence();
 
-            TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
-            //if (value_is_small)
-            //    item.add_write<value_type>(*vptr);
-            //else
-            //    item.add_write<value_type *>(vptr);
-            row_item.acquire_write(e->version());
-            row_item.add_flags(insert_bit);
+            if constexpr (DBParams::MVCC) {
+                found = true;
+            } else {
+                TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+                //if (value_is_small)
+                //    item.add_write<value_type>(*vptr);
+                //else
+                //    item.add_write<value_type *>(vptr);
+                row_item.acquire_write(e->version());
+                row_item.add_flags(insert_bit);
+            }
 
             // update the node version already in the read set and modified by split
             if (!update_internode_version(node, orig_nv, new_nv))
                 return ins_abort;
+        } else {
+            e = lp.value();
+            lp.finish(0, *ti);
+        }
+
+        if (found) {
+            // NB: the insert method only manipulates the row_item. It is possible
+            // this insert is overwriting some previous updates on selected columns
+            // The expected behavior is that this row-level operation should overwrite
+            // all changes made by previous updates (in the same transaction) on this
+            // row. We achieve this by granting this row_item a higher priority.
+            // During the install phase, if we notice that the row item has already
+            // been locked then we simply ignore installing any changes made by cell items.
+            // It should be trivial for a cell item to find the corresponding row item
+            // and figure out if the row-level version is locked.
+
+            TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+            mvhistory_type *h = nullptr;
+
+            if constexpr (DBParams::MVCC) {
+                // Assume any cell, since all DELETEDs span all cells, and so
+                // must the first COMMITTED version thereafter
+                h = e->row_container.row.find(Sto::read_tid(), 0);
+                found = !h->status_is(MvStatus::DELETED);
+            } else {
+                (void) h;
+            }
+
+            if constexpr (DBParams::MVCC) {
+                if (is_phantom(h, row_item)) {
+                    MvAccess::read(row_item, h);
+                    for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                        auto item = Sto::item(this, item_key_t(e, cell));
+                        item.add_write(vptr);
+                        item.add_flags(insert_bit);
+                    }
+                    return ins_return_type(true, false);
+                }
+            } else {
+                if (is_phantom(e, row_item)) {
+                    return ins_abort;
+                }
+            }
+
+            if (index_read_my_write) {
+                if (has_delete(row_item)) {
+                    auto proxy = row_item.clear_flags(delete_bit).clear_write();
+
+                    if (value_is_small)
+                        proxy.add_write(*vptr);
+                    else
+                        proxy.add_write(vptr);
+
+                    return ins_return_type(true, false);
+                }
+            }
+
+            if (overwrite) {
+                if constexpr (DBParams::MVCC) {
+                    for (size_t cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                        auto item = Sto::item(this, item_key_t(e, cell));
+                        item.add_write();
+                    }
+                    update_row(reinterpret_cast<uintptr_t>(e), vptr);
+                } else {
+                    bool ok;
+                    if (value_is_small)
+                        ok = version_adapter::select_for_overwrite(row_item, e->version(), *vptr);
+                    else
+                        ok = version_adapter::select_for_overwrite(row_item, e->version(), vptr);
+                    if (!ok)
+                        return ins_abort;
+                    if (index_read_my_write) {
+                        if (has_insert(row_item)) {
+                            copy_row(e, vptr);
+                        }
+                    }
+                }
+            } else {
+                if constexpr (DBParams::MVCC) {
+                    MvAccess::read(row_item, h);
+                } else {
+                    // observes that the row exists, but nothing more
+                    if (!row_item.observe(e->version()))
+                        return ins_abort;
+                }
+            }
+
         }
 
         return ins_return_type(true, found);
     }
 
-    del_return_type
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<B, del_return_type>
+    delete_row(const key_type& key) {
+        unlocked_cursor_type lp(table_, key);
+        bool found = lp.find_unlocked(*ti);
+        if (found) {
+            internal_elem *e = lp.value();
+            TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+            auto h = e->row_container.row.find(Sto::read_tid(), 0);
+
+            if (is_phantom(h, row_item)) {
+                MvAccess::read(row_item, h);
+                return { true, false };
+            }
+
+            if (index_read_my_write) {
+                if (has_delete(row_item))
+                    return { true, false };
+                if (h->status_is(DELETED) && has_insert(row_item)) {
+                    for (size_t cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                        auto item = Sto::item(this, item_key_t(e, cell));
+                        item.add_flags(delete_bit);
+                    }
+                    row_item.add_flags(delete_bit);
+                    return { true, true };
+                }
+            }
+
+            MvAccess::read(row_item, h);
+            if (h->status_is(DELETED)) {
+                return { true, false };
+            }
+            for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                auto item = Sto::item(this, item_key_t(e, cell));
+                item.add_write(0);
+                item.add_flags(delete_bit);
+            }
+            row_item.add_flags(delete_bit);
+        } else {
+            if (!register_internode_version(lp.node(), lp)) {
+                return del_abort;
+            }
+        }
+
+        return { true, found };
+    }
+
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<!B, del_return_type>
     delete_row(const key_type& key) {
         unlocked_cursor_type lp(table_, key);
         bool found = lp.find_unlocked(*ti);
@@ -465,8 +605,9 @@ public:
         return del_return_type(true, found);
     }
 
-    template <typename Callback, bool Reverse>
-    bool range_scan(const key_type& begin, const key_type& end, Callback callback,
+    template <typename Callback, bool Reverse, bool B=DBParams::MVCC>
+    std::enable_if_t<!B, bool>
+    range_scan(const key_type& begin, const key_type& end, Callback callback,
                     std::initializer_list<column_access_t> accesses, bool phantom_protection = true, int limit = -1) {
         assert((limit == -1) || (limit > 0));
         auto node_callback = [&] (leaf_type* node,
@@ -474,7 +615,8 @@ public:
             return ((!phantom_protection) || scan_track_node_version(node, version));
         };
 
-        auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
+        std::array<access_t, value_container_type::NUM_VERSIONS> cell_accesses;
+        cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
@@ -492,11 +634,7 @@ public:
                 }
                 if (any_has_write) {
                     if (has_insert(row_item)) {
-                        if constexpr (DBParams::MVCC) {
-                            ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
-                        } else {
-                            ret = callback(key_type(key), &(e->row_container.row));
-                        }
+                        ret = callback(key_type(key), &(e->row_container.row));
                     } else {
                         ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
                     }
@@ -521,11 +659,7 @@ public:
                 return true;
             }
 
-            if constexpr (DBParams::MVCC) {
-                ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
-            } else {
-                ret = callback(key_type(key), &(e->row_container.row));
-            }
+            ret = callback(key_type(key), &(e->row_container.row));
             return true;
         };
 
@@ -540,63 +674,139 @@ public:
 
     template <typename Callback, bool Reverse>
     bool range_scan(const key_type& begin, const key_type& end, Callback callback,
-                    RowAccess access, bool phantom_protection = true, int limit = -1) {
+                    RowAccess access, bool phantom_protection = true, int limit = -1,
+                    int preferred_split = -1) {
         assert((limit == -1) || (limit > 0));
         auto node_callback = [&] (leaf_type* node,
                                   typename unlocked_cursor_type::nodeversion_value_type version) {
             return ((!phantom_protection) || scan_track_node_version(node, version));
         };
 
-        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
-            TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
-                                                      : Sto::fresh_item(this, item_key_t::row_item_key(e));
+        std::array<AccessType, value_container_type::NUM_VERSIONS> cell_accesses;
+        if constexpr (DBParams::MVCC) {
+            auto each_cell = AccessType::none;
+            switch (access) {
+                case RowAccess::ObserveValue:
+                case RowAccess::ObserveExists:
+                    each_cell = AccessType::read;
+                    break;
+                case RowAccess::UpdateValue:
+                    each_cell = AccessType::update;
+                    break;
+                default:
+                    each_cell = AccessType::none;
+                    break;
+            }
+            std::fill(cell_accesses.begin(), cell_accesses.end(), each_cell);
+        } else {
+            (void) cell_accesses;
+        }
 
-            if (index_read_my_write) {
-                if (has_delete(row_item)) {
+        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
+            auto row_item_key = item_key_t::row_item_key(e);
+            TransProxy row_item = index_read_my_write ?
+                Sto::item(this, row_item_key) : Sto::fresh_item(this, row_item_key);
+
+            if constexpr (DBParams::MVCC) {
+                 if (is_phantom(e, row_item)) {
                     ret = true;
                     count = false;
                     return true;
                 }
-                if (has_row_update(row_item)) {
-                    if (has_insert(row_item)) {
-                        if constexpr (DBParams::MVCC) {
-                            ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
-                        } else {
-                            ret = callback(key_type(key), &(e->row_container.row));
+
+                auto [hs, split, _] =
+                    e->row_container.mvcc_split_accesses(Sto::read_tid(), {});
+
+                std::array<value_type*, value_container_type::NUM_VERSIONS> values { nullptr };
+                std::fill(values.begin(), values.end(), nullptr);
+
+                bool ok = true;
+                for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                    auto is_row_item = cell == row_item_key.cell_num();
+                    auto item = is_row_item ? row_item : (
+                            index_read_my_write
+                            ? Sto::item(this, item_key_t(e, cell))
+                            : Sto::fresh_item(this, item_key_t(e, cell)));
+
+                    if (preferred_split >= 0) {
+                        item.set_preferred_split(preferred_split);
+                        if (split != preferred_split) {
+                            Sto::set_stats();
                         }
-                    } else {
-                        ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
                     }
+
+                    // hs == null means start at the head
+                    auto h = hs ?
+                        e->row_container.row.find_from(hs, Sto::read_tid(), cell) :
+                        e->row_container.row.find(Sto::read_tid(), cell);
+                    if (is_row_item) {
+                        if (h->status_is(DELETED)) {
+                            MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
+                            ok = false;
+                            break;
+                        } else if (index_read_my_write) {
+                            if (has_delete(item)) {
+                                ok = false;
+                                break;
+                            } else if (has_row_update(item)) {
+                                values[cell] = item.template raw_write_value<value_type*>();
+                                continue;
+                            }
+                        }
+                    }
+                    if (cell_accesses[cell] != AccessType::none) {
+                        MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
+                        values[cell] = h->vp();
+                    }
+                }
+
+                if (!ok) {
+                    ret = true;
+                    count = false;
                     return true;
                 }
-            }
 
-            bool ok = true;
-            switch (access) {
-                case RowAccess::ObserveValue:
-                case RowAccess::ObserveExists:
-                    ok = row_item.observe(e->version());
-                    break;
-                case RowAccess::None:
-                    break;
-                default:
-                    always_assert(false, "unsupported access type in range_scan");
-                    break;
-            }
-
-            if (!ok)
-                return false;
-
-            // skip invalid (inserted but yet committed) values, but do not abort
-            if (!e->valid()) {
-                ret = true;
-                count = false;
-                return true;
-            }
-
-            if constexpr (DBParams::MVCC) {
-                ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
+                ret = callback(key_type(key), e->row_container.get(split, values));
             } else {
+                if (index_read_my_write) {
+                    if (has_delete(row_item)) {
+                        ret = true;
+                        count = false;
+                        return true;
+                    }
+                    if (has_row_update(row_item)) {
+                        if (has_insert(row_item)) {
+                            ret = callback(key_type(key), &(e->row_container.row));
+                        } else {
+                            ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
+                        }
+                        return true;
+                    }
+                }
+
+                bool ok = true;
+                switch (access) {
+                    case RowAccess::ObserveValue:
+                    case RowAccess::ObserveExists:
+                        ok = row_item.observe(e->version());
+                        break;
+                    case RowAccess::None:
+                        break;
+                    default:
+                        always_assert(false, "unsupported access type in range_scan");
+                        break;
+                }
+
+                if (!ok)
+                    return false;
+
+                // skip invalid (inserted but yet committed) values, but do not abort
+                if (!e->valid()) {
+                    ret = true;
+                    count = false;
+                    return true;
+                }
+
                 ret = callback(key_type(key), &(e->row_container.row));
             }
             return true;
@@ -613,8 +823,8 @@ public:
 
     template <typename Callback, bool Reverse>
     bool range_scan(const key_type& begin, const key_type& end, Callback callback,
-                    std::initializer_list<ColumnAccess> accesses, bool phantom_protection = true, int limit = -1, int preferred_split = -1) {
-        (void) preferred_split;
+                    std::initializer_list<ColumnAccess> accesses, bool phantom_protection = true,
+                    int limit = -1, int preferred_split = -1) {
         assert((limit == -1) || (limit > 0));
         auto node_callback = [&] (leaf_type* node,
             typename unlocked_cursor_type::nodeversion_value_type version) {
@@ -622,57 +832,112 @@ public:
         };
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
-            const auto split = e->row_container.split();  // This is a ~2% overhead
 
-            TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
-                                                      : Sto::fresh_item(this, item_key_t::row_item_key(e));
+            auto row_item_key = item_key_t::row_item_key(e);
+            TransProxy row_item = index_read_my_write ?
+                Sto::item(this, row_item_key) : Sto::fresh_item(this, row_item_key);
 
-            auto cell_accesses = e->row_container.split_accesses(split, accesses);
-
-            bool any_has_write;
-            std::array<TransItem*, value_container_type::num_versions> cell_items {};
-            std::tie(any_has_write, cell_items) = extract_items<value_container_type>(cell_accesses, this, e, split, preferred_split);
-
-            if (index_read_my_write) {
-                if (has_delete(row_item)) {
+            if constexpr (DBParams::MVCC) {
+                if (is_phantom(e, row_item)) {
                     ret = true;
                     count = false;
                     return true;
                 }
-                if (any_has_write) {
-                    if (has_insert(row_item)) {
-                        if constexpr (DBParams::MVCC) {
-                            ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
-                        } else {
-                            ret = callback(key_type(key), &(e->row_container.row));
+
+                auto [hs, split, cell_accesses] =
+                    e->row_container.mvcc_split_accesses(Sto::read_tid(), accesses);
+
+                std::array<value_type*, value_container_type::NUM_VERSIONS> values { nullptr };
+                std::fill(values.begin(), values.end(), nullptr);
+
+                bool ok = true;
+                for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                    auto is_row_item = cell == row_item_key.cell_num();
+                    auto item = is_row_item ? row_item : (
+                            index_read_my_write
+                            ? Sto::item(this, item_key_t(e, cell))
+                            : Sto::fresh_item(this, item_key_t(e, cell)));
+
+                    if (preferred_split >= 0) {
+                        item.set_preferred_split(preferred_split);
+                        if (split != preferred_split) {
+                            Sto::set_stats();
                         }
-                    } else {
-                        ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
                     }
+
+                    // hs == null means start at the head
+                    auto h = hs ?
+                        e->row_container.row.find_from(hs, Sto::read_tid(), cell) :
+                        e->row_container.row.find(Sto::read_tid(), cell);
+                    if (is_row_item) {
+                        if (h->status_is(DELETED)) {
+                            MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
+                            ok = false;
+                            break;
+                        } else if (index_read_my_write) {
+                            if (has_delete(item)) {
+                                ok = false;
+                                break;
+                            } else if (has_row_update(item)) {
+                                values[cell] = item.template raw_write_value<value_type*>();
+                                continue;
+                            }
+                        }
+                    }
+                    if (cell_accesses[cell] != AccessType::none) {
+                        MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
+                        values[cell] = h->vp();
+                    }
+                }
+
+                if (!ok) {
+                    ret = true;
+                    count = false;
                     return true;
                 }
-            }
 
-            bool ok = access_all(cell_accesses, cell_items, e->row_container);
-            if (!ok)
-                return false;
-            //bool ok = item.observe(e->version);
-            //if (Adaptive) {
-            //    ok = item.observe(e->version, true/*force occ*/);
-            //} else {
-            //    ok = item.observe(e->version);
-            //}
-
-            // skip invalid (inserted but yet committed) values, but do not abort
-            if (!e->valid()) {
-                ret = true;
-                count = false;
-                return true;
-            }
-
-            if constexpr (DBParams::MVCC) {
-                ret = callback(key_type(key), e->row_container.row.find(Sto::read_tid())->vp());
+                ret = callback(key_type(key), e->row_container.get(split, values));
             } else {
+                const auto split = e->row_container.split();  // This is a ~2% overhead
+                auto cell_accesses = e->row_container.split_accesses(split, accesses);
+
+                bool any_has_write;
+                std::array<TransItem*, value_container_type::num_versions> cell_items {};
+                std::tie(any_has_write, cell_items) = extract_items<value_container_type>(cell_accesses, this, e, split, preferred_split);
+
+                if (index_read_my_write) {
+                    if (has_delete(row_item)) {
+                        ret = true;
+                        count = false;
+                        return true;
+                    }
+                    if (any_has_write) {
+                        if (has_insert(row_item)) {
+                            ret = callback(key_type(key), &(e->row_container.row));
+                        } else {
+                            ret = callback(key_type(key), row_item.template raw_write_value<value_type *>());
+                        }
+                        return true;
+                    }
+                }
+
+                bool ok = access(cell_accesses, cell_items, e->row_container);
+                if (!ok)
+                    return false;
+                //bool ok = item.observe(e->version);
+                //if (Adaptive) {
+                //    ok = item.observe(e->version, true/*force occ*/);
+                //} else {
+                //    ok = item.observe(e->version);
+                //}
+
+                // skip invalid (inserted but yet committed) values, but do not abort
+                if (!e->valid()) {
+                    ret = true;
+                    count = false;
+                    return true;
+                }
+
                 ret = callback(key_type(key), &(e->row_container.row));
             }
             return true;
@@ -692,9 +957,22 @@ public:
         bool found = lp.find_unlocked(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            return &(e->row_container.row);
+            if constexpr (DBParams::MVCC) {
+                return &e->row_container.row.nontrans_access();  // XXX: fix?
+            } else {
+                return &(e->row_container.row);
+            }
         } else
             return nullptr;
+    }
+
+    bool nontrans_get(const key_type& k, value_type* v) {
+        auto* vp = nontrans_get(k);
+        if (vp) {
+            *v = *vp;
+            return true;
+        }
+        return false;
     }
 
     void nontrans_put(const key_type& k, const value_type& v, int preferred_split=-1) {
@@ -716,7 +994,7 @@ public:
             }
             lp.finish(0, *ti);
         } else {
-            internal_elem *e = new internal_elem(k, v, true);
+            internal_elem *e = new internal_elem(this, k, v, true);
             if (preferred_split >= 0) {
                 e->row_container.set_split(preferred_split);
             }
@@ -736,10 +1014,70 @@ public:
         }
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
-        if (key.is_row_item())
-            return txn.try_lock(item, e->version());
-        else
-            return txn.try_lock(item, e->row_container.version_at(key.cell_num()));
+        if constexpr (DBParams::MVCC) {
+            // XXX[wqian]
+            //printf("e: %p, row item: %d, read: %d, write: %d, cell: %d, insert: %d\n", e, key.is_row_item(), item.has_read(), item.has_write(), key.cell_num(), has_insert(item));
+            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+
+            // A port of the mvcc_chain_operations implementation
+
+            if (item.has_read()) {
+                auto hprev = item.read_value<mvhistory_type*>();
+                if (hprev && Sto::commit_tid() < hprev->rtid()) {
+                    TransProxy(txn, row_item).add_write(nullptr);
+                    TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
+                    return false;
+                }
+            }
+            mvhistory_type *h = nullptr;
+            bool new_history = true;
+            // Reuse existing history object if available
+            if (row_item.has_mvhistory()) {
+                h = row_item.template raw_write_value<mvhistory_type*>();
+                new_history = false;
+            }
+            if (item.has_commute()) {
+                auto wval = item.template raw_write_value<comm_type>();
+                if (h) {  // XXX: what actually happens here?
+                    h->set_raw_value(std::move(wval));  // XXX: okay for now because both items should have same payload?
+                } else {
+                    h = e->row_container.row.new_history(
+                            Sto::commit_tid(), std::move(wval));
+                }
+            } else {
+                auto wval = item.template raw_write_value<value_type*>();
+                if (h) {  /// XXX: what actually happens here?
+                    if (has_delete(item)) {
+                        assert(h->status_is(MvStatus::DELETED));
+                    } else {
+                        h->set_raw_value(wval);  // XXX: okay for now because both items should have same payload?
+                    }
+                } else {
+                    if (has_delete(item)) {
+                        h = e->row_container.row.new_history(Sto::commit_tid(), nullptr);
+                        h->status_delete();
+                    } else {
+                        h = e->row_container.row.new_history(Sto::commit_tid(), wval);
+                    }
+                }
+            }
+            assert(h);
+            bool result = e->row_container.row.template cp_lock<DBParams::Commute>(Sto::commit_tid(), h, key.cell_num());
+            if (!result && !new_history && !h->status_is(MvStatus::ABORTED)) {
+                e->row_container.row.delete_history(h);
+                TransProxy(txn, row_item).add_mvhistory(nullptr);
+                TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
+            } else {
+                TransProxy(txn, row_item).add_mvhistory(h);
+                TXP_ACCOUNT(txp_tpcc_lock_abort3, txn.special_txp && !result);
+            }
+            return result;
+        } else {
+            if (key.is_row_item())
+                return txn.try_lock(item, e->version());
+            else
+                return txn.try_lock(item, e->row_container.version_at(key.cell_num()));
+        }
     }
 
     bool check(TransItem& item, Transaction& txn) override {
@@ -757,10 +1095,25 @@ public:
             }
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
-            if (key.is_row_item())
-                return e->version().cp_check_version(txn, item);
-            else
-                return e->row_container.version_at(key.cell_num()).cp_check_version(txn, item);
+            if constexpr (DBParams::MVCC) {
+                auto h = item.template read_value<mvhistory_type*>();
+                // XXX[wqian]
+                /*if (key.is_row_item()) {
+                    for (size_t cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                        if (!e->row_container.row.cp_check(Sto::read_tid(), h, cell)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                } else*/ {
+                    return e->row_container.row.cp_check(Sto::read_tid(), h, key.cell_num());
+                }
+            } else {
+                if (key.is_row_item())
+                    return e->version().cp_check_version(txn, item);
+                else
+                    return e->row_container.version_at(key.cell_num()).cp_check_version(txn, item);
+            }
         }
     }
 
@@ -776,19 +1129,20 @@ public:
         }
 
         auto key = item.key<item_key_t>();
+        auto e = key.internal_elem_ptr();
 
         if constexpr (DBParams::MVCC) {
-            using history_type = typename MvObject<value_type>::history_type;
-            auto h = item.template write_value<history_type*>();
-            if (h->status_is(MvStatus::PENDING)) {
+            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+            auto h = row_item.template raw_write_value<mvhistory_type*>();
+            if (h && h->status_is(MvStatus::PENDING)) {
                 h->object()->cp_install(h);
-                if (key.is_row_item()) {
+                if (has_delete(item)) {
                     Transaction::rcu_call(_mvcc_delete_callback, h);
                 }
+                TransProxy(txn, row_item).add_mvhistory(nullptr);  // Clear the history object
             }
             return;
         } else {
-            auto e = key.internal_elem_ptr();
             if (key.is_row_item()) {
                 //assert(e->version.is_locked());
                 if (has_delete(item)) {
@@ -882,7 +1236,23 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        if (committed ? has_delete(item) : has_insert(item)) {
+        if constexpr (DBParams::MVCC) {
+            if (!committed) {
+                auto key = item.key<item_key_t>();
+                if (item.has_mvhistory()) {
+                    auto h = item.template write_value<mvhistory_type*>();
+                    if (h) {
+                        h->status_txn_abort();
+                    }
+                }
+                {
+                    auto h = key.internal_elem_ptr()->row_container.row.find(Sto::commit_tid(), key.cell_num());
+                    if (h->wtid() == 0) {
+                        h->enqueue_for_committed();
+                    }
+                }
+            }
+        } else if (committed ? has_delete(item) : has_insert(item)) {
             auto key = item.key<item_key_t>();
             assert(key.is_row_item());
             internal_elem *e = key.internal_elem_ptr();
@@ -968,8 +1338,9 @@ protected:
         ValueCallback value_callback_;
     };
 
-private:
+public:
     table_type table_;
+private:
     uint64_t key_gen_;
 
     static bool
@@ -1031,12 +1402,18 @@ private:
         return (!e->valid() && !has_insert(item));
     }
 
+public:
+    static bool is_phantom(mvhistory_type *h, const TransItem& item) {
+        return (h->status_is(MvStatus::DELETED) && !has_insert(item));
+    }
+
+private:
     bool register_internode_version(node_type *node, unlocked_cursor_type& cursor) {
         if constexpr (table_params::track_nodes) {
             return ttnv_register_node_read_with_snapshot(node, *cursor.get_aux_tracker());
         } else {
             TransProxy item = Sto::item(this, get_internode_key(node));
-            if constexpr (DBParams::Opaque) {
+            if constexpr (DBParams::Opaque && !DBParams::MVCC) {
                 return item.add_read_opaque(cursor.full_version_value());
             } else {
                 return item.add_read(cursor.full_version_value());
@@ -1051,7 +1428,7 @@ private:
             return ttnv_register_node_read(node);
         } else {
             TransProxy item = Sto::item(this, get_internode_key(node));
-            if constexpr (DBParams::Opaque) {
+            if constexpr (DBParams::Opaque && !DBParams::MVCC) {
                 return item.add_read_opaque(nodeversion);
             } else {
                 return item.add_read(nodeversion);
@@ -1121,19 +1498,27 @@ private:
         return found;
     }
 
-    static void _mvcc_delete_callback(void* history_ptr) {
-        (void) history_ptr;
-        /*
-        using history_type = MvHistory<value_type>;
-        auto hp = reinterpret_cast<history_type*>(history_ptr);
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<B, void>
+    static _mvcc_delete_callback(void* history_ptr) {
+        auto hp = reinterpret_cast<mvhistory_type*>(history_ptr);
         auto obj = hp->object();
-        if (obj->find_latest(false) == hp) {
-            auto el = internal_elem::from_chain(obj);
-            auto table = reinterpret_cast<mvcc_ordered_index<K, V, DBParams>*>(el->table);
+        bool is_latest = true;
+        for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+            is_latest &= obj->find_latest(cell, false) == hp;
+        }
+        if (is_latest) {
+            auto el = obj->template auxdata<internal_elem>();
+            assert(el);
+            auto table = reinterpret_cast<ordered_index<K, V, DBParams>*>(el->table);
             cursor_type lp(table->table_, el->key);
             if (lp.find_locked(*table->ti) && lp.value() == el) {
                 hp->status_poisoned();
-                if (obj->find_latest(true) == hp) {
+                is_latest = true;
+                for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                    is_latest &= obj->find_latest(cell, false) == hp;
+                }
+                if (is_latest) {
                     lp.finish(-1, *table->ti);
                     Transaction::rcu_call(gc_internal_elem, el);
                 } else {
@@ -1144,7 +1529,11 @@ private:
                 lp.finish(0, *table->ti);
             }
         }
-        */
+    }
+
+    static void gc_internal_elem(void* el_ptr) {
+        auto el = reinterpret_cast<internal_elem*>(el_ptr);
+        delete el;
     }
 
     static uintptr_t get_internode_key(node_type* node) {
@@ -1290,6 +1679,7 @@ public:
         return fetch_and_add(&key_gen_, 1);
     }
 
+    /*
     sel_return_type
     select_row(const key_type& key, RowAccess acc) {
         unlocked_cursor_type lp(table_, key);
@@ -1306,7 +1696,9 @@ public:
     abort:
         return sel_return_type(false, false, 0, nullptr);
     }
+    */
 
+    /*
     sel_return_type
     select_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
         unlocked_cursor_type lp(table_, key);
@@ -1322,6 +1714,7 @@ public:
 
         return sel_return_type(false, false, 0, nullptr);
     }
+    */
 
     // Split version select row
     sel_split_return_type
@@ -1341,6 +1734,7 @@ public:
         }
     }
 
+    /*
     sel_return_type
     select_row(uintptr_t rid,
                std::initializer_list<ColumnAccess> accesses,
@@ -1361,6 +1755,7 @@ public:
 
         return { true, true, rid, e->row_container.get(split, cell_values) };
     }
+    */
 
     sel_split_return_type
     select_splits(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
@@ -1633,6 +2028,8 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         assert(!is_internode(item));
         auto key = item.key<item_key_t>();
+        // XXX[wqian]
+        //printf("row item: %d, cell: %d, insert: %d\n", key.is_row_item(), key.cell_num(), has_insert(item));
         return MvSplitAccessAll::run_lock(key.cell_num(), txn, item, this, key.internal_elem_ptr());
     }
 
@@ -1789,13 +2186,13 @@ public:
         using history_type = typename internal_elem::object0_type::history_type;
         auto hp = reinterpret_cast<history_type*>(history_ptr);
         auto obj = hp->object();
-        if (obj->find_latest(false) == hp) {
+        if (obj->find_latest(0, false) == hp) {
             auto el = internal_elem::from_chain(obj);
             auto table = reinterpret_cast<mvcc_ordered_index<K, V, DBParams>*>(el->table);
             cursor_type lp(table->table_, el->key);
             if (lp.find_locked(*table->ti) && lp.value() == el) {
                 hp->status_poisoned();
-                if (obj->find_latest(true) == hp) {
+                if (obj->find_latest(0, true) == hp) {
                     lp.finish(-1, *table->ti);
                     Transaction::rcu_call(gc_internal_elem, el);
                 } else {

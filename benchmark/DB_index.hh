@@ -282,7 +282,7 @@ public:
         }
 
         if (any_accessed) {
-            if (current_split != preferred_split) {
+            if (preferred_split >= 0 && current_split != preferred_split) {
                 Sto::set_stats();
             }
         }
@@ -292,16 +292,17 @@ public:
     }
 
     template <typename T>
-    static std::pair<bool, std::array<typename T::ValueType*, T::NUM_VERSIONS>>
+    static std::pair<bool, std::array<typename T::RecordAccessor::ValueType*, T::NUM_POINTERS>>
     mvcc_extract_and_access(
             const std::array<typename T::access_type, T::NUM_VERSIONS>& accesses,
-            TObject *tobj, internal_elem *e,
-            const typename T::SplitType& current_split,
+            TObject *tobj, internal_elem *e, typename T::mvhistory_type* hs,
+            typename T::SplitType& current_split,
             const typename T::SplitType& preferred_split) {
         static_assert(T::NUM_VERSIONS == T::NUM_POINTERS);
         using AccessType = typename T::access_type;
+        using ValueType = typename T::RecordAccessor::ValueType;
         bool any_accessed = false;
-        std::array<typename T::ValueType*, T::NUM_VERSIONS> values { nullptr };
+        std::array<ValueType*, T::NUM_VERSIONS> values { nullptr };
         std::fill(values.begin(), values.end(), nullptr);
         auto& row = e->row_container.row;
 
@@ -312,28 +313,50 @@ public:
                 if (preferred_split >= 0) {
                     item.set_preferred_split(preferred_split);
                 }
-                if ((access & AccessType::read) != AccessType::none) {
-                    auto h = row[i].find(Sto::read_tid());
+                if ((accesses[i] & AccessType::read) != AccessType::none) {
+                    // hs == null means start at the head
+                    auto h = hs ?
+                        row.find_from(hs, Sto::read_tid(), i) :
+                        row.find(Sto::read_tid(), i);
+                    // XXX[wqian]
+                    //printf("found %p cell %d\n", h, i);
+
+                    // current_split < 0 means fill it in automagically
+                    if (current_split < 0) {
+                        if (h->status_is(COMMITTED_RESPLIT)) {
+                            current_split = h->split();
+                        } else {
+                            auto hsprev = h->hsprev();
+                            current_split = hsprev ? hsprev->split() : T::RecordAccessor::DEFAULT_SPLIT;
+                        }
+                    }
+
                     if (h->status_is(COMMITTED_DELETED)) {
-                        MvAccess::template read<T::ValueType>(item, h);
+                        MvAccess::template read<ValueType>(item, h);
                         return { false, values };
-                    } else if (!IndexType::template is_phantom<T::ValueType>(h, item)) {
+                    } else if (!IndexType::is_phantom(h, item)) {
                         // XXX No read-my-write stuff for now.
-                        MvAccess::template read<T::ValueType>(item, h);
+                        MvAccess::template read<ValueType>(item, h);
 
                         auto vp = h->vp();
                         assert(vp);
                         values[i] = vp;
+                    } else {
+                        printf("Skipping read\n");
                     }
                 }
-                if ((access & AccessType::write) != AccessType::none) {
+                if ((accesses[i] & AccessType::write) != AccessType::none) {
                     item.add_write();
                 }
             }
         }
 
+        if (current_split < 0) {
+            current_split = T::RecordAccessor::DEFAULT_SPLIT;
+        }
+
         if (any_accessed) {
-            if (current_split != preferred_split) {
+            if (preferred_split >= 0 && current_split != preferred_split) {
                 Sto::set_stats();
             }
         }
@@ -748,14 +771,29 @@ public:
     struct OrderedInternalElement {
         key_type key;
         value_container_type row_container;
+        void* table;
 
         bool deleted;
 
-        OrderedInternalElement(const key_type& k, const value_type& v, bool valid)
+        OrderedInternalElement(void* const table, const key_type& k, const value_type& v, bool valid)
             : key(k),
               row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)),
                             !valid, v),
-              deleted(false) {}
+              table(table), deleted(false) {
+            if constexpr (DBParams::MVCC) {
+                row_container.row.auxdata(this);
+            }
+        }
+
+        OrderedInternalElement(void* const table, const key_type& k, bool valid)
+            : key(k),
+              row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)),
+                            !valid),
+              table(table), deleted(false) {
+            if constexpr (DBParams::MVCC) {
+                row_container.row.auxdata(this);
+            }
+        }
 
         version_type& version() {
             return row_container.row_version();
@@ -772,12 +810,26 @@ public:
         UnorderedInternalElement *next;
         key_type key;
         value_container_type row_container;
+        void* table;
         bool deleted;
 
-        UnorderedInternalElement(const key_type& k, const value_type& v, bool valid)
+        UnorderedInternalElement(void* const table, const key_type& k, const value_type& v, bool valid)
             : next(nullptr), key(k),
               row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)), !valid, v),
-              deleted(false) {}
+              table(table), deleted(false) {
+            if constexpr (DBParams::MVCC) {
+                row_container.row.auxdata(this);
+            }
+        }
+
+        UnorderedInternalElement(void* const table, const key_type& k, bool valid)
+            : next(nullptr), key(k),
+              row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)), !valid),
+              table(table), deleted(false) {
+            if constexpr (DBParams::MVCC) {
+                row_container.row.auxdata(this);
+            }
+        }
 
         version_type& version() {
             return row_container.row_version();

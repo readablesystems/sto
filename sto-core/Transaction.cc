@@ -365,6 +365,11 @@ bool Transaction::try_commit() {
     TransItem* it = nullptr;
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+        // XXX[wqian]
+        //auto key = it->key<uintptr_t>();
+        //auto e = reinterpret_cast<void*>(key >> 16);
+        //auto cell = (key & 0xfffc) >> 2;
+        //printf("ctid %d, e %p, cell %d, tidx %d, write: %d, read: %d\n", Sto::commit_tid(), e, cell, tidx, it->has_write(), it->has_read());
         if (it->has_write()) {
             writeset[nwriteset++] = tidx;
 #if !STO_SORT_WRITESET

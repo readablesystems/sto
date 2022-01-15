@@ -21,6 +21,7 @@ public:
     using typename C::version_type;
     using typename C::value_container_type;
     using typename C::comm_type;
+    using typename C::ColumnAccess;
 
     using C::invalid_bit;
     using C::insert_bit;
@@ -88,7 +89,11 @@ public:
     template <typename T>
     static constexpr auto extract_items
         = split_version_helpers<index_t>::template extract_items<T>;
-    using ColumnAccess = typename value_container_type::ColumnAccess;
+    template <typename T> static constexpr auto mvcc_extract_and_access =
+        split_version_helpers<unordered_index<K, V, DBParams>>::template mvcc_extract_and_access<T>;
+
+    using mvobject_type = MvObject<value_type, value_container_type::NUM_VERSIONS>;
+    using mvhistory_type = typename mvobject_type::history_type;
 
     // Main constructor
     unordered_index(size_t size, Hash h = Hash(), Pred p = Pred()) :
@@ -205,7 +210,33 @@ public:
     }
 #endif
 
-    sel_return_type
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<B, sel_return_type>
+    select_row(uintptr_t rid,
+               std::initializer_list<ColumnAccess> accesses,
+               int preferred_split=-1) {
+        auto e = reinterpret_cast<internal_elem *>(rid);
+        TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+
+        if (is_phantom(e, row_item)) {
+            return { true, false, 0, nullptr };
+        }
+
+        auto [hs, split, cell_accesses] =
+            e->row_container.mvcc_split_accesses(Sto::read_tid(), accesses);
+
+        auto [ok, values] = mvcc_extract_and_access<value_container_type>(
+                cell_accesses, this, e, hs, split, preferred_split);
+
+        if (!ok) {
+            return { true, false, 0, nullptr };
+        }
+
+        return { true, true, rid, e->row_container.get(split, values) };
+    }
+
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<!B, sel_return_type>
     select_row(uintptr_t rid,
                std::initializer_list<ColumnAccess> accesses,
                int preferred_split=-1) {
@@ -231,11 +262,7 @@ public:
             if (has_row_update(row_item)) {
                 value_type *vptr;
                 if (has_insert(row_item)) {
-                    if constexpr (DBParams::MVCC) {
-                        vptr = e->row_container.row.find(Sto::read_tid())->vp();
-                    } else {
-                        vptr = &e->row_container.row;
-                    }
+                    vptr = &e->row_container.row;
                 } else {
                     vptr = row_item.template raw_write_value<value_type*>();
                 }
@@ -287,13 +314,43 @@ public:
         return { true, true, rid, accessor_t(&(e->row_container.row)) };
     }
 
-    void update_row(uintptr_t rid, value_type *new_row) {
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<B, void>
+    update_row(uintptr_t rid, value_type *new_row) {
+        auto e = reinterpret_cast<internal_elem*>(rid);
+        for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+            auto [found, item] = Sto::find_write_item(this, item_key_t(e, cell));
+            if (found) {
+                item.clear_write();
+                item.add_write(new_row);
+            }
+        }
+    }
+
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<!B, void>
+    update_row(uintptr_t rid, value_type *new_row) {
         auto e = reinterpret_cast<internal_elem*>(rid);
         auto row_item = Sto::item(this, item_key_t::row_item_key(e));
         row_item.acquire_write(e->version(), new_row);
     }
 
-    void update_row(uintptr_t rid, const comm_type &comm) {
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<B, void>
+    update_row(uintptr_t rid, const comm_type &comm) {
+        assert(&comm);
+        auto e = reinterpret_cast<internal_elem*>(rid);
+        for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+            auto [found, item] = Sto::find_write_item(this, item_key_t(e, cell));
+            if (found) {
+                item.add_commute(comm);
+            }
+        }
+    }
+
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<!B, void>
+    update_row(uintptr_t rid, const comm_type &comm) {
         assert(&comm);
         auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
         row_item.add_commute(comm);
@@ -305,38 +362,16 @@ public:
 
         buck.version.lock_exclusive();
         internal_elem* e = find_in_bucket(buck, k);
+        bool found = !!e;
 
-        if (e) {
-            buck.version.unlock_exclusive();
-            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-            if (is_phantom(e, row_item))
-                return ins_abort;
-
-            if (index_read_my_write) {
-                if (has_delete(row_item)) {
-                    row_item.clear_flags(delete_bit).clear_write().template add_write<value_type *>(vptr);
-                    return { true, false };
-                }
-            }
-
-            if (overwrite) {
-                if (!version_adapter::select_for_overwrite(row_item, e->version(), vptr))
-                    return ins_abort;
-                if (index_read_my_write) {
-                    if (has_insert(row_item)) {
-                        copy_row(e, vptr);
-                    }
-                }
-            } else {
-                if (!row_item.observe(e->version()))
-                    return ins_abort;
-            }
-
-            return { true, true };
-        } else {
+        if (!e) {
             // insert the new row to the table and take note of bucket version changes
             auto buck_vers_0 = bucket_version_type(buck.version.unlocked_value());
-            insert_in_bucket(buck, k, vptr, false);
+            if constexpr (DBParams::MVCC) {
+                insert_in_bucket(buck, k, true);
+            } else {
+                insert_in_bucket(buck, k, vptr, false);
+            }
             internal_elem *new_head = buck.head;
             auto buck_vers_1 = bucket_version_type(buck.version.unlocked_value());
 
@@ -347,19 +382,89 @@ public:
             if (bucket_item.has_read())
                 bucket_item.update_read(buck_vers_0, buck_vers_1);
 
-            auto item = Sto::item(this, item_key_t::row_item_key(new_head));
-            // XXX adding write is probably unnecessary, am I right?
-            item.template add_write<value_type*>(vptr);
-            item.add_flags(insert_bit);
-
-            return { true, false };
+            if constexpr (DBParams::MVCC) {
+                e = new_head;
+            } else {
+                auto item = Sto::item(this, item_key_t::row_item_key(new_head));
+                // XXX adding write is probably unnecessary, am I right?
+                item.template add_write<value_type*>(vptr);
+                item.add_flags(insert_bit);
+                return { true, false };
+            }
         }
+
+        // e better be a non-nullptr here
+        assert(e);
+        buck.version.unlock_exclusive();
+        auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+        mvhistory_type *h = nullptr;
+
+        if constexpr (DBParams::MVCC) {
+            // Assume any cell, since all DELETEDs span all cells, and so
+            // must the first COMMITTED version thereafter
+            h = e->row_container.row.find(Sto::read_tid(), 0);
+            found = !h->status_is(MvStatus::DELETED);
+        } else {
+            (void) h;
+        }
+
+        if constexpr (DBParams::MVCC) {
+            if (is_phantom(h, row_item)) {
+                MvAccess::read(row_item, h);
+                for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                    auto item = Sto::item(this, item_key_t(e, cell));
+                    item.add_write(vptr);
+                    item.add_flags(insert_bit);
+                }
+                return ins_return_type(true, false);
+            }
+        } else {
+            if (is_phantom(e, row_item)) {
+                return ins_abort;
+            }
+        }
+
+        if (index_read_my_write) {
+            if (has_delete(row_item)) {
+                row_item.clear_flags(delete_bit).clear_write().template add_write<value_type *>(vptr);
+                return { true, false };
+            }
+        }
+
+        if (overwrite) {
+            if constexpr (DBParams::MVCC) {
+                for (size_t cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                    auto item = Sto::item(this, item_key_t(e, cell));
+                    item.add_write();
+                }
+                update_row(reinterpret_cast<uintptr_t>(e), vptr);
+            } else {
+                if (!version_adapter::select_for_overwrite(row_item, e->version(), vptr))
+                    return ins_abort;
+                if (index_read_my_write) {
+                    if (has_insert(row_item)) {
+                        copy_row(e, vptr);
+                    }
+                }
+            }
+        } else {
+            if constexpr (DBParams::MVCC) {
+                MvAccess::read(row_item, h);
+            } else {
+                if (!row_item.observe(e->version())) {
+                    return ins_abort;
+                }
+            }
+        }
+
+        return { true, found };
     }
 
     // returns (success : bool, found : bool)
     // for rows that are not inserted by this transaction, the actual delete doesn't take place
     // until commit time
-    del_return_type
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<B, del_return_type>
     delete_row(const key_type& k) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
         bucket_version_type buck_vers = buck.version;
@@ -367,25 +472,76 @@ public:
 
         internal_elem* e = find_in_bucket(buck, k);
         if (e) {
-            auto item = Sto::item(this, item_key_t::row_item_key(e));
+            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+            auto h = e->row_container.row.find(Sto::read_tid(), 0);
+
+            if (is_phantom(h, row_item)) {
+                MvAccess::read(row_item, h);
+                return { true, false };
+            }
+
+            if (index_read_my_write) {
+                if (has_delete(row_item))
+                    return { true, false };
+                if (h->status_is(DELETED) && has_insert(row_item)) {
+                    for (size_t cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                        auto item = Sto::item(this, item_key_t(e, cell));
+                        item.add_flags(delete_bit);
+                    }
+                    row_item.add_flags(delete_bit);
+                    return { true, true };
+                }
+            }
+
+            MvAccess::read(row_item, h);
+            if (h->status_is(DELETED)) {
+                return { true, false };
+            }
+            for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                auto item = Sto::item(this, item_key_t(e, cell));
+                item.add_write(0);
+                item.add_flags(delete_bit);
+            }
+            row_item.add_flags(delete_bit);
+
+            return { true, true };
+        } else {
+            // not found -- add observation of bucket version
+            bool ok = Sto::item(this, make_bucket_key(buck)).observe(buck_vers);
+            if (!ok)
+                return del_abort;
+            return { true, false };
+        }
+    }
+
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<!B, del_return_type>
+    delete_row(const key_type& k) {
+        bucket_entry& buck = map_[find_bucket_idx(k)];
+        bucket_version_type buck_vers = buck.version;
+        fence();
+
+        internal_elem* e = find_in_bucket(buck, k);
+        if (e) {
+            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
             bool valid = e->valid();
-            if (is_phantom(e, item))
+            if (is_phantom(e, row_item))
                 return del_abort;
             if (index_read_my_write) {
-                if (!valid && has_insert(item)) {
+                if (!valid && has_insert(row_item)) {
                     // deleting something we inserted
                     _remove(e);
-                    item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
+                    row_item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
                     Sto::item(this, make_bucket_key(buck)).observe(buck_vers);
                     return { true, true };
                 }
                 assert(valid);
-                if (has_delete(item))
+                if (has_delete(row_item))
                     return { true, false };
             }
             // select_for_update() will automatically add an observation for OCC version types
             // so that we can catch change in "deleted" status of a table row at commit time
-            if (!version_adapter::select_for_update(item, e->version()))
+            if (!version_adapter::select_for_update(row_item, e->version()))
                 return del_abort;
             for (auto i = 0; i < value_container_type::NUM_VERSIONS; ++i) {
                 auto item = Sto::item(this, item_key_t(e, i));
@@ -398,7 +554,7 @@ public:
             // it vital that we check the "deleted" status after registering an observation
             if (e->deleted)
                 return del_abort;
-            item.add_flags(delete_bit);
+            row_item.add_flags(delete_bit);
 
             return { true, true };
         } else {
@@ -416,7 +572,20 @@ public:
         internal_elem* e = find_in_bucket(buck, k);
         if (e == nullptr)
             return nullptr;
-        return &(e->row_container.row);
+        if constexpr (DBParams::MVCC) {
+            return &e->row_container.row.nontrans_access();  // XXX fix?
+        } else {
+            return &(e->row_container.row);
+        }
+    }
+
+    bool nontrans_get(const key_type& k, value_type* v) {
+        auto* vp = nontrans_get(k);
+        if (vp) {
+            *v = *vp;
+            return true;
+        }
+        return false;
     }
 
     void nontrans_put(const key_type& k, const value_type& v) {
@@ -424,7 +593,7 @@ public:
         buck.version.lock_exclusive();
         internal_elem *e = find_in_bucket(buck, k);
         if (e == nullptr) {
-            internal_elem *new_head = new internal_elem(k, v, true);
+            internal_elem *new_head = new internal_elem(this, k, v, true);
             new_head->next = buck.head;
             buck.head = new_head;
         } else {
@@ -439,10 +608,68 @@ public:
         assert(!is_bucket(item));
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
-        if (key.is_row_item()) {
-            return txn.try_lock(item, e->version());
+        if constexpr (DBParams::MVCC) {
+            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+
+            // A port of the mvcc_chain_operations implementation
+
+            if (item.has_read()) {
+                auto hprev = item.read_value<mvhistory_type*>();
+                if (hprev && Sto::commit_tid() < hprev->rtid()) {
+                    TransProxy(txn, row_item).add_write(nullptr);
+                    TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
+                    return false;
+                }
+            }
+            mvhistory_type *h = nullptr;
+            bool new_history = true;
+            // Reuse existing history object if available
+            if (row_item.has_mvhistory()) {
+                h = row_item.template raw_write_value<mvhistory_type*>();
+                new_history = false;
+            }
+            if (item.has_commute()) {
+                auto wval = item.template raw_write_value<comm_type>();
+                if (h) {  // XXX: what actually happens here?
+                    h->set_raw_value(std::move(wval));  // XXX: okay for now because both items should have same payload?
+                } else {
+                    h = e->row_container.row.new_history(
+                            Sto::commit_tid(), std::move(wval));
+                }
+            } else {
+                auto wval = item.template raw_write_value<value_type*>();
+                if (h) {  /// XXX: what actually happens here?
+                    if (has_delete(item)) {
+                        assert(h->status_is(MvStatus::DELETED));
+                    } else {
+                        h->set_raw_value(wval);  // XXX: okay for now because both items should have same payload?
+                    }
+                } else {
+                    if (has_delete(item)) {
+                        h = e->row_container.row.new_history(Sto::commit_tid(), nullptr);
+                        h->status_delete();
+                    } else {
+                        h = e->row_container.row.new_history(Sto::commit_tid(), wval);
+                    }
+                }
+            }
+            assert(h);
+            bool result = e->row_container.row.template cp_lock<DBParams::Commute>(Sto::commit_tid(), h, key.cell_num());
+            if (!result && !new_history && !h->status_is(MvStatus::ABORTED)) {
+                e->row_container.row.delete_history(h);
+                TransProxy(txn, row_item).add_mvhistory(nullptr);
+                TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
+            } else {
+                TransProxy(txn, row_item).add_mvhistory(h);
+                TXP_ACCOUNT(txp_tpcc_lock_abort3, txn.special_txp && !result);
+            }
+            return result;
         } else {
-            return txn.try_lock(item, e->row_container.version_at(key.cell_num()));
+            if (key.is_row_item()) {
+                return txn.try_lock(item, e->version());
+            } else {
+                return txn.try_lock(item, e->row_container.version_at(key.cell_num()));
+            }
         }
     }
 
@@ -453,10 +680,15 @@ public:
         } else {
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
-            if (key.is_row_item())
-                return e->version().cp_check_version(txn, item);
-            else
-                return e->row_container.version_at(key.cell_num()).cp_check_version(txn, item);
+            if constexpr (DBParams::MVCC) {
+                auto h = item.template read_value<mvhistory_type*>();
+                return e->row_container.row.cp_check(Sto::read_tid(), h, key.cell_num());
+            } else {
+                if (key.is_row_item())
+                    return e->version().cp_check_version(txn, item);
+                else
+                    return e->row_container.version_at(key.cell_num()).cp_check_version(txn, item);
+            }
         }
     }
 
@@ -465,47 +697,60 @@ public:
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
 
-        if (key.is_row_item()) {
-            if (has_delete(item)) {
-                assert(e->valid() && !e->deleted);
-                e->deleted = true;
-                fence();
-                txn.set_version(e->version());
-                return;
-            }
-
-            if (!has_insert(item)) {
-                // update
-                if (item.has_commute()) {
-                    comm_type &comm = item.write_value<comm_type>();
-                    if (has_row_update(item)) {
-                        copy_row(e, comm);
-                    } else if (has_row_cell(item)) {
-                        e->row_container.install_cell(comm);
-                    }
-                } else {
-                    auto vptr = item.write_value<value_type*>();
-                    if (has_row_update(item)) {
-                        copy_row(e, vptr);
-                    } else if (has_row_cell(item)) {
-                        e->row_container.install_cell(0, vptr);
-                    }
-                }
-            }
-            txn.set_version_unlock(e->version(), item);
-        } else {
+        if constexpr (DBParams::MVCC) {
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-            if (!has_row_update(row_item)) {
-                if (row_item.has_commute()) {
-                    comm_type &comm = row_item.template write_value<comm_type>();
-                    assert(&comm);
-                    e->row_container.install_cell(comm);
-                } else {
-                    auto vptr = row_item.template raw_write_value<value_type*>();
-                    e->row_container.install_cell(key.cell_num(), vptr);
+            auto h = row_item.template raw_write_value<mvhistory_type*>();
+            if (h && h->status_is(MvStatus::PENDING)) {
+                h->object()->cp_install(h);
+                if (has_delete(item)) {
+                    Transaction::rcu_call(_mvcc_delete_callback, h);
                 }
+                TransProxy(txn, row_item).add_mvhistory(nullptr);  // Clear the history object
             }
-            txn.set_version_unlock(e->row_container.version_at(key.cell_num()), item);
+            return;
+        } else {
+            if (key.is_row_item()) {
+                if (has_delete(item)) {
+                    assert(e->valid() && !e->deleted);
+                    e->deleted = true;
+                    fence();
+                    txn.set_version(e->version());
+                    return;
+                }
+
+                if (!has_insert(item)) {
+                    // update
+                    if (item.has_commute()) {
+                        comm_type &comm = item.write_value<comm_type>();
+                        if (has_row_update(item)) {
+                            copy_row(e, comm);
+                        } else if (has_row_cell(item)) {
+                            e->row_container.install_cell(comm);
+                        }
+                    } else {
+                        auto vptr = item.write_value<value_type*>();
+                        if (has_row_update(item)) {
+                            copy_row(e, vptr);
+                        } else if (has_row_cell(item)) {
+                            e->row_container.install_cell(0, vptr);
+                        }
+                    }
+                }
+                txn.set_version_unlock(e->version(), item);
+            } else {
+                auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+                if (!has_row_update(row_item)) {
+                    if (row_item.has_commute()) {
+                        comm_type &comm = row_item.template write_value<comm_type>();
+                        assert(&comm);
+                        e->row_container.install_cell(comm);
+                    } else {
+                        auto vptr = row_item.template raw_write_value<value_type*>();
+                        e->row_container.install_cell(key.cell_num(), vptr);
+                    }
+                }
+                txn.set_version_unlock(e->row_container.version_at(key.cell_num()), item);
+            }
         }
     }
 
@@ -531,7 +776,23 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        if (committed ? has_delete(item) : has_insert(item)) {
+        if constexpr (DBParams::MVCC) {
+            if (!committed) {
+                auto key = item.key<item_key_t>();
+                if (item.has_mvhistory()) {
+                    auto h = item.template write_value<mvhistory_type*>();
+                    if (h) {
+                        h->status_txn_abort();
+                    }
+                }
+                {
+                    auto h = key.internal_elem_ptr()->row_container.row.find(Sto::commit_tid(), key.cell_num());
+                    if (h->wtid() == 0) {
+                        h->enqueue_for_committed();
+                    }
+                }
+            }
+        } else if (committed ? has_delete(item) : has_insert(item)) {
             assert(!is_bucket(item));
             auto key = item.key<item_key_t>();
             internal_elem* e = key.internal_elem_ptr();
@@ -624,11 +885,64 @@ private:
         delete curr;
         return true;
     }
+
+    template <bool B=DBParams::MVCC>
+    std::enable_if_t<B, void>
+    static _mvcc_delete_callback(void* history_ptr) {
+        auto hp = reinterpret_cast<mvhistory_type*>(history_ptr);
+        auto obj = hp->object();
+        bool is_latest = true;
+        for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+            is_latest &= obj->find_latest(cell, false) == hp;
+        }
+        if (is_latest) {
+            auto el = obj->template auxdata<internal_elem>();
+            assert(el);
+            auto table = reinterpret_cast<unordered_index<K, V, DBParams>*>(el->table);
+            bucket_entry& buck = table->map_[table->find_bucket_idx(el->key)];
+            buck.version.lock_exclusive();
+            internal_elem** pprev = &buck.head;
+            while (*pprev && *pprev != el) {
+                pprev = &(*pprev)->next;
+            }
+            assert(*pprev == el);
+            hp->status_poisoned();
+            is_latest = true;
+            for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                is_latest &= obj->find_latest(cell, false) == hp;
+            }
+            if (is_latest) {
+                *pprev = el->next;
+                buck.version.unlock_exclusive();
+                Transaction::rcu_call(gc_internal_elem, el);
+            } else {
+                hp->status_unpoisoned();
+                buck.version.unlock_exclusive();
+            }
+        }
+    }
+
+    static void gc_internal_elem(void* el_ptr) {
+        auto el = reinterpret_cast<internal_elem*>(el_ptr);
+        delete el;
+    }
+
     // insert a k-v node to a bucket
     void insert_in_bucket(bucket_entry& buck, const key_type& k, const value_type *v, bool valid) {
         assert(buck.version.is_locked());
 
-        internal_elem *new_head = new internal_elem(k, v ? *v : value_type(), valid);
+        internal_elem *new_head = new internal_elem(this, k, v ? *v : value_type(), valid);
+        internal_elem *curr_head = buck.head;
+
+        new_head->next = curr_head;
+        buck.head = new_head;
+
+        buck.version.inc_nonopaque();
+    }
+    void insert_in_bucket(bucket_entry& buck, const key_type& k, bool valid) {
+        assert(buck.version.is_locked());
+
+        internal_elem *new_head = new internal_elem(this, k, valid);
         internal_elem *curr_head = buck.head;
 
         new_head->next = curr_head;
@@ -648,6 +962,12 @@ private:
         return (!e->valid() && !has_insert(item));
     }
 
+public:
+    static bool is_phantom(mvhistory_type *h, const TransItem& item) {
+        return (h->status_is(MvStatus::DELETED) && !has_insert(item));
+    }
+
+private:
     // TransItem keys
     static bool is_bucket(const TransItem& item) {
         return item.key<uintptr_t>() & bucket_bit;
@@ -1170,7 +1490,7 @@ private:
         using history_type = typename internal_elem::object0_type::history_type;
         auto hp = reinterpret_cast<history_type*>(history_ptr);
         auto obj = hp->object();
-        if (obj->find_latest(false) == hp) {
+        if (obj->find_latest(0, false) == hp) {
             auto el = KVNode::from_chain(obj);
             auto table = reinterpret_cast<mvcc_unordered_index<K, V, DBParams>*>(el->elem.table);
             bucket_entry& buck = table->map_[table->find_bucket_idx(el->elem.key)];
@@ -1181,7 +1501,7 @@ private:
             }
             assert(*pprev == el);
             hp->status_poisoned();
-            if (obj->find_latest(true) == hp) {
+            if (obj->find_latest(0, true) == hp) {
                 *pprev = el->next;
                 buck.version.unlock_exclusive();
                 Transaction::rcu_call(gc_internal_elem, el);

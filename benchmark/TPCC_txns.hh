@@ -709,11 +709,11 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         if constexpr (DBParams::Split == db_split_type::Adaptive) {
             scan_success = db.tbl_orderlines(q_w_id)
                     .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk0, olk1, ol_scan_callback,
-                            {{ol_nc::ol_i_id, access_t::read},
-                             {ol_nc::ol_supply_w_id, access_t::read},
-                             {ol_nc::ol_quantity, access_t::read},
-                             {ol_nc::ol_amount, access_t::read},
-                             {ol_nc::ol_delivery_d, access_t::read}},
+                            {{ol_nc::ol_i_id, AccessType::read},
+                             {ol_nc::ol_supply_w_id, AccessType::read},
+                             {ol_nc::ol_quantity, AccessType::read},
+                             {ol_nc::ol_amount, AccessType::read},
+                             {ol_nc::ol_delivery_d, AccessType::read}},
                     -1/* unlimited results*/, 1/* preferred split*/);
         } else {
             scan_success = db.tbl_orderlines(q_w_id)
@@ -947,7 +947,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     if constexpr (DBParams::Split == db_split_type::Adaptive) {
         scan_success = db.tbl_orderlines(q_w_id)
                 .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk1, olk0, ol_scan_callback,
-                        {{ol_nc::ol_i_id, access_t::read}},
+                        {{ol_nc::ol_i_id, AccessType::read}},
                     -1/* unlimited results*/, 1/* preferred split*/);
     } else {
         scan_success = db.tbl_orderlines(q_w_id)
