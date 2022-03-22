@@ -147,6 +147,12 @@ struct SplitPolicy<0> {
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
+    inline static constexpr size_t cell_col_count(int cell) {
+        if (cell == 0) {
+            return 12;
+        }
+        return 0;
+    }
     template <int Cell>
     inline static constexpr void copy_cell(ordered_value* dest, ordered_value* src) {
         if constexpr(Cell == 0) {
@@ -172,6 +178,15 @@ struct SplitPolicy<1> {
     static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    inline static constexpr size_t cell_col_count(int cell) {
+        if (cell == 0) {
+            return 10;
+        }
+        if (cell == 1) {
+            return 2;
+        }
+        return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(ordered_value* dest, ordered_value* src) {
@@ -200,6 +215,15 @@ struct SplitPolicy<2> {
     static constexpr int policy[ColCount] = { 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    inline static constexpr size_t cell_col_count(int cell) {
+        if (cell == 0) {
+            return 2;
+        }
+        if (cell == 1) {
+            return 10;
+        }
+        return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(ordered_value* dest, ordered_value* src) {
@@ -317,8 +341,22 @@ public:
         }
     }
 
-    void copy_into(ordered_value* vptr) {
-        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
+    inline static constexpr size_t cell_col_count(int index, int cell) {
+        if (index == 0) {
+            return SplitPolicy<0>::cell_col_count(cell);
+        }
+        if (index == 1) {
+            return SplitPolicy<1>::cell_col_count(cell);
+        }
+        if (index == 2) {
+            return SplitPolicy<2>::cell_col_count(cell);
+        }
+        return 0;
+    }
+
+    void copy_into(ordered_value* vptr, int index=0) {
+        copy_cell(index, 0, vptr, vptrs_[0]);
+        copy_cell(index, 1, vptr, vptrs_[1]);
     }
 
     inline typename accessor_info<NamedColumn::ro>::value_type& ro() {
@@ -548,6 +586,12 @@ struct SplitPolicy<0> {
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
+    inline static constexpr size_t cell_col_count(int cell) {
+        if (cell == 0) {
+            return 12;
+        }
+        return 0;
+    }
     template <int Cell>
     inline static constexpr void copy_cell(unordered_value* dest, unordered_value* src) {
         if constexpr(Cell == 0) {
@@ -573,6 +617,15 @@ struct SplitPolicy<1> {
     static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    inline static constexpr size_t cell_col_count(int cell) {
+        if (cell == 0) {
+            return 10;
+        }
+        if (cell == 1) {
+            return 2;
+        }
+        return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(unordered_value* dest, unordered_value* src) {
@@ -601,6 +654,15 @@ struct SplitPolicy<2> {
     static constexpr int policy[ColCount] = { 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    inline static constexpr size_t cell_col_count(int cell) {
+        if (cell == 0) {
+            return 2;
+        }
+        if (cell == 1) {
+            return 10;
+        }
+        return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(unordered_value* dest, unordered_value* src) {
@@ -718,8 +780,22 @@ public:
         }
     }
 
-    void copy_into(unordered_value* vptr) {
-        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
+    inline static constexpr size_t cell_col_count(int index, int cell) {
+        if (index == 0) {
+            return SplitPolicy<0>::cell_col_count(cell);
+        }
+        if (index == 1) {
+            return SplitPolicy<1>::cell_col_count(cell);
+        }
+        if (index == 2) {
+            return SplitPolicy<2>::cell_col_count(cell);
+        }
+        return 0;
+    }
+
+    void copy_into(unordered_value* vptr, int index=0) {
+        copy_cell(index, 0, vptr, vptrs_[0]);
+        copy_cell(index, 1, vptr, vptrs_[1]);
     }
 
     inline typename accessor_info<NamedColumn::ro>::value_type& ro() {

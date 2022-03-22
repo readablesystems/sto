@@ -395,14 +395,27 @@ static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
 {indent}inline static constexpr int column_to_cell(NamedColumn column) {{
 {indent}{indent}return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
 {indent}}}
-{indent}template <int Cell>
-{indent}inline static constexpr void copy_cell({struct}* dest, {struct}* src) {{\
+{indent}inline static constexpr size_t cell_col_count(int cell) {{\
 ''', split=', '.join(str(cell) for cell in split), variant=variant)
-
             self.indent(2)
             cells = collections.defaultdict(tuple)
             for col, cell in enumerate(split, start=0):
                 cells[cell] += (col,)
+            for cell, columns in cells.items():
+                self.writelns('''\
+if (cell == {cell}) {{
+{indent}return {count};
+}}\
+''', cell=cell, count=len(cells[cell]))
+            self.writeln('return 0;')
+            self.unindent(2)
+            self.writelns('''\
+{indent}}}
+{indent}template <int Cell>
+{indent}inline static constexpr void copy_cell({struct}* dest, {struct}* src) {{\
+''')
+
+            self.indent(2)
             for cell, columns in cells.items():
                 self.writeln('if constexpr(Cell == {cell}) {{', cell=cell)
                 self.indent()
@@ -547,10 +560,30 @@ if (index == {variant}) {{
         self.writelns('''\
 }}
 
-void copy_into({struct}* vptr) {{
-{indent}memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
-}}
+inline static constexpr size_t cell_col_count(int index, int cell) {{\
 ''')
+        self.indent()
+        for variant, _ in enumerate(self.mdata['splits'], start=0):
+            self.writelns('''\
+if (index == {variant}) {{
+{indent}return SplitPolicy<{variant}>::cell_col_count(cell);
+}}\
+''', variant=variant)
+        self.unindent()
+
+        self.writelns('''\
+{indent}return 0;
+}}
+
+void copy_into({struct}* vptr, int index=0) {{\
+''')
+        self.indent()
+        for cell in range(max_splits + 1):
+            self.writeln(
+                    'copy_cell(index, {cell}, vptr, vptrs_[{cell}]);',
+                    cell=cell)
+        self.unindent()
+        self.writeln('}}\n')
 
     def convert_getters(self):
         '''Output the constexpr getters.'''

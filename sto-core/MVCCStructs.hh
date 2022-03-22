@@ -39,6 +39,9 @@ enum MvStatus {
 };
 
 std::ostream& operator<<(std::ostream& w, MvStatus s);
+namespace mvstatus {
+    std::string stringof(MvStatus s);
+}
 
 class MvHistoryBase {
 public:
@@ -46,16 +49,14 @@ public:
 
     MvHistoryBase() = delete;
     MvHistoryBase(void* obj, tid_type tid, MvStatus status)
-        : status_(status), wtid_(tid), rtid_(tid), obj_(obj), split_(),
-          hsprev_(nullptr) {
-    }
+        : status_(status), wtid_(tid), rtid_(tid), obj_(obj), split_(0), cells_(1) {}
 
     std::atomic<MvStatus> status_;  // Status of this element
     tid_type wtid_;  // Write TID
     std::atomic<tid_type> rtid_;  // Read TID
     void* obj_;  // Parent object
-    int split_;  // Split policy index
-    std::atomic<MvHistoryBase*> hsprev_;  // Previous resplit chain item
+    std::atomic<int> split_;  // Split policy index
+    std::atomic<size_t> cells_;  // Number of cells this is participating in
 };
 
 template <typename T, size_t Cells>
@@ -104,7 +105,9 @@ public:
     }
     void assert_status_fail(const char* description) {
         std::cerr << "MvHistoryBase::assert_status_fail: " << description << "\n";
-        print_prevs(5);
+        for (size_t cell = 0; cell < Cells; ++cell) {
+            print_prevs(5, cell);
+        }
         assert(false);
     }
 #endif
@@ -120,19 +123,19 @@ public:
     }
 
     // Enqueues the deleted version for future cleanup
-    inline void enqueue_for_committed() {
+    inline void enqueue_for_committed(const char* file, const int line) {
+        //printf("%p committed enq %p tid %zu %s:%d\n", object(), this, wtid(), file, line);
+        (void) file;
+        (void) line;
         assert_status((status() & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
         Transaction::rcu_call(gc_committed_cb, this);
     }
 
-    // Retrieves the previous element on the hs list
-    inline history_type* hsprev() const {
-        return reinterpret_cast<history_type*>(hsprev_.load(std::memory_order_relaxed));
-    }
-
-    // Set the previous element on the hs list
-    inline void hsprev(history_type* hs) {
-        return hsprev_.store(hs, std::memory_order_relaxed);
+    // Returns the effective split, recursing if necessary
+    inline int get_split() {
+        int split = this->split();
+        assert(split >= 0);
+        return split;
     }
 
     // Retrieve the object for which this history element is intended
@@ -154,12 +157,10 @@ public:
         for (size_t i = 0;
              h && i < max;
              ++i, h = h->prev_relaxed(cell)) {
-            std::cerr << i << ". " << (void*) h << " ";
-            uintptr_t oaddr = reinterpret_cast<uintptr_t>(h->obj_);
-            if (reinterpret_cast<uintptr_t>(h) == oaddr + 24) {
-                std::cerr << "INLINE ";
-            }
-            std::cerr << h->status_.load(std::memory_order_relaxed) << " W" << h->wtid_ << " R" << h->rtid_.load(std::memory_order_relaxed) << "\n";
+            fprintf(stderr, "%zu.%zu. %p%s %s W%zu R%zu\n", cell, i, (void*)h,
+                    h->object()->is_inlined(h) ? " INLINE" : "",
+                    mvstatus::stringof(h->status_.load(std::memory_order_relaxed)).c_str(),
+                    h->wtid_, h->rtid_.load(std::memory_order_relaxed));
         }
     }
 
@@ -217,12 +218,12 @@ public:
 
     // Get the split index
     inline int split() const {
-        return split_;
+        return split_.load(std::memory_order::memory_order_relaxed);
     }
 
     // Set the split index
     inline void split(int split) {
-        split_ = split;
+        split_.store(split, std::memory_order::memory_order_relaxed);
     }
 
     // Returns the status
@@ -248,6 +249,9 @@ public:
     }
     inline void status_txn_abort() {
         int s = status();
+        if (s != 0x2) {
+            //printf("%p aborting %p status %x\n", object(), this, s);
+        }
         if (!(s & ABORTED)) {
             assert_status((s & (PENDING|COMMITTED)) == PENDING, "status_txn_abort");
             status(ABORTED_TXNV);
@@ -327,8 +331,12 @@ public:
 
 private:
     static void gc_committed_cb(void* ptr) {
-        history_type* h = static_cast<history_type*>(ptr);
-        h->assert_status((h->status() & COMMITTED_DELTA) == COMMITTED, "gc_committed_cb");
+        history_type* hptr = static_cast<history_type*>(ptr);
+        auto s = hptr->status();
+        if ((s & COMMITTED_DELTA) != COMMITTED) {
+            //printf("%p status %p: %d\n", hptr->object(), hptr, s);
+        }
+        hptr->assert_status((s & COMMITTED_DELTA) == COMMITTED, "gc_committed_cb");
         // Here is how we ensure that `gc_committed_cb` never conflicts
         // with a flatten operation.
         // (1) When `gc_committed_cb` runs, `h->prev()`
@@ -340,18 +348,58 @@ private:
         // `gc_committed_cb` are in the past).
         // EXCEPTION: Some nontransactional accesses (`v()`, `nontrans_*`)
         // ignore this protocol.
-        history_type* next = h->prev_relaxed();
-        while (next) {
-            h = next;
-            next = h->prev_relaxed();
-            MvStatus status = h->status();
-#if MVCC_GARBAGE_DEBUG
-            h->assert_status(!(status & (GARBAGE | GARBAGE2)), "gc_committed_cb garbage tracking");
-            while (!(status & GARBAGE)
-                   && h->status_.compare_exchange_weak(status, MvStatus(status | GARBAGE))) {
+        history_type* nexts[Cells];
+        //auto obj = hptr->object();
+        auto count = 0;
+        for (size_t cell = 0; cell < Cells; ++cell) {
+            nexts[cell] = hptr->prev_relaxed(cell);
+            if (nexts[cell]) {
+                ++count;
             }
+        }
+        while (count > 0) {
+            auto cell = 0;
+            for (size_t ncell = 1; ncell < Cells; ++ncell) {
+                if (!nexts[cell]) {
+                    cell = ncell;
+                } else if (nexts[ncell]) {
+                    if (nexts[ncell]->wtid() > nexts[cell]->wtid()) {
+                        cell = ncell;
+                    }
+                }
+            }
+            auto h = nexts[cell];
+            assert(h);
+            bool skip = true;
+            for (size_t ncell = 0; ncell < Cells; ++ncell) {
+                auto hnext = h->prev_relaxed(ncell);
+                if (nexts[ncell] == h) {
+                    nexts[ncell] = hnext;
+                    if (!nexts[ncell]) {  // Assumes that there are no dangling pointers
+                        --count;
+                    }
+                    if (h->cells_.fetch_add(-1, std::memory_order::memory_order_relaxed) == 1) {
+                        skip = true;
+                    }
+                }
+            }
+            MvStatus status = h->status();
+            assert(h->cells_.load(std::memory_order::memory_order_relaxed) >= 0);
+            if (skip) {
+                // Skipping versions that are still in use by another chain,
+                // should be cleaned up by gc there
+            } else {
+                for (size_t ncell = 0; ncell < Cells; ++ncell) {
+                    //printf("%p enqueuing delete %p based on cell %zu tids %zu, %zu\n", obj, h, ncell, h->wtid(), obj->head_tid(ncell));
+                }
+#if MVCC_GARBAGE_DEBUG
+                h->assert_status(!(status & (GARBAGE | GARBAGE2)), "gc_committed_cb garbage tracking");
+                while (!(status & GARBAGE)
+                       && h->status_.compare_exchange_weak(status, MvStatus(status | GARBAGE))) {
+                }
 #endif
-            Transaction::rcu_call(gc_deleted_cb, h);
+                Transaction::rcu_call(gc_deleted_cb, h);
+            }
             h->assert_status(!(status & (LOCKED | PENDING)), "gc_committed_cb unlocked not pending");
             if ((status & COMMITTED_DELTA) == COMMITTED) {
                 break;
@@ -438,7 +486,11 @@ private:
             v_ = value;
             TXP_INCREMENT(txp_mvcc_flat_commits);
             status(COMMITTED);
-            enqueue_for_committed();
+            if (object()->is_inlined(this)) {
+                //
+                //printf("%p flatten enq %p tid %zu\n", object(), this, wtid());
+            }
+            enqueue_for_committed(__FILE__, __LINE__);
             if (fg) {
                 object()->flattenv_.store(0, std::memory_order_relaxed);
             }
@@ -465,99 +517,63 @@ public:
     // How many consecutive DELTA versions will be allowed before flattening
     static constexpr int gc_flattening_length = 257;
 
+    MvObject()
 #if MVCC_INLINING
-    MvObject() : h_(), ih_(this) {
-        for (auto& h : h_) {
-            h.store(&ih_, std::memory_order::memory_order_relaxed);
-        }
-        if (std::is_trivial<T>::value) {
-            ih_.v_ = T();
-        }
-        ih_.status(COMMITTED_DELETED);
-        hs_.store(
-                h_[0].load(std::memory_order::memory_order_relaxed),
-                std::memory_order::memory_order_relaxed);
-    }
-    explicit MvObject(const T& value)
-            : h_(), ih_(this, 0, value) {
-        for (auto& h : h_) {
-            h.store(&ih_, std::memory_order::memory_order_relaxed);
-        }
-        ih_.status(COMMITTED);
-        hs_.store(
-                h_[0].load(std::memory_order::memory_order_relaxed),
-                std::memory_order::memory_order_relaxed);
-    }
-    explicit MvObject(T&& value)
-            : h_(), ih_(this, 0, std::move(value)) {
-        for (auto& h : h_) {
-            h.store(&ih_, std::memory_order::memory_order_relaxed);
-        }
-        ih_.status(COMMITTED);
-        hs_.store(
-                h_[0].load(std::memory_order::memory_order_relaxed),
-                std::memory_order::memory_order_relaxed);
-    }
-    template <typename... Args>
-    explicit MvObject(Args&&... args)
-            : h_(), ih_(this, 0, T(std::forward<Args>(args)...)) {
-        for (auto& h : h_) {
-            h.store(&ih_, std::memory_order::memory_order_relaxed);
-        }
-        ih_.status(COMMITTED);
-        hs_.store(
-                h_[0].load(std::memory_order::memory_order_relaxed),
-                std::memory_order::memory_order_relaxed);
-    }
+        : ih_(this)
+#endif
+    {
+#if MVCC_INLINING
+        history_type* hnew = &ih_;
 #else
-    MvObject() : h_() {
-        auto* hnew = new history_type(this);
-        for (auto& h : h_) {
-            h.store(hnew, std::memory_order::memory_order_relaxed);
-        }
+        auto* hnew = new_history();
+#endif
+        hnew->cells_.store(Cells, std::memory_order::memory_order_relaxed);
         if (std::is_trivial<T>::value) {
             hnew->v_ = T(); /* XXXX */
         }
         hnew->status(COMMITTED_DELETED);
-        hs_.store(
-                h_[0].load(std::memory_order::memory_order_relaxed),
-                std::memory_order::memory_order_relaxed);
+        setup(hnew);
     }
     explicit MvObject(const T& value)
-            : h_() {
-        auto* hnew = new history_type(this, 0, value);
-        for (auto& h : h_) {
-            h.store(hnew, std::memory_order::memory_order_relaxed);
-        }
+#if MVCC_INLINING
+        : ih_(this, 0, value)
+#endif
+        {
+#if MVCC_INLINING
+        history_type* hnew = &ih_;
+#else
+        auto* hnew = new_history(0, value);
+#endif
         hnew->status(COMMITTED);
-        hs_.store(
-                h_[0].load(std::memory_order::memory_order_relaxed),
-                std::memory_order::memory_order_relaxed);
+        setup(hnew);
     }
     explicit MvObject(T&& value)
-            : h_() {
-        auto* hnew = new history_type(this, 0, std::move(value));
-        for (auto& h : h_) {
-            h.store(hnew, std::memory_order::memory_order_relaxed);
-        }
+#if MVCC_INLINING
+        : ih_(this, 0, std::move(value))
+#endif
+        {
+#if MVCC_INLINING
+        history_type* hnew = &ih_;
+#else
+        auto* hnew = new_history(0, std::move(value));
+#endif
         hnew->status(COMMITTED);
-        hs_.store(
-                h_[0].load(std::memory_order::memory_order_relaxed),
-                std::memory_order::memory_order_relaxed);
+        setup(hnew);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_() {
-        auto* hnew = new history_type(this, 0, T(std::forward<Args>(args)...));
-        for (auto& h : h_) {
-            h.store(hnew, std::memory_order::memory_order_relaxed);
-        }
-        hnew->status(COMMITTED);
-        hs_.store(
-                h_[0].load(std::memory_order::memory_order_relaxed),
-                std::memory_order::memory_order_relaxed);
-    }
+#if MVCC_INLINING
+        : ih_(this, 0, T(std::forward<Args>(args)...))
 #endif
+        {
+#if MVCC_INLINING
+        history_type* hnew = &ih_;
+#else
+        auto* hnew = new_history(0, T(std::forward<Args>(args)...));
+#endif
+        hnew->status(COMMITTED);
+        setup(hnew);
+    }
 
     /*
     ~MvObject() {
@@ -594,6 +610,8 @@ public:
         // Can only install pending versions
         hw->assert_status(hw->status_is(PENDING), "cp_lock pending");
 
+        //printf("%p cp_lock %p cell %zu\n", this, hw, cell);
+
         std::atomic<base_type*>* target = &h_[cell];
         while (true) {
             // Discover target atomic on which to do CAS
@@ -610,13 +628,9 @@ public:
                 // Properly link h's prev_
                 assert(hw != t);
                 hw->prev_[cell].store(t, std::memory_order_release);
-                hw->hsprev(hw->prev_relaxed(cell)->status_is(COMMITTED_RESPLIT) ?
-                    hw->prev_relaxed(cell) : hw->prev_relaxed(cell)->hsprev());
 
                 // Attempt to CAS onto the target
                 if (target->compare_exchange_strong(t, hw)) {
-                    // XXX[wqian]
-                    //printf("h: %p, t: %p, hw: %p, target: %p\n", &h_[cell], t, hw, target);
                     break;
                 }
             }
@@ -675,12 +689,18 @@ public:
     // "Install" step: set status to committed
     void cp_install(history_type* h) {
         int s = h->status();
+        if (s != 0x2 && s != 0x3) {
+            //printf("%p installing %x\n", this, s);
+        }
         h->assert_status((s & (PENDING | ABORTED)) == PENDING, "cp_install");
         h->status((s & ~PENDING) | COMMITTED);
         if (!(s & DELTA)) {
             cuctr_.store(0, std::memory_order_relaxed);
             flattenv_.store(0, std::memory_order_relaxed);
-            h->enqueue_for_committed();
+            if (this->is_inlined(h)) {
+                //printf("%p enqueuing %p tid %zu for gc\n", this, h, h->wtid());
+            }
+            h->enqueue_for_committed(__FILE__, __LINE__);
         } else {
             int dc = cuctr_.load(std::memory_order_relaxed) + 1;
             if (dc <= gc_flattening_length) {
@@ -689,22 +709,6 @@ public:
                 cuctr_.store(0, std::memory_order_relaxed);
                 flattenv_.store(h->wtid(), std::memory_order_relaxed);
                 Transaction::rcu_call(gc_flatten_cb, this);
-            }
-        }
-        if (s & RESPLIT) {
-            auto hs_p = &hs_;
-            while (true) {
-                auto hs = reinterpret_cast<history_type*>(
-                        hs_p->load(std::memory_order::memory_order_relaxed));
-                while (hs->wtid() > h->wtid()) {
-                    hs_p = &hs->hsprev_;
-                    hs = hs->hsprev();
-                }
-                assert(hs->wtid() < h->wtid());
-                MvHistoryBase* hh = reinterpret_cast<MvHistoryBase*>(hs);
-                if (hs_p->compare_exchange_strong(hh, h)) {
-                    break;
-                }
             }
         }
     }
@@ -716,6 +720,7 @@ public:
     // hooked into the version chain
     void delete_history(history_type* h) {
         if (is_inlined(h)) {
+            //printf("%p deleting %p\n", this, h);
             h->status_.store(UNUSED, std::memory_order_release);
         } else {
 #if MVCC_GARBAGE_DEBUG
@@ -738,24 +743,9 @@ public:
     // Finds the current visible version, based on tid; by default, waits on
     // pending versions, but if toggled off, will simply return first version,
     // regardless of status
-    history_type* find_from(history_type* h, const tid_type tid, const size_t cell, const bool wait=true) const {
+    inline history_type* find_from(history_type* h, const tid_type tid, const size_t cell, const bool wait=true) const {
         /* TODO: use something smarter than a linear scan */
-        while (h) {
-            auto status = h->status();
-            auto wtid = h->wtid();
-            h->assert_status(status & (PENDING | ABORTED | COMMITTED), "find");
-            if (wait) {
-                if (wtid < tid) {
-                    h->wait_if_pending(status);
-                }
-                if (wtid <= tid && (status & COMMITTED)) {
-                    break;
-                }
-            } else {
-                if (wtid <= tid && (status & COMMITTED)) {
-                    break;
-                }
-            }
+        while (!find_iter(h, tid, wait)) {
             h = h->prev(cell);
         }
 
@@ -764,12 +754,24 @@ public:
         return h;
     }
 
-    history_type* head(size_t cell=0) const {
-        return reinterpret_cast<history_type*>(h_[cell].load(std::memory_order_acquire));
-    }
-
-    history_type* headhs() const {
-        return reinterpret_cast<history_type*>(hs_.load(std::memory_order_relaxed));
+    // A single iteration of find; returns true if the element is found, false otherwise
+    inline bool find_iter(history_type* h, const tid_type tid, const bool wait) const {
+        auto status = h->status();
+        auto wtid = h->wtid();
+        h->assert_status(status & (PENDING | ABORTED | COMMITTED), "find");
+        if (wait) {
+            if (wtid < tid) {
+                h->wait_if_pending(status);
+            }
+            if (wtid <= tid && (status & COMMITTED)) {
+                return true;
+            }
+        } else {
+            if (wtid <= tid && (status & COMMITTED)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     history_type* find_latest(const size_t cell, const bool wait) const {
@@ -785,6 +787,14 @@ public:
             }
             h = h->prev(cell);
         }
+    }
+
+    history_type* head(size_t cell=0) const {
+        return reinterpret_cast<history_type*>(h_[cell].load(std::memory_order_acquire));
+    }
+
+    history_type* headhs() const {
+        return reinterpret_cast<history_type*>(hs_.load(std::memory_order_relaxed));
     }
 
     // Returns whether the given history element is the inlined version
@@ -806,6 +816,7 @@ public:
         auto status = ih_.status();
         if (status == UNUSED &&
                 ih_.status_.compare_exchange_strong(status, PENDING)) {
+            //printf("%p reallocating %p\n", this, &ih_);
             // Use inlined history element
             new (&ih_) history_type(this, std::forward<Args>(args)...);
             return &ih_;
@@ -877,6 +888,13 @@ protected:
     std::atomic<base_type*> hs_;  // Split-changing shortchain
     std::atomic<int> cuctr_ = 0;  // For gc-time flattening
     std::atomic<tid_type> flattenv_;
+
+    void setup(history_type* hnew) {
+        for (size_t cell = 0; cell < Cells; ++cell) {
+            h_[cell].store(hnew, std::memory_order::memory_order_relaxed);
+        }
+        hnew->cells_.store(Cells, std::memory_order::memory_order_relaxed);
+    }
 
 #if MVCC_INLINING
     history_type ih_;  // Inlined version

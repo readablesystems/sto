@@ -220,11 +220,11 @@ public:
             return { true, false, 0, nullptr };
         }
 
-        auto [hs, split, cell_accesses] =
+        auto [ancestor, split, cell_accesses] =
             e->row_container.mvcc_split_accesses(Sto::read_tid(), accesses);
 
         auto [ok, values] = mvcc_extract_and_access<value_container_type>(
-                cell_accesses, this, e, hs, split, preferred_split);
+                cell_accesses, this, e, ancestor, split, preferred_split);
 
         if (!ok) {
             return { true, false, 0, nullptr };
@@ -714,7 +714,7 @@ public:
                     return true;
                 }
 
-                auto [hs, split, _] =
+                auto [ancestor, split, _] =
                     e->row_container.mvcc_split_accesses(Sto::read_tid(), {});
 
                 std::array<value_type*, value_container_type::NUM_VERSIONS> values { nullptr };
@@ -735,9 +735,9 @@ public:
                         }
                     }
 
-                    // hs == null means start at the head
-                    auto h = hs ?
-                        e->row_container.row.find_from(hs, Sto::read_tid(), cell) :
+                    // ancestor == null means start at the head
+                    auto h = ancestor ?
+                        e->row_container.row.find_from(ancestor, Sto::read_tid(), cell) :
                         e->row_container.row.find(Sto::read_tid(), cell);
                     if (is_row_item) {
                         if (h->status_is(DELETED)) {
@@ -844,7 +844,7 @@ public:
                     return true;
                 }
 
-                auto [hs, split, cell_accesses] =
+                auto [ancestor, split, cell_accesses] =
                     e->row_container.mvcc_split_accesses(Sto::read_tid(), accesses);
 
                 std::array<value_type*, value_container_type::NUM_VERSIONS> values { nullptr };
@@ -852,6 +852,13 @@ public:
 
                 bool ok = true;
                 for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                    if (split >= 0 &&
+                            !value_type::RecordAccessor::cell_col_count(split, cell) &&
+                            cell_accesses[cell] == AccessType::none) {
+                        // Skip cell if it's not part of the split at all
+                        continue;
+                    }
+
                     auto is_row_item = cell == row_item_key.cell_num();
                     auto item = is_row_item ? row_item : (
                             index_read_my_write
@@ -865,9 +872,9 @@ public:
                         }
                     }
 
-                    // hs == null means start at the head
-                    auto h = hs ?
-                        e->row_container.row.find_from(hs, Sto::read_tid(), cell) :
+                    // ancestor == null means start at the head
+                    auto h = ancestor ?
+                        e->row_container.row.find_from(ancestor, Sto::read_tid(), cell) :
                         e->row_container.row.find(Sto::read_tid(), cell);
                     if (is_row_item) {
                         if (h->status_is(DELETED)) {
@@ -884,10 +891,8 @@ public:
                             }
                         }
                     }
-                    if (cell_accesses[cell] != AccessType::none) {
-                        MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
-                        values[cell] = h->vp();
-                    }
+                    MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
+                    values[cell] = h->vp();
                 }
 
                 if (!ok) {
@@ -1018,11 +1023,13 @@ public:
             // XXX[wqian]
             //printf("e: %p, row item: %d, read: %d, write: %d, cell: %d, insert: %d\n", e, key.is_row_item(), item.has_read(), item.has_write(), key.cell_num(), has_insert(item));
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+            //printf("%p Locking cell %d\n", &e->row_container.row, key.cell_num());
 
             // A port of the mvcc_chain_operations implementation
 
+            mvhistory_type *hprev = nullptr;
+            MvAccess::get_read(TransProxy(txn, item), &hprev);
             if (item.has_read()) {
-                auto hprev = item.read_value<mvhistory_type*>();
                 if (hprev && Sto::commit_tid() < hprev->rtid()) {
                     TransProxy(txn, row_item).add_write(nullptr);
                     TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
@@ -1043,6 +1050,7 @@ public:
                 } else {
                     h = e->row_container.row.new_history(
                             Sto::commit_tid(), std::move(wval));
+                    h->split(e->row_container.split());
                 }
             } else {
                 auto wval = item.template raw_write_value<value_type*>();
@@ -1050,7 +1058,7 @@ public:
                     if (has_delete(item)) {
                         assert(h->status_is(MvStatus::DELETED));
                     } else {
-                        h->set_raw_value(wval);  // XXX: okay for now because both items should have same payload?
+                        value_type::RecordAccessor::copy_cell(h->split(), key.cell_num(), h->vp(), wval);
                     }
                 } else {
                     if (has_delete(item)) {
@@ -1059,9 +1067,18 @@ public:
                     } else {
                         h = e->row_container.row.new_history(Sto::commit_tid(), wval);
                     }
+                    h->split(e->row_container.split());
+                }
+                if (hprev && hprev->split() != h->split()) {
+                    //printf("%p Resplitting %p %d to %p %d, cell %d\n", h->object(), hprev, hprev->split(), h, h->split(), key.cell_num());
                 }
             }
             assert(h);
+            if (new_history) {
+                h->cells_.fetch_add(1, std::memory_order::memory_order_relaxed);
+            } else {
+                h->cells_.store(1, std::memory_order::memory_order_relaxed);
+            }
             bool result = e->row_container.row.template cp_lock<DBParams::Commute>(Sto::commit_tid(), h, key.cell_num());
             if (!result && !new_history && !h->status_is(MvStatus::ABORTED)) {
                 e->row_container.row.delete_history(h);
@@ -1105,9 +1122,11 @@ public:
                         }
                     }
                     return true;
-                } else*/ {
-                    return e->row_container.row.cp_check(Sto::read_tid(), h, key.cell_num());
+                } else*/ 
+                if (!h) {
+                    return true;
                 }
+                return e->row_container.row.cp_check(Sto::read_tid(), h, key.cell_num());
             } else {
                 if (key.is_row_item())
                     return e->version().cp_check_version(txn, item);
@@ -1134,12 +1153,20 @@ public:
         if constexpr (DBParams::MVCC) {
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
             auto h = row_item.template raw_write_value<mvhistory_type*>();
-            if (h && h->status_is(MvStatus::PENDING)) {
-                h->object()->cp_install(h);
-                if (has_delete(item)) {
-                    Transaction::rcu_call(_mvcc_delete_callback, h);
+            if (h) {
+                //printf("%p installing %p cell %d\n", &e->row_container.row, h, key.cell_num());
+                if (h->status_is(MvStatus::PENDING)) {
+                    h->object()->cp_install(h);
+                    if (has_delete(item)) {
+                        Transaction::rcu_call(_mvcc_delete_callback, h);
+                    }
+                    //TransProxy(txn, row_item).add_mvhistory(nullptr);  // Clear the history object
                 }
-                TransProxy(txn, row_item).add_mvhistory(nullptr);  // Clear the history object
+                //printf("%p find %zu cell %d %p\n", &e->row_container.row, h->wtid(), key.cell_num(), e->row_container.row.find(h->wtid(), key.cell_num()));
+                if (item.has_write()) {
+                    //printf("%p cell %d head tid %zu\n", h->object(), key.cell_num(), h->wtid());
+                    //h->object()->head_tid(key.cell_num(), h->wtid());
+                }
             }
             return;
         } else {
@@ -1230,7 +1257,9 @@ public:
             auto key = item.key<item_key_t>();
             internal_elem *e = key.internal_elem_ptr();
             auto preferred_split = item.preferred_split();
-            e->row_container.set_split(preferred_split);
+            if (preferred_split >= 0) {
+                e->row_container.set_split(preferred_split);
+            }
             item.clear_preferred_split();
         //}
     }
@@ -1238,19 +1267,31 @@ public:
     void cleanup(TransItem& item, bool committed) override {
         if constexpr (DBParams::MVCC) {
             if (!committed) {
-                auto key = item.key<item_key_t>();
+                //auto key = item.key<item_key_t>();
                 if (item.has_mvhistory()) {
                     auto h = item.template write_value<mvhistory_type*>();
                     if (h) {
                         h->status_txn_abort();
                     }
                 }
+                /*
                 {
-                    auto h = key.internal_elem_ptr()->row_container.row.find(Sto::commit_tid(), key.cell_num());
-                    if (h->wtid() == 0) {
-                        h->enqueue_for_committed();
+                    bool collect = true;
+                    for (size_t cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                        if (key.internal_elem_ptr()->row_container.row.head_tid(cell) == 0) {
+                            collect = false;
+                            break;
+                        }
+                    }
+                    if (collect) {
+                        auto h = key.internal_elem_ptr()->row_container.row.find(Sto::commit_tid(), key.cell_num());
+                        if (h->wtid() == 0) {
+                            //printf("%p oindex cleanup enq %p\n", h->object(), h);
+                            h->enqueue_for_committed(__FILE__, __LINE__);
+                        }
                     }
                 }
+                */
             }
         } else if (committed ? has_delete(item) : has_insert(item)) {
             auto key = item.key<item_key_t>();

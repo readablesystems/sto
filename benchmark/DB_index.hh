@@ -295,7 +295,7 @@ public:
     static std::pair<bool, std::array<typename T::RecordAccessor::ValueType*, T::NUM_POINTERS>>
     mvcc_extract_and_access(
             const std::array<typename T::access_type, T::NUM_VERSIONS>& accesses,
-            TObject *tobj, internal_elem *e, typename T::mvhistory_type* hs,
+            TObject *tobj, internal_elem *e, typename T::mvhistory_type* ancestor,
             typename T::SplitType& current_split,
             const typename T::SplitType& preferred_split) {
         static_assert(T::NUM_VERSIONS == T::NUM_POINTERS);
@@ -307,47 +307,54 @@ public:
         auto& row = e->row_container.row;
 
         for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
-            if (accesses[i] != AccessType::none) {
-                auto item = Sto::item(tobj, item_key_t(e, i));
-                any_accessed = true;
-                if (preferred_split >= 0) {
-                    item.set_preferred_split(preferred_split);
-                }
+            if (current_split >= 0 &&
+                    !T::RecordAccessor::cell_col_count(current_split, i) &&
+                    accesses[i] == AccessType::none) {
+                // Skip cell if it's not part of the split at all
+                continue;
+            }
+
+            auto item = Sto::item(tobj, item_key_t(e, i));
+            any_accessed = true;
+            if (preferred_split >= 0) {
+                item.set_preferred_split(preferred_split);
+            }
+
+            // ancestor == null means start at the head
+            auto* h = ancestor ?
+                row.find_from(ancestor, Sto::read_tid(), i) :
+                row.find(Sto::read_tid(), i);
+
+            // current_split < 0 means fill it in automagically
+            if (current_split < 0) {
+                current_split = h->get_split();
+            }
+
+            if (!h || h->status_is(COMMITTED_DELETED)) {
                 if ((accesses[i] & AccessType::read) != AccessType::none) {
-                    // hs == null means start at the head
-                    auto h = hs ?
-                        row.find_from(hs, Sto::read_tid(), i) :
-                        row.find(Sto::read_tid(), i);
-                    // XXX[wqian]
-                    //printf("found %p cell %d\n", h, i);
-
-                    // current_split < 0 means fill it in automagically
-                    if (current_split < 0) {
-                        if (h->status_is(COMMITTED_RESPLIT)) {
-                            current_split = h->split();
-                        } else {
-                            auto hsprev = h->hsprev();
-                            current_split = hsprev ? hsprev->split() : T::RecordAccessor::DEFAULT_SPLIT;
-                        }
-                    }
-
-                    if (h->status_is(COMMITTED_DELETED)) {
-                        MvAccess::template read<ValueType>(item, h);
-                        return { false, values };
-                    } else if (!IndexType::is_phantom(h, item)) {
-                        // XXX No read-my-write stuff for now.
-                        MvAccess::template read<ValueType>(item, h);
-
-                        auto vp = h->vp();
-                        assert(vp);
-                        values[i] = vp;
-                    } else {
-                        printf("Skipping read\n");
-                    }
+                    MvAccess::template read<ValueType>(item, h);
+                    return { false, values };
                 }
-                if ((accesses[i] & AccessType::write) != AccessType::none) {
-                    item.add_write();
+            } else if (!IndexType::is_phantom(h, item)) {
+                if ((accesses[i] & AccessType::read) != AccessType::none) {
+                    // XXX No read-my-write stuff for now.
+                    MvAccess::template read<ValueType>(item, h);
+                } else {
+                    MvAccess::template store_read<ValueType>(item, h);
                 }
+
+                if (h) {
+                    auto vp = h->vp();
+                    assert(vp);
+                    values[i] = vp;
+                } else {
+                    values[i] = nullptr;
+                }
+            } else {
+                printf("Skipping read\n");
+            }
+            if ((accesses[i] & AccessType::write) != AccessType::none) {
+                item.add_write();
             }
         }
 
@@ -1018,7 +1025,7 @@ void mvcc_chain_operations<K, V, DBParams>::cleanup_impl_per_chain(TransItem &it
         {
             auto h = chain->find(Sto::commit_tid());
             if (h->wtid() == 0) {
-                h->enqueue_for_committed();
+                h->enqueue_for_committed(__FILE__, __LINE__);
             }
         }
     }

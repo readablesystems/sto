@@ -157,15 +157,24 @@ public:
     //template <bool B=UseMVCC, std::enable_if_t<!B, bool> = true>
     AdaptiveValueContainer(type v, const ValueType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v);
+        if constexpr (UseMVCC) {
+            row.split(RecordAccessor::DEFAULT_SPLIT);
+        }
     }
 
     //template <bool B=UseMVCC, std::enable_if_t<!B, bool> = true>
     AdaptiveValueContainer(type v, bool insert, const ValueType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v, insert);
+        if constexpr (UseMVCC) {
+            row.head()->split(RecordAccessor::DEFAULT_SPLIT);
+        }
     }
 
     AdaptiveValueContainer(type v, bool insert) : row(), versions_() {
         new (&versions_[0]) version_type(v, insert);
+        if constexpr (UseMVCC) {
+            row.head()->split(RecordAccessor::DEFAULT_SPLIT);
+        }
     }
 
     /*
@@ -237,28 +246,47 @@ public:
         std::array<AccessType, NUM_VERSIONS> split_accesses = {};
         std::fill(split_accesses.begin(), split_accesses.end(), AccessType::none);
 
-        auto hsprev = row.headhs();
-        mvhistory_type* hsnext = nullptr;
-        while (hsprev->wtid() > rtid) {
-            hsnext = hsprev;
-            hsprev = hsprev->hsprev();
-        }
-        auto h = hsnext ? hsnext->prev() : row.head();
-        while (h->wtid() > rtid) {
-            if (h->status_is(COMMITTED_RESPLIT)) {
-                hsnext = h;
+        auto h = row.head(0);
+        mvhistory_type* ancestor = nullptr;
+        while (h) {
+            if (row.find_iter(h, rtid, true)) {
+                break;
             }
-            h = h->prev();
-        }
 
-        hsprev = h->status_is(COMMITTED_RESPLIT) ? h : h->hsprev();
-        auto split = hsprev ? hsprev->split() : RecordAccessor::DEFAULT_SPLIT;
+            bool complete = true;
+            std::array<mvhistory_type*, NUM_POINTERS> prevs = {};
+            for (auto cell = 0; cell < NUM_POINTERS; ++cell) {
+                prevs[cell] = h->prev(cell);
+                if (!prevs[cell]) {
+                    complete = false;
+                }
+            }
+            if (complete) {
+                ancestor = h;
+            }
+            h = prevs[0];
+        }
+        assert(h);
+        auto split = h->get_split();
+        auto desired_split = this->split();
+        auto any_write = false;
         for (auto colaccess : accesses) {
             const auto cell = split_of(split, colaccess.column);
             split_accesses[cell] |= colaccess.access;
+            if ((colaccess.access & AccessType::write) == AccessType::write) {
+                any_write = true;
+            }
+        }
+        if (split != desired_split && any_write) {
+            //printf("%p Requiring resplit:", &row);
+            for (auto& splitaccess : split_accesses) {
+                splitaccess |= AccessType::update;
+                //printf(" %d", splitaccess);
+            }
+            //printf("\n");
         }
 
-        return {hsnext, split, split_accesses};
+        return {ancestor, split, split_accesses};
     }
 
     template <bool B=UseMVCC>
@@ -469,7 +497,7 @@ private:
     }
     */
 
-    std::atomic<SplitType> splitindex_ = {};
+    std::atomic<SplitType> splitindex_ = {RecordAccessor::DEFAULT_SPLIT};
     //SplitType splitindex_ = {};
     std::array<version_type, num_versions> versions_;
 };

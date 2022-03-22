@@ -131,6 +131,12 @@ struct SplitPolicy<0> {
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
+    inline static constexpr size_t cell_col_count(int cell) {
+        if (cell == 0) {
+            return 10;
+        }
+        return 0;
+    }
     template <int Cell>
     inline static constexpr void copy_cell(ycsb_value* dest, ycsb_value* src) {
         if constexpr(Cell == 0) {
@@ -219,8 +225,15 @@ public:
         }
     }
 
-    void copy_into(ycsb_value* vptr) {
-        memcpy((void*)vptr, vptrs_[0], sizeof *vptr);
+    inline static constexpr size_t cell_col_count(int index, int cell) {
+        if (index == 0) {
+            return SplitPolicy<0>::cell_col_count(cell);
+        }
+        return 0;
+    }
+
+    void copy_into(ycsb_value* vptr, int index=0) {
+        copy_cell(index, 0, vptr, vptrs_[0]);
     }
 
     inline typename accessor_info<NamedColumn::even_columns>::value_type& even_columns() {
