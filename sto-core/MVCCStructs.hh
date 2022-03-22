@@ -392,9 +392,7 @@ private:
                 // should be cleaned up by gc there
                 //printf("%p skipping %p with %zx references left\n", obj, h, h->cells_.load());
             } else {
-                for (size_t ncell = 0; ncell < Cells; ++ncell) {
-                    //printf("%p enqueuing delete %p based on cell %zu tids %zu, %zu\n", obj, h, ncell, h->wtid(), obj->head_tid(ncell));
-                }
+                //printf("%p enqueuing delete %p\n", obj, h);
 #if MVCC_GARBAGE_DEBUG
                 h->assert_status(!(status & (GARBAGE | GARBAGE2)), "gc_committed_cb garbage tracking");
                 while (!(status & GARBAGE)

@@ -287,6 +287,7 @@ private:
     void InsertSerialTest();
     void InsertUnreadableTest();
     void DeleteReinsertTest();
+    void GarbageCollectionTest();
     void UpdateTest();
 };
 
@@ -308,6 +309,9 @@ void MVCCIndexTester<Ordered, ATS>::RunTests() {
     InsertUnreadableTest(); PostTest();
     UpdateTest(); PostTest();
     DeleteReinsertTest(); PostTest();
+    if constexpr (ATS) {
+        GarbageCollectionTest(); PostTest();
+    }
     if constexpr (Ordered) {
         ScanTest(); PostTest();
     }
@@ -1422,6 +1426,129 @@ void MVCCIndexTester<Ordered, ATS>::DeleteReinsertTest() {
     }
 
     printf("Test pass: %s\n", __FUNCTION__);
+}
+
+template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::GarbageCollectionTest() {
+    if constexpr (!ATS) {
+        printf("Skipped: %s\n", __FUNCTION__);
+    } else {
+        index_type idx(index_init_size);
+        idx.thread_init();
+
+        {
+            key_type k1{1, 1};
+            index_value v1{30, 20, 10};
+            idx.nontrans_put(k1, v1);
+
+            auto* rc1 = idx.nontrans_row(k1);
+            auto* h1 = rc1->row.find(0, 0);
+            for (size_t cell = 0; cell < accessor_t::MAX_SPLITS; ++cell) {
+                assert(h1 == rc1->row.find(0, cell));
+            }
+            assert(rc1->row.is_inlined(h1));
+
+            TestTransaction t1(1);
+
+            {
+                t1.get_tx().mvcc_rw_upgrade();
+
+                auto[success, result, row, accessor] = idx.select_row(k1,
+                        {{nc::value_1, AccessType::update},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}},
+                        1);
+                assert(success);
+                assert(result);
+                assert(accessor.value_1() == 30);
+                assert(accessor.value_2a() == 20);
+                assert(accessor.value_2b() == 10);
+
+                index_value* new_value = Sto::tx_alloc<index_value>();
+                accessor.copy_into(new_value);
+                new_value->value_1++;
+
+                idx.update_row(row, new_value);
+            }
+
+            TestTransaction t2(2);
+
+            {
+                t2.get_tx().mvcc_rw_upgrade();
+
+                auto[success, result, row, accessor] = idx.select_row(k1,
+                        {{nc::value_1, AccessType::update},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}},
+                        1);
+                assert(success);
+                assert(result);
+                assert(accessor.value_1() == 30);
+                assert(accessor.value_2a() == 20);
+                assert(accessor.value_2b() == 10);
+
+                index_value* new_value = Sto::tx_alloc<index_value>();
+                accessor.copy_into(new_value);
+                new_value->value_1 += 2;
+
+                idx.update_row(row, new_value);
+            }
+
+            assert(t2.try_commit());
+            assert(!t1.try_commit());
+
+            assert(h1->status() != UNUSED);
+
+            Transaction::global_epoch_advance_once();
+            Transaction::global_epoch_advance_once();
+
+            for (auto& t : Transaction::tinfo) {
+                t.rcu_set.clean_until(Transaction::global_epochs.active_epoch);
+            }
+
+            assert(h1->status() != UNUSED);  // Ref count is still > 0
+            assert(h1->cells_.load(std::memory_order_relaxed) > 0);
+
+            TestTransaction t3(3);
+
+            {
+                t3.get_tx().mvcc_rw_upgrade();
+
+                auto[success, result, row, accessor] = idx.select_row(k1,
+                        {{nc::value_1, AccessType::read},
+                        {nc::value_2a, AccessType::update},
+                        {nc::value_2b, AccessType::update}},
+                        1);
+                assert(success);
+                assert(result);
+                assert(accessor.value_1() == 32);
+                assert(accessor.value_2a() == 20);
+                assert(accessor.value_2b() == 10);
+
+                index_value* new_value = Sto::tx_alloc<index_value>();
+                accessor.copy_into(new_value);
+                new_value->value_2a++;
+                new_value->value_2b++;
+
+                idx.update_row(row, new_value);
+            }
+
+            assert(t3.try_commit());
+
+            assert(h1->status() != UNUSED);  // Ref count finally 0
+
+            Transaction::global_epoch_advance_once();
+            Transaction::global_epoch_advance_once();
+
+            for (auto& t : Transaction::tinfo) {
+                t.rcu_set.clean_until(Transaction::global_epochs.active_epoch);
+            }
+
+            assert(h1->status() == UNUSED);
+        }
+
+        printf("Test pass: %s\n", __FUNCTION__);
+    }
 }
 
 int main() {

@@ -40,10 +40,10 @@ private:
 
     static void PopulateTable(IndexType& table) {
         for (auto key1 = KeyType::key_1_min;
-             key1 <= std::min(KeyType::key_1_min + 999, KeyType::key_1_max);
+             key1 <= std::min(KeyType::key_1_min + 499, KeyType::key_1_max);
              ++key1) {
             for (auto key2 = KeyType::key_2_min;
-                 key2 <= std::min(KeyType::key_2_min + 999, KeyType::key_2_max);
+                 key2 <= std::min(KeyType::key_2_min + 499, KeyType::key_2_max);
                  ++key2) {
                 ValueType value {
                     .data = { (double)(key1 + key2), (double)(key1 - key2) },
@@ -567,7 +567,7 @@ void Tester<Ordered>::StatsTest() {
                 {nc::data + 1, AccessType::read},
                 {nc::label, AccessType::read},
                 {nc::flagged, AccessType::read},
-                });
+                }, 1);
         assert(success);
         assert(found);
         (void) row;
@@ -588,7 +588,7 @@ void Tester<Ordered>::StatsTest() {
                 {nc::data + 1, AccessType::update},
                 {nc::label, AccessType::read},
                 {nc::flagged, AccessType::read},
-                });
+                }, 1);
         assert(success);
         assert(found);
         assert(value.label() == std::string("default"));
