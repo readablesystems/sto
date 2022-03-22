@@ -568,15 +568,15 @@ public:
 
     // non-transactional methods
     value_type* nontrans_get(const key_type& k) {
-        bucket_entry& buck = map_[find_bucket_idx(k)];
-        internal_elem* e = find_in_bucket(buck, k);
-        if (e == nullptr)
-            return nullptr;
-        if constexpr (DBParams::MVCC) {
-            return &e->row_container.row.nontrans_access();  // XXX fix?
-        } else {
-            return &(e->row_container.row);
+        auto* row_container = nontrans_row(k);
+        if (row_container) {
+            if constexpr (DBParams::MVCC) {
+                return &row_container->row.nontrans_access();  // XXX fix?
+            } else {
+                return &row_container->row;
+            }
         }
+        return nullptr;
     }
 
     bool nontrans_get(const key_type& k, value_type* v) {
@@ -607,6 +607,15 @@ public:
             buck.version.inc_nonopaque();
         }
         buck.version.unlock_exclusive();
+    }
+
+    value_container_type* nontrans_row(const key_type& k) {
+        bucket_entry& buck = map_[find_bucket_idx(k)];
+        internal_elem* e = find_in_bucket(buck, k);
+        if (e) {
+            return &e->row_container;
+        }
+        return nullptr;
     }
 
     // TObject interface methods
@@ -668,9 +677,9 @@ public:
             }
             assert(h);
             if (new_history) {
-                h->cells_.fetch_add(1, std::memory_order::memory_order_relaxed);
-            } else {
                 h->cells_.store(1, std::memory_order::memory_order_relaxed);
+            } else {
+                h->cells_.fetch_add(1, std::memory_order::memory_order_relaxed);
             }
             bool result = e->row_container.row.template cp_lock<DBParams::Commute>(Sto::commit_tid(), h, key.cell_num());
             if (!result && !new_history && !h->status_is(MvStatus::ABORTED)) {

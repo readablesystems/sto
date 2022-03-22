@@ -56,7 +56,7 @@ public:
     std::atomic<tid_type> rtid_;  // Read TID
     void* obj_;  // Parent object
     std::atomic<int> split_;  // Split policy index
-    std::atomic<size_t> cells_;  // Number of cells this is participating in
+    std::atomic<ssize_t> cells_;  // Number of cells this is participating in
 };
 
 template <typename T, size_t Cells>
@@ -378,16 +378,19 @@ private:
                     if (!nexts[ncell]) {  // Assumes that there are no dangling pointers
                         --count;
                     }
-                    if (h->cells_.fetch_add(-1, std::memory_order::memory_order_relaxed) == 1) {
-                        skip = true;
+                    ssize_t c;
+                    if ((c = h->cells_.fetch_add(-1, std::memory_order::memory_order_relaxed)) == 1) {
+                        skip = false;
                     }
+                    //printf("%p decr %p on cell %zu to %zx\n", obj, h, ncell, c - 1);
                 }
             }
             MvStatus status = h->status();
-            assert(h->cells_.load(std::memory_order::memory_order_relaxed) >= 0);
+            //assert(h->cells_.load(std::memory_order::memory_order_relaxed) >= 0);
             if (skip) {
                 // Skipping versions that are still in use by another chain,
                 // should be cleaned up by gc there
+                //printf("%p skipping %p with %zx references left\n", obj, h, h->cells_.load());
             } else {
                 for (size_t ncell = 0; ncell < Cells; ++ncell) {
                     //printf("%p enqueuing delete %p based on cell %zu tids %zu, %zu\n", obj, h, ncell, h->wtid(), obj->head_tid(ncell));
@@ -719,6 +722,7 @@ public:
     // This function should only be used to free history nodes that have NOT been
     // hooked into the version chain
     void delete_history(history_type* h) {
+        //printf("%p deleting %p, heads %p, %p\n", this, h, head(0), head(1));
         if (is_inlined(h)) {
             //printf("%p deleting %p\n", this, h);
             h->status_.store(UNUSED, std::memory_order_release);

@@ -957,18 +957,16 @@ public:
         return scanner.scan_succeeded_;
     }
 
-    value_type *nontrans_get(const key_type& k) {
-        unlocked_cursor_type lp(table_, k);
-        bool found = lp.find_unlocked(*ti);
-        if (found) {
-            internal_elem *e = lp.value();
+    value_type* nontrans_get(const key_type& k) {
+        auto* row_container = nontrans_row(k);
+        if (row_container) {
             if constexpr (DBParams::MVCC) {
-                return &e->row_container.row.nontrans_access();  // XXX: fix?
+                return &row_container->row.nontrans_access();  // XXX: fix?
             } else {
-                return &(e->row_container.row);
+                return &row_container->row;
             }
-        } else
-            return nullptr;
+        }
+        return nullptr;
     }
 
     bool nontrans_get(const key_type& k, value_type* v) {
@@ -1006,6 +1004,16 @@ public:
             lp.value() = e;
             lp.finish(1, *ti);
         }
+    }
+
+    value_container_type* nontrans_row(const key_type& k) {
+        unlocked_cursor_type lp(table_, k);
+        bool found = lp.find_unlocked(*ti);
+        if (found) {
+            internal_elem *e = lp.value();
+            return &e->row_container;
+        }
+        return nullptr;
     }
 
     // TObject interface methods
@@ -1075,9 +1083,9 @@ public:
             }
             assert(h);
             if (new_history) {
-                h->cells_.fetch_add(1, std::memory_order::memory_order_relaxed);
-            } else {
                 h->cells_.store(1, std::memory_order::memory_order_relaxed);
+            } else {
+                h->cells_.fetch_add(1, std::memory_order::memory_order_relaxed);
             }
             bool result = e->row_container.row.template cp_lock<DBParams::Commute>(Sto::commit_tid(), h, key.cell_num());
             if (!result && !new_history && !h->status_is(MvStatus::ABORTED)) {
