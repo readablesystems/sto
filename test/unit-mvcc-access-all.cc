@@ -5,6 +5,13 @@
 
 #include "unit-mvcc-access-structs-generated.hh"
 
+// NB: when writing tests, the first transaction should always use threadid 0;
+// otherwise, some weird stuff happens with epochs that causes the RCU list to
+// be held back. This is typically not important unless you're specifically
+// testing for garbage collection and anything else that is set on an RCU set.
+// The designated thread can be arbitrary, but it is fixed in line 286 to the
+// threadid 0.
+
 using bench::split_version_helpers;
 using bench::ordered_index;
 using bench::unordered_index;
@@ -275,6 +282,8 @@ private:
         for (auto& t : Transaction::tinfo) {
             t.rcu_set.clean_until(Transaction::global_epochs.active_epoch);
         }
+
+        TThread::set_id(0);
     }
 
     void SelectSplitTest();
@@ -287,6 +296,7 @@ private:
     void InsertSerialTest();
     void InsertUnreadableTest();
     void DeleteReinsertTest();
+    void ResplitTest();
     void GarbageCollectionTest();
     void UpdateTest();
 };
@@ -310,6 +320,7 @@ void MVCCIndexTester<Ordered, ATS>::RunTests() {
     UpdateTest(); PostTest();
     DeleteReinsertTest(); PostTest();
     if constexpr (ATS) {
+        ResplitTest(); PostTest();
         GarbageCollectionTest(); PostTest();
     }
     if constexpr (Ordered) {
@@ -1429,6 +1440,122 @@ void MVCCIndexTester<Ordered, ATS>::DeleteReinsertTest() {
 }
 
 template <bool Ordered, bool ATS>
+void MVCCIndexTester<Ordered, ATS>::ResplitTest() {
+    if constexpr (!ATS) {
+        printf("Skipped: %s\n", __FUNCTION__);
+    } else {
+        index_type idx(index_init_size);
+        idx.thread_init();
+
+        {
+            key_type k1{1, 1};
+            index_value v1{30, 20, 10};
+            idx.nontrans_put(k1, v1);
+
+            TestTransaction t1(0);
+
+            {
+                t1.get_tx().mvcc_rw_upgrade();
+
+                auto[success, result, row, accessor] = idx.select_row(k1,
+                        {{nc::value_1, AccessType::update},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}},
+                        0);
+                assert(success);
+                assert(result);
+                assert(accessor.value_1() == 30);
+                assert(accessor.value_2a() == 20);
+                assert(accessor.value_2b() == 10);
+                assert(accessor.splitindex_ == 1);
+
+                index_value* new_value = Sto::tx_alloc<index_value>();
+                accessor.copy_into(new_value);
+                new_value->value_1++;
+
+                idx.update_row(row, new_value);
+            }
+
+            TestTransaction t2(1);
+
+            {
+                t2.get_tx().mvcc_rw_upgrade();
+
+                auto[success, result, row, accessor] = idx.select_row(k1,
+                        {{nc::value_1, AccessType::update},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}},
+                        0);
+                assert(success);
+                assert(result);
+                assert(accessor.value_1() == 30);
+                assert(accessor.value_2a() == 20);
+                assert(accessor.value_2b() == 10);
+                assert(accessor.splitindex_ == 1);
+
+                index_value* new_value = Sto::tx_alloc<index_value>();
+                accessor.copy_into(new_value);
+                new_value->value_1 += 2;
+
+                idx.update_row(row, new_value);
+            }
+
+            assert(t2.try_commit());
+            assert(!t1.try_commit());
+
+            TestTransaction t3(2);
+
+            {
+                t3.get_tx().mvcc_rw_upgrade();
+
+                auto[success, result, row, accessor] = idx.select_row(k1,
+                        {{nc::value_1, AccessType::read},
+                        {nc::value_2a, AccessType::update},
+                        {nc::value_2b, AccessType::update}},
+                        0);
+                assert(success);
+                assert(result);
+                assert(accessor.value_1() == 32);
+                assert(accessor.value_2a() == 20);
+                assert(accessor.value_2b() == 10);
+                assert(accessor.splitindex_ == 1);
+
+                index_value* new_value = Sto::tx_alloc<index_value>();
+                accessor.copy_into(new_value);
+                new_value->value_2a++;
+                new_value->value_2b++;
+
+                idx.update_row(row, new_value);
+            }
+
+            assert(t3.try_commit());
+
+            TestTransaction t4(3);
+
+            {
+                t4.get_tx().mvcc_rw_upgrade();
+
+                auto[success, result, row, accessor] = idx.select_row(k1,
+                        {{nc::value_1, AccessType::read},
+                        {nc::value_2a, AccessType::read},
+                        {nc::value_2b, AccessType::read}},
+                        0);
+                assert(success);
+                assert(result);
+                assert(accessor.value_1() == 32);
+                assert(accessor.value_2a() == 21);
+                assert(accessor.value_2b() == 11);
+                assert(accessor.splitindex_ == 0);
+            }
+
+            assert(t4.try_commit());
+        }
+
+        printf("Test pass: %s\n", __FUNCTION__);
+    }
+}
+
+template <bool Ordered, bool ATS>
 void MVCCIndexTester<Ordered, ATS>::GarbageCollectionTest() {
     if constexpr (!ATS) {
         printf("Skipped: %s\n", __FUNCTION__);
@@ -1448,7 +1575,7 @@ void MVCCIndexTester<Ordered, ATS>::GarbageCollectionTest() {
             }
             assert(rc1->row.is_inlined(h1));
 
-            TestTransaction t1(1);
+            TestTransaction t1(0);
 
             {
                 t1.get_tx().mvcc_rw_upgrade();
@@ -1471,7 +1598,7 @@ void MVCCIndexTester<Ordered, ATS>::GarbageCollectionTest() {
                 idx.update_row(row, new_value);
             }
 
-            TestTransaction t2(2);
+            TestTransaction t2(1);
 
             {
                 t2.get_tx().mvcc_rw_upgrade();
@@ -1509,7 +1636,7 @@ void MVCCIndexTester<Ordered, ATS>::GarbageCollectionTest() {
             assert(h1->status() != UNUSED);  // Ref count is still > 0
             assert(h1->cells_.load(std::memory_order_relaxed) > 0);
 
-            TestTransaction t3(3);
+            TestTransaction t3(2);
 
             {
                 t3.get_tx().mvcc_rw_upgrade();

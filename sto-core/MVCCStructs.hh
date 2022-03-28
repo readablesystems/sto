@@ -332,6 +332,7 @@ public:
 private:
     static void gc_committed_cb(void* ptr) {
         history_type* hptr = static_cast<history_type*>(ptr);
+        //printf("%p gc cb on %p\n", hptr->object(), hptr);
         auto s = hptr->status();
         if ((s & COMMITTED_DELTA) != COMMITTED) {
             //printf("%p status %p: %d\n", hptr->object(), hptr, s);
@@ -386,7 +387,7 @@ private:
                 }
             }
             MvStatus status = h->status();
-            //assert(h->cells_.load(std::memory_order::memory_order_relaxed) >= 0);
+            assert(h->cells_.load(std::memory_order::memory_order_relaxed) >= 0);
             if (skip) {
                 // Skipping versions that are still in use by another chain,
                 // should be cleaned up by gc there

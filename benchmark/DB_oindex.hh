@@ -1260,8 +1260,7 @@ public:
     }
 
     void update_split(TransItem& item, bool committed) override {
-        (void) committed;
-        //if (!committed && item.has_preferred_split()) {
+        if (!committed && item.has_preferred_split()) {
             auto key = item.key<item_key_t>();
             internal_elem *e = key.internal_elem_ptr();
             auto preferred_split = item.preferred_split();
@@ -1269,7 +1268,7 @@ public:
                 e->row_container.set_split(preferred_split);
             }
             item.clear_preferred_split();
-        //}
+        }
     }
 
     void cleanup(TransItem& item, bool committed) override {
