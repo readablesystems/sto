@@ -509,6 +509,7 @@ private:
 // EXAMPLE:
 //
 // This is an example of a row layout
+/*
 struct example_row {
     enum class NamedColumn : int { ytd = 0, payment_cnt, date, tax, next_oid };
 
@@ -518,6 +519,8 @@ struct example_row {
     uint32_t d_tax;
     uint32_t d_next_oid;
 };
+*/
+#include "example_row_generated.hh"
 // The programer can annotate something like this:
 //
 // @@@DefineSelector

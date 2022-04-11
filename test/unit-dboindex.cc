@@ -2,6 +2,7 @@
 #include "DB_structs.hh"
 #include "DB_params.hh"
 
+/*
 struct coarse_grained_row {
     enum class NamedColumn : int { aa = 0, bb, cc };
 
@@ -13,6 +14,19 @@ struct coarse_grained_row {
 
     coarse_grained_row(uint64_t a, uint64_t b, uint64_t c)
             : aa(a), bb(b), cc(c) {}
+};
+*/
+namespace datatype {
+    #include "unit-dboindex-structs-generated.hh"
+}  // namespace datatype
+struct coarse_grained_row : public datatype::coarse_grained_row {
+    coarse_grained_row() = default;
+
+    coarse_grained_row(uint64_t a, uint64_t b, uint64_t c) {
+        aa = a;
+        bb = b;
+        cc = c;
+    }
 };
 
 struct key_type {
@@ -542,6 +556,7 @@ void test_fine_conflict1() {
             assert(t2.try_commit());
 
             t1.use();
+            printf("%u\n", value.d_ytd());
             assert(value.d_ytd() == 3000); // unspecified modifications are not installed
             assert(value.d_payment_cnt() == 51);
             assert(!t1.try_commit()); // not able to commit due to hierarchical versions
