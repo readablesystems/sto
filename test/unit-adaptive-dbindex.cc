@@ -38,6 +38,13 @@ private:
         return table;
     }
 
+    static void NullUpdate(IndexType& table, uintptr_t row, RecordAccessor& value) {
+        // No actual changes, just a dummy filler to implement resplit
+        ValueType* new_value = Sto::tx_alloc<ValueType>();
+        value.copy_into(new_value);
+        table.update_row(row, new_value);
+    }
+
     static void PopulateTable(IndexType& table) {
         for (auto key1 = KeyType::key_1_min;
              key1 <= std::min(KeyType::key_1_min + 499, KeyType::key_1_max);
@@ -135,8 +142,8 @@ void Tester<Ordered>::ResplittingTest() {
 
         {
             auto [success, found, row, value] = table.select_row(KeyType(1, 1), {
-                    {nc::label, AccessType::read},
-                    {nc::flagged, AccessType::read},
+                    {nc::label, AccessType::update},
+                    {nc::flagged, AccessType::update},
                     }, 1);
             assert(success);
             assert(found);
@@ -145,6 +152,8 @@ void Tester<Ordered>::ResplittingTest() {
             assert(value.label() == "default");
             assert(!value.flagged());
             assert(value.splitindex_ == 0);
+
+            NullUpdate(table, row, value);
         }
 
         TestTransaction t2(2);
@@ -169,23 +178,26 @@ void Tester<Ordered>::ResplittingTest() {
 
         assert(t2.try_commit());
 
-        assert(!t1.try_commit());  // Aborts, should now set the new split
+        assert(!t1.try_commit());  // Aborts, should now set the new target split
     }
 
     {
         TestTransaction t1(1);
 
         auto [success, found, row, value] = table.select_row(KeyType(1, 1), {
-                {nc::label, AccessType::read},
-                {nc::flagged, AccessType::read},
+                {nc::label, AccessType::update},
+                {nc::flagged, AccessType::update},
                 });
         assert(success);
         assert(found);
-        (void) row;
         assert(value);
         assert(value.data(0) == 3);
         assert(value.data(1) == 1);
         assert(value.splitindex_ == 1);
+
+        NullUpdate(table, row, value);
+
+        assert(t1.try_commit());
     }
 
     {
