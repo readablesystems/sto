@@ -201,6 +201,36 @@ struct SplitPolicy<0> {
     }
 };
 
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 0, 1, 1, 1, 1 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    inline static constexpr size_t cell_col_count(int cell) {
+        if (cell == 0) {
+            return 1;
+        }
+        if (cell == 1) {
+            return 4;
+        }
+        return 0;
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(example_row* dest, example_row* src) {
+        if constexpr(Cell == 0) {
+            dest->d_ytd = src->d_ytd;
+        }
+        if constexpr(Cell == 1) {
+            dest->d_payment_cnt = src->d_payment_cnt;
+            dest->d_date = src->d_date;
+            dest->d_tax = src->d_tax;
+            dest->d_next_oid = src->d_next_oid;
+        }
+    }
+};
+
 class RecordAccessor {
 public:
     using NamedColumn = example_row_datatypes::NamedColumn;
@@ -210,10 +240,10 @@ public:
     //template <NamedColumn Column>
     //using ValueAccessor = ::sto::adapter::ValueAccessor<accessor_info<Column>>;
     using ValueType = example_row;
-    static constexpr auto DEFAULT_SPLIT = 0;
+    static constexpr auto DEFAULT_SPLIT = 1;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICIES = 1;
+    static constexpr auto POLICIES = 2;
 
     RecordAccessor() = default;
     template <typename... T>
@@ -238,12 +268,18 @@ public:
         if constexpr (Index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
         }
+        if constexpr (Index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
         return 0;
     }
 
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
+        }
+        if (index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
         }
         return 0;
     }
@@ -259,6 +295,10 @@ public:
                 SplitPolicy<Index>::template copy_cell<0>(dest, src);
                 return;
             }
+            if (cell == 1) {
+                SplitPolicy<Index>::template copy_cell<1>(dest, src);
+                return;
+            }
         } else {
             (void) dest;
             (void) src;
@@ -270,17 +310,25 @@ public:
             copy_cell<0>(cell, dest, src);
             return;
         }
+        if (index == 1) {
+            copy_cell<1>(cell, dest, src);
+            return;
+        }
     }
 
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
         }
+        if (index == 1) {
+            return SplitPolicy<1>::cell_col_count(cell);
+        }
         return 0;
     }
 
     void copy_into(example_row* vptr, int index=0) {
         copy_cell(index, 0, vptr, vptrs_[0]);
+        copy_cell(index, 1, vptr, vptrs_[1]);
     }
 
     inline typename accessor_info<NamedColumn::ytd>::value_type& d_ytd() {

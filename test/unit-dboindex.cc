@@ -162,7 +162,7 @@ private:
 };
 
 template <>
-struct SplitParams<example_row> {
+struct SplitParams<example_row, true> {
     using split_type_list = std::tuple<example_row>;
     using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
     static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -196,7 +196,7 @@ struct SplitParams<example_row> {
 };
 
 template <typename A>
-class RecordAccessor<A, example_row> {
+class RecordAccessor<A, example_row, true> {
 public:
     const uint32_t& d_ytd() const {
         return impl().d_ytd_impl();
@@ -229,7 +229,7 @@ private:
 };
 
 template <>
-class UniRecordAccessor<example_row> : public RecordAccessor<UniRecordAccessor<example_row>, example_row> {
+class UniRecordAccessor<example_row, true> : public RecordAccessor<UniRecordAccessor<example_row, true>, example_row, true> {
 public:
     UniRecordAccessor(const example_row* const vptr) : vptr_(vptr) {}
 
@@ -265,11 +265,11 @@ private:
     }
 
     const example_row* vptr_;
-    friend RecordAccessor<UniRecordAccessor<example_row>, example_row>;
+    friend RecordAccessor<UniRecordAccessor<example_row, true>, example_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<example_row> : public RecordAccessor<SplitRecordAccessor<example_row>, example_row> {
+class SplitRecordAccessor<example_row, true> : public RecordAccessor<SplitRecordAccessor<example_row, true>, example_row, true> {
 public:
     static constexpr size_t num_splits = SplitParams<example_row>::num_splits;
 
@@ -309,13 +309,13 @@ private:
 
     const example_row* vptr_0_;
 
-    friend RecordAccessor<SplitRecordAccessor<example_row>, example_row>;
+    friend RecordAccessor<SplitRecordAccessor<example_row, true>, example_row, true>;
 };
 
 };  // namespace bench
 
 using CoarseIndex = bench::ordered_index<key_type, coarse_grained_row, db_params::db_default_params>;
-using FineIndex = bench::ordered_index<key_type, example_row, db_params::db_default_params>;
+using FineIndex = bench::ordered_index<key_type, example_row, db_params::db_default_sts_params>;
 using access_t = bench::access_t;
 using RowAccess = bench::RowAccess;
 
@@ -336,7 +336,7 @@ void init_findex(FineIndex& fi) {
     row.d_payment_cnt = 50;
 
     for (uint64_t i = 1; i <= 10; ++i)
-        fi.nontrans_put(key_type(i), row);
+        fi.nontrans_put(key_type(i), row, 1);
 }
 
 void test_coarse_basic() {
@@ -556,7 +556,6 @@ void test_fine_conflict1() {
             assert(t2.try_commit());
 
             t1.use();
-            printf("%u\n", value.d_ytd());
             assert(value.d_ytd() == 3000); // unspecified modifications are not installed
             assert(value.d_payment_cnt() == 51);
             assert(!t1.try_commit()); // not able to commit due to hierarchical versions

@@ -584,6 +584,7 @@ public:
             if (!version_adapter::select_for_update(row_item, e->version())) {
                 return del_abort;
             }
+            row_item.add_flags(row_update_bit);
             for (auto i = 0; i < value_container_type::NUM_VERSIONS; ++i) {
                 auto item = Sto::item(this, item_key_t(e, i));
                 if (!version_adapter::select_for_update(
@@ -1130,7 +1131,7 @@ public:
                         }
                     }
                     return true;
-                } else*/ 
+                } else*/
                 if (!h) {
                     return true;
                 }
