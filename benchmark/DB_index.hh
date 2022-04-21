@@ -294,7 +294,7 @@ public:
     template <typename T>
     static std::pair<bool, std::array<typename T::RecordAccessor::ValueType*, T::NUM_POINTERS>>
     mvcc_extract_and_access(
-            const std::array<typename T::access_type, T::NUM_VERSIONS>& accesses,
+            std::array<typename T::access_type, T::NUM_VERSIONS>& accesses,
             TObject *tobj, internal_elem *e, typename T::mvhistory_type* ancestor,
             typename T::SplitType& current_split,
             const typename T::SplitType& preferred_split) {
@@ -305,6 +305,66 @@ public:
         std::array<ValueType*, T::NUM_VERSIONS> values { nullptr };
         std::fill(values.begin(), values.end(), nullptr);
         auto& row = e->row_container.row;
+
+        std::array<typename T::mvhistory_type*, T::NUM_VERSIONS> histories = {};
+        std::fill(histories.begin(), histories.end(), nullptr);
+
+        if (commutators::CommAdapter::Properties<ValueType>::supports_cellsplit) {
+            printf("%d %d\n", commutators::CommAdapter::Properties<ValueType>::supports_cellsplit, T::NUM_VERSIONS > 1);
+        }
+        if constexpr (commutators::CommAdapter::Properties<ValueType>::supports_cellsplit && T::NUM_VERSIONS > 1) {
+            for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
+                if (current_split >= 0 &&
+                        !T::RecordAccessor::cell_col_count(current_split, i) &&
+                        ((accesses[i] & AccessType::read) != AccessType::none)) {
+                    // Skip cell if it's not part of the split at all
+                    continue;
+                }
+
+                // ancestor == null means start at the head
+                histories[i] = ancestor ?
+                    row.find_from(ancestor, Sto::read_tid(), i) :
+                    row.find(Sto::read_tid(), i);
+
+                /*
+                // current_split < 0 means fill it in automagically
+                if (current_split < 0) {
+                    current_split = histories[i]->get_split();
+                }
+                */
+
+                if (histories[i]->status_is(COMMITTED_DELTA)) {
+                    auto cell = 0;
+                    for (auto& req : histories[i]->c().required_cells(current_split)) {
+                        // Add read requirement to reference cells that weren't
+                        // explicitly selected
+                        if (req && ((accesses[cell] & AccessType::read) != AccessType::none)) {
+                            accesses[cell] = (accesses[cell] & AccessType::read);
+                        }
+                        ++cell;
+                    }
+                }
+            }
+
+            // Sweep through for any cells that we missed the first time around
+            for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
+                if (((accesses[i] & AccessType::read) != AccessType::none) || histories[i]) {
+                    continue;
+                }
+                assert(current_split >= 0);
+                assert(T::RecordAccessor::cell_col_count(current_split, i));
+                histories[i] = ancestor ?
+                    row.find_from(ancestor, Sto::read_tid(), i) :
+                    row.find(Sto::read_tid(), i);
+            }
+
+            // For DU, because a RESPLIT must be a non-DU version, we
+            // know that we will never have to recompute a resplit
+            // during flattening. This means that we just have to make
+            // sure that we are accessing the necessary cells based on
+            // the current split.
+            T::mvhistory_type::adaptive_flatten(Sto::read_tid(), histories);
+        }
 
         for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
             if (current_split >= 0 &&
@@ -321,14 +381,16 @@ public:
             }
 
             // ancestor == null means start at the head
-            auto* h = ancestor ?
+            auto* h = histories[i] ? histories[i] : (ancestor ?
                 row.find_from(ancestor, Sto::read_tid(), i) :
-                row.find(Sto::read_tid(), i);
+                row.find(Sto::read_tid(), i));
 
+            /*
             // current_split < 0 means fill it in automagically
             if (current_split < 0) {
                 current_split = h->get_split();
             }
+            */
 
             if (!h || h->status_is(COMMITTED_DELETED)) {
                 if ((accesses[i] & AccessType::read) != AccessType::none) {

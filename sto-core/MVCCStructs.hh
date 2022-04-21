@@ -94,6 +94,107 @@ public:
           prev_(), c_(std::move(c)), v_() {
     }
 
+private:
+    template <typename TT>
+    using Scaled = std::array<TT, Cells>;
+    template <class Function, class Iterable, typename... Args>
+    static constexpr void IterateOver(Iterable& container, Function&& func, Args&... args) {
+        IterateOver<0, Function, Iterable, Args...>(container, func, std::forward<Args*>(&args)...);
+    }
+    template <size_t Cell, class Function, class Iterable, typename... Args>
+    static constexpr void IterateOver(Iterable& container, Function& func, Args*... args) {
+        static_assert(Cell < Cells);
+        //printf("Iterating over cell %zu\n", Cell);
+        if (std::get<Cell>(container) != nullptr) {
+            func(Cell, std::get<Cell>(container), std::get<Cell>(*args)...);
+        }
+        if constexpr (Cell + 1 < Cells) {
+            IterateOver<Cell + 1, Function, Iterable, Args...>(
+                container, func, std::forward<Args*>(args)...);
+        }
+    }
+
+public:
+    // Initiate a multi-cell flattening procedure
+    static void adaptive_flatten(tid_type rtid, Scaled<history_type*> histories) {
+        // Current element is the one initiating the flattening here. It is not
+        // included in the trace, but it is included in the committed trace.
+        Scaled<history_type*> currs = histories;
+        Scaled<std::stack<history_type*>> traces;  // Of history elements to process
+        Scaled<T> values;
+
+        IterateOver(histories, [&](const size_t cell, auto& curr, auto& base, auto& trace, auto& value) {
+            while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
+                trace.push(curr);
+                curr = curr->prev();
+            }
+            TXP_INCREMENT(txp_mvcc_flat_versions);
+            value = curr->v_;
+            curr->update_rtid(base->wtid());
+        }, histories, traces, values);
+
+
+        /*
+        history_type* curr = this;
+        std::stack<history_type*> trace;  // Of history elements to process
+
+        while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
+            trace.push(curr);
+            curr = curr->prev();
+        }
+
+        TXP_INCREMENT(txp_mvcc_flat_versions);
+        T value {curr->v_};
+        tid_type safe_wtid = curr->wtid();
+        curr->update_rtid(this->wtid());
+
+        while (!trace.empty()) {
+            auto hnext = trace.top();
+
+            while (true) {
+                auto prev = hnext->prev();
+                if (prev->wtid() <= safe_wtid) {
+                    break;
+                }
+                trace.push(prev);
+                hnext = prev;
+            }
+
+            auto status = hnext->status();
+            hnext->wait_if_pending(status);
+            if (status & COMMITTED) {
+                hnext->update_rtid(this->wtid());
+                assert(!(status & DELETED));
+                if (status & DELTA) {
+                    hnext->c_.operate(value);
+                } else {
+                    value = hnext->v_;
+                }
+            }
+
+            trace.pop();
+            safe_wtid = hnext->wtid();
+        }
+
+        auto expected = COMMITTED_DELTA;
+        if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
+            v_ = value;
+            TXP_INCREMENT(txp_mvcc_flat_commits);
+            status(COMMITTED);
+            if (object()->is_inlined(this)) {
+                //
+                //printf("%p flatten enq %p tid %zu\n", object(), this, wtid());
+            }
+            enqueue_for_committed(__FILE__, __LINE__);
+            if (fg) {
+                object()->flattenv_.store(0, std::memory_order_relaxed);
+            }
+        } else {
+            TXP_INCREMENT(txp_mvcc_flat_spins);
+        }
+        */
+    }
+
 #if NDEBUG
     void assert_status(bool, const char*) {
     }
@@ -308,6 +409,10 @@ public:
             relax_fence();
             s = status();
         }
+    }
+
+    inline auto& c() {
+        return c_;
     }
 
     inline T& v() {
