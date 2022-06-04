@@ -301,6 +301,7 @@ public:
         static_assert(T::NUM_VERSIONS == T::NUM_POINTERS);
         using AccessType = typename T::access_type;
         using ValueType = typename T::RecordAccessor::ValueType;
+        using tid_type = typename T::mvhistory_type::tid_type;
         bool any_accessed = false;
         std::array<ValueType*, T::NUM_VERSIONS> values { nullptr };
         std::fill(values.begin(), values.end(), nullptr);
@@ -309,14 +310,16 @@ public:
         std::array<typename T::mvhistory_type*, T::NUM_VERSIONS> histories = {};
         std::fill(histories.begin(), histories.end(), nullptr);
 
-        if (commutators::CommAdapter::Properties<ValueType>::supports_cellsplit) {
-            printf("%d %d\n", commutators::CommAdapter::Properties<ValueType>::supports_cellsplit, T::NUM_VERSIONS > 1);
-        }
+        std::array<bool, T::NUM_VERSIONS> required = {false};
+        std::fill(required.begin(), required.end(), false);
+        tid_type required_tid = 0;  // TID to flatten at, which might not be the
+                                    // transaction tid for secondary references
+
         if constexpr (commutators::CommAdapter::Properties<ValueType>::supports_cellsplit && T::NUM_VERSIONS > 1) {
             for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
-                if (current_split >= 0 &&
-                        !T::RecordAccessor::cell_col_count(current_split, i) &&
-                        ((accesses[i] & AccessType::read) != AccessType::none)) {
+                if (current_split < 0 ||
+                        !T::RecordAccessor::cell_col_count(current_split, i) ||
+                        ((accesses[i] & AccessType::read) == AccessType::none)) {
                     // Skip cell if it's not part of the split at all
                     continue;
                 }
@@ -335,27 +338,38 @@ public:
 
                 if (histories[i]->status_is(COMMITTED_DELTA)) {
                     auto cell = 0;
-                    for (auto& req : histories[i]->c().required_cells(current_split)) {
-                        // Add read requirement to reference cells that weren't
-                        // explicitly selected
-                        if (req && ((accesses[cell] & AccessType::read) != AccessType::none)) {
-                            accesses[cell] = (accesses[cell] & AccessType::read);
+                    const auto reqs = histories[i]->c().required_cells(current_split);
+                    for (auto& req : reqs) {
+                        // Tag secondary reference cells
+                        if (req && ((accesses[cell] & AccessType::read) == AccessType::none)) {
+                            required[cell] = true;
+                            //return {false, values};
+                            //while (true);
                         }
                         ++cell;
                     }
+                    required_tid = std::max(required_tid, histories[i]->wtid());
                 }
             }
 
-            // Sweep through for any cells that we missed the first time around
+            // Sweep through secondary reference cells
             for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
-                if (((accesses[i] & AccessType::read) != AccessType::none) || histories[i]) {
+                if (!required[i]) {
                     continue;
                 }
+                assert((accesses[i] & AccessType::read) == AccessType::none);
                 assert(current_split >= 0);
                 assert(T::RecordAccessor::cell_col_count(current_split, i));
+                // Add read requirement to reference cells that weren't
+                // explicitly selected
+                accesses[i] = (accesses[i] & AccessType::read);
+                if (histories[i]) {
+                    continue;
+                }
                 histories[i] = ancestor ?
-                    row.find_from(ancestor, Sto::read_tid(), i) :
-                    row.find(Sto::read_tid(), i);
+                    row.find_from(ancestor, required_tid, i) :
+                    row.find(required_tid, i);
+                //fprintf(stderr, "Finding version in cell %d\n", i);
             }
 
             // For DU, because a RESPLIT must be a non-DU version, we
@@ -363,7 +377,7 @@ public:
             // during flattening. This means that we just have to make
             // sure that we are accessing the necessary cells based on
             // the current split.
-            T::mvhistory_type::adaptive_flatten(Sto::read_tid(), histories);
+            T::mvhistory_type::adaptive_flatten(required_tid, histories);
         }
 
         for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
@@ -404,8 +418,12 @@ public:
                 } else {
                     MvAccess::template store_read<ValueType>(item, h);
                 }
+                if (required[i] && required_tid) {
+                    item.item().access_tid(required_tid);
+                }
 
                 if (h) {
+                    //fprintf(stderr, "%d %p Seeking value for %p cell %zu\n", TThread::id(), h->object(), h, i);
                     auto vp = h->vp();
                     assert(vp);
                     values[i] = vp;

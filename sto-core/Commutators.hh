@@ -55,6 +55,7 @@ private:
     //    return false;
     //}
 
+    template <typename T> using has_record_accessor_t = typename T::RecordAccessor;
     template <typename T> using has_cell_split_t = typename Commutator<T>::supports_cellsplit;
     //template <typename T> using has_cell_split_t = decltype(&Commutator<T>::required_cells);
 
@@ -67,6 +68,8 @@ private:
 public:
     template <typename T>
     struct Properties {
+        static constexpr bool has_record_accessor =
+            std::experimental::is_detected_v<has_record_accessor_t, T>;
         //static constexpr bool supports_cellsplit = sizeof(CellSplit<Commutator<T>>());
         static constexpr bool supports_cellsplit =
             std::experimental::is_detected_v<has_cell_split_t, T>;
@@ -80,7 +83,11 @@ public:
         std::array<bool, accessor::MAX_SPLITS> cells {};
         std::fill(cells.begin(), cells.end(), false);
 
-        printf("Checking required cells with split %d\n", split);
+        /*
+        if (split != 0) {
+            printf("Checking required cells with split %d\n", split);
+        }
+        */
 
         // Shortcut for split-0
         if (split == 0) {

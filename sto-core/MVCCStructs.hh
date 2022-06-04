@@ -13,29 +13,38 @@
 
 // Status types of MvHistory elements
 enum MvStatus {
-    UNUSED                  = 0b0'0000'0000'0000,
-    ABORTED                 = 0b0'0000'0010'0000,
-    ABORTED_RV              = 0b0'0001'0010'0000,
-    ABORTED_WV1             = 0b0'0010'0010'0000,
-    ABORTED_WV2             = 0b0'0011'0010'0000,
-    ABORTED_TXNV            = 0b0'0100'0010'0000,
-    ABORTED_POISON          = 0b0'0101'0010'0000,
-    DELTA                   = 0b0'0000'0000'1000,  // Commutative update delta
-    POISONED                = 0b0'1000'0000'0000,  // Standalone poison bit
-    DELETED                 = 0b0'0000'0000'0001,  // Not a valid state on its own, but defined as a flag
-    RESPLIT                 = 0b1'0000'0000'0000,  // This version signals a resplit
-    PENDING                 = 0b0'0000'0000'0010,
-    COMMITTED               = 0b0'0000'0000'0100,
-    PENDING_DELTA           = 0b0'0000'0000'1010,
-    COMMITTED_DELTA         = 0b0'0000'0000'1100,
-    PENDING_DELETED         = 0b0'0000'0000'0011,
-    COMMITTED_DELETED       = 0b0'0000'0000'0101,
-    PENDING_RESPLIT         = 0b1'0000'0000'0010,
-    COMMITTED_RESPLIT       = 0b1'0000'0000'0100,
-    LOCKED                  = 0b0'0000'0001'0000,
-    LOCKED_COMMITTED_DELTA  = 0b0'0000'0001'1100,  // Converting from delta to flattened
-    GARBAGE                 = 0b0'0000'0100'0000,
-    GARBAGE2                = 0b0'0000'1000'0000,
+    // Single-bit states first, sorted by bit index
+    UNUSED                         = 0b0'0000'0000'0000,
+    DELETED                        = 0b0'0000'0000'0001,  // Not a valid state on its own, but defined as a flag
+    PENDING                        = 0b0'0000'0000'0010,
+    COMMITTED                      = 0b0'0000'0000'0100,
+    DELTA                          = 0b0'0000'0000'1000,  // Commutative update delta
+    LOCKED                         = 0b0'0000'0001'0000,
+    ABORTED                        = 0b0'0000'0010'0000,
+    GARBAGE                        = 0b0'0000'0100'0000,
+    GARBAGE2                       = 0b0'0000'1000'0000,
+    POISONED                       = 0b0'1000'0000'0000,  // Standalone poison bit
+    RESPLIT                        = 0b1'0000'0000'0000,  // This version signals a resplit
+
+    // Multi-bit states
+    ABORTED_RV                     = 0b0'0001'0010'0000,
+    ABORTED_WV1                    = 0b0'0010'0010'0000,
+    ABORTED_WV2                    = 0b0'0011'0010'0000,
+    ABORTED_TXNV                   = 0b0'0100'0010'0000,
+    ABORTED_POISON                 = 0b0'0101'0010'0000,
+    PENDING_DELTA                  = 0b0'0000'0000'1010,
+    COMMITTED_DELTA                = 0b0'0000'0000'1100,
+    PENDING_DELETED                = 0b0'0000'0000'0011,
+    COMMITTED_DELETED              = 0b0'0000'0000'0101,
+    PENDING_RESPLIT                = 0b1'0000'0000'0010,
+    COMMITTED_RESPLIT              = 0b1'0000'0000'0100,
+    RESPLIT_DELTA                  = 0b1'0000'0000'1000,
+    LOCKED_DELTA                   = 0b0'0000'0001'1000,
+    LOCKED_COMMITTED_DELTA         = 0b0'0000'0001'1100,  // Converting from delta to flattened
+    PENDING_RESPLIT_DELTA          = 0b1'0000'0000'1010,
+    COMMITTED_RESPLIT_DELTA        = 0b1'0000'0000'1100,
+    LOCKED_PENDING_RESPLIT_DELTA   = 0b1'0000'0001'1010,
+    LOCKED_COMMITTED_RESPLIT_DELTA = 0b1'0000'0001'1100,
 };
 
 std::ostream& operator<<(std::ostream& w, MvStatus s);
@@ -105,9 +114,7 @@ private:
     static constexpr void IterateOver(Iterable& container, Function& func, Args*... args) {
         static_assert(Cell < Cells);
         //printf("Iterating over cell %zu\n", Cell);
-        if (std::get<Cell>(container) != nullptr) {
-            func(Cell, std::get<Cell>(container), std::get<Cell>(*args)...);
-        }
+        func(Cell, std::get<Cell>(container), std::get<Cell>(*args)...);
         if constexpr (Cell + 1 < Cells) {
             IterateOver<Cell + 1, Function, Iterable, Args...>(
                 container, func, std::forward<Args*>(args)...);
@@ -116,83 +123,149 @@ private:
 
 public:
     // Initiate a multi-cell flattening procedure
-    static void adaptive_flatten(tid_type rtid, Scaled<history_type*> histories) {
+    static void adaptive_flatten(tid_type, Scaled<history_type*> histories) {
+        using RecordAccessor = typename T::RecordAccessor;
         // Current element is the one initiating the flattening here. It is not
         // included in the trace, but it is included in the committed trace.
-        Scaled<history_type*> currs = histories;
         Scaled<std::stack<history_type*>> traces;  // Of history elements to process
-        Scaled<T> values;
+        Scaled<tid_type> safe_wtids {};
+        T value {};
+        ssize_t traces_left = 0;
 
-        IterateOver(histories, [&](const size_t cell, auto& curr, auto& base, auto& trace, auto& value) {
+        IterateOver(histories, [&](const size_t cell, auto& base, auto& trace, auto& safe) {
+            if (!base) {
+                return;
+            }
+            auto status = base->status_.load(std::memory_order_relaxed);
+            base->assert_status(!(status & ABORTED), "Adaptive flatten cannot happen on aborted versions.");
+            if ((status & COMMITTED_DELTA) == COMMITTED_DELTA) {
+                if (status & LOCKED) {
+                    while (!base->status_is(COMMITTED_DELTA, COMMITTED));
+                }
+            }
+            history_type* curr = base;
             while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
                 trace.push(curr);
-                curr = curr->prev();
+                curr = curr->prev(cell);
             }
             TXP_INCREMENT(txp_mvcc_flat_versions);
-            value = curr->v_;
+            RecordAccessor::copy_cell(curr->split(), cell, &value, &curr->v_);
+            safe = curr->wtid();
             curr->update_rtid(base->wtid());
-        }, histories, traces, values);
+            if (!trace.empty()) {
+                ++traces_left;
+            }
+        }, traces, safe_wtids);
 
-
-        /*
-        history_type* curr = this;
-        std::stack<history_type*> trace;  // Of history elements to process
-
-        while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
-            trace.push(curr);
-            curr = curr->prev();
-        }
-
-        TXP_INCREMENT(txp_mvcc_flat_versions);
-        T value {curr->v_};
-        tid_type safe_wtid = curr->wtid();
-        curr->update_rtid(this->wtid());
-
-        while (!trace.empty()) {
-            auto hnext = trace.top();
-
-            while (true) {
-                auto prev = hnext->prev();
-                if (prev->wtid() <= safe_wtid) {
-                    break;
+        while (traces_left) {
+            history_type* hnext = nullptr;
+            IterateOver(traces, [&](const size_t cell, auto& trace, auto& safe) {
+                if (trace.empty()) {
+                    return;
                 }
-                trace.push(prev);
-                hnext = prev;
-            }
-
-            auto status = hnext->status();
-            hnext->wait_if_pending(status);
-            if (status & COMMITTED) {
-                hnext->update_rtid(this->wtid());
-                assert(!(status & DELETED));
-                if (status & DELTA) {
-                    hnext->c_.operate(value);
-                } else {
-                    value = hnext->v_;
+                auto h = trace.top();
+                while (true) {
+                    auto prev = h->prev(cell);
+                    if (prev->wtid() <= safe) {
+                        break;
+                    }
+                    trace.push(prev);
+                    h = prev;
                 }
-            }
+                if (!hnext || h->wtid() < hnext->wtid()) {
+                    hnext = h;
+                }
+            }, safe_wtids);
 
-            trace.pop();
-            safe_wtid = hnext->wtid();
+            bool applied = false;
+            IterateOver(traces, [&](const size_t cell, auto& trace, auto& safe) {
+                if (trace.empty()) {
+                    return;
+                }
+                if (trace.top() != hnext) {
+                    return;
+                }
+                auto status = hnext->status();
+                if (hnext != histories[cell]) {
+                    hnext->wait_if_pending(status);
+                }
+                if (status & COMMITTED) {
+                    hnext->update_rtid(histories[cell]->wtid());
+                    assert(!(status & DELETED));
+                    if (status & DELTA) {
+                        if (!applied) {
+                            hnext->c_.operate(value);  // XXX: how do we order this part properly?
+                            applied = true;
+                        }
+                    } else {
+                        RecordAccessor::copy_cell(hnext->split(), cell, &value, &hnext->v_);
+                    }
+                }
+
+                trace.pop();
+                if (trace.empty()) {
+                    --traces_left;
+                }
+                safe = hnext->wtid();
+            }, safe_wtids);
         }
 
-        auto expected = COMMITTED_DELTA;
-        if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
-            v_ = value;
-            TXP_INCREMENT(txp_mvcc_flat_commits);
-            status(COMMITTED);
-            if (object()->is_inlined(this)) {
-                //
-                //printf("%p flatten enq %p tid %zu\n", object(), this, wtid());
+        IterateOver(histories, [&](const size_t, auto h) {
+            if (!h) {
+                return;
             }
-            enqueue_for_committed(__FILE__, __LINE__);
-            if (fg) {
-                object()->flattenv_.store(0, std::memory_order_relaxed);
+            auto status = h->status();
+            /*
+            auto expected = static_cast<MvStatus>((status & RESPLIT) ?
+                (RESPLIT_DELTA | ((status & PENDING) ? PENDING : COMMITTED)) :
+                COMMITTED_DELTA);
+            */
+            auto expected = static_cast<MvStatus>((status & RESPLIT) | COMMITTED_DELTA);
+            auto desired = static_cast<MvStatus>(LOCKED | expected);
+            //printf("%d %p Adaptively flattening %p with status %x expecting %x\n", TThread::id(), h->object(), h, h->status(), expected);
+            if (h->status_.compare_exchange_strong(expected, desired)) {
+#if !NDEBUG
+                h->metadata.flatten_thread = TThread::id();
+#endif
+                h->v_ = value;
+                TXP_INCREMENT(txp_mvcc_flat_commits);
+                h->status(status & ~LOCKED_DELTA);
+                if (h->object()->is_inlined(h)) {
+                    //
+                    //printf("%p flatten enq %p tid %zu\n", object(), this, wtid());
+                }
+                assert((status & PENDING_RESPLIT) != PENDING_RESPLIT);
+                h->enqueue_for_committed(__FILE__, __LINE__);
+                //if (fg) {
+                h->object()->flattenv_.store(0, std::memory_order_relaxed);
+                //}
+            } else {
+                //printf("%d %p Flattening lock failed %p with status %x\n", TThread::id(), h->object(), h, expected);
+                TXP_INCREMENT(txp_mvcc_flat_spins);
+                while ( !h->status_is(COMMITTED_DELTA, COMMITTED)/* &&
+                        !h->status_is(RESPLIT_DELTA, RESPLIT)*/);
             }
-        } else {
-            TXP_INCREMENT(txp_mvcc_flat_spins);
+        });
+    }
+
+    void adaptive_flatten_pending(tid_type tid) {
+        assert(status_is(PENDING));
+        std::array<history_type*, Cells> histories;
+        std::fill(histories.begin(), histories.end(), nullptr);
+        for (size_t cell = 0; cell < Cells; ++cell) {
+            history_type* h = prev(cell);
+            if (h) {
+                histories[cell] = object()->find_from(h, tid, cell);
+            }
         }
-        */
+        history_type::adaptive_flatten(tid, histories);
+        for (size_t cell = 0; cell < Cells; ++cell) {
+            if (histories[cell]) {
+                assert(histories[cell] == object()->find_from(this->prev(cell), tid, cell));
+                T::RecordAccessor::copy_cell(histories[cell]->split(), cell, &v_, &histories[cell]->v_);
+            }
+        }
+        c_.operate(v_);
     }
 
 #if NDEBUG
@@ -216,7 +289,7 @@ public:
     // Whether this version can be late-inserted in front of hnext
     bool can_precede(const history_type* hnext) const {
         return (!this->status_is(DELETED) || !hnext->status_is(DELTA)) &&
-            !this->status_is(RESPLIT);
+            (!this->status_is(RESPLIT) || hnext->status_is(PENDING));
     }
 
     bool can_precede_anything() const {
@@ -228,7 +301,8 @@ public:
         //printf("%p committed enq %p tid %zu %s:%d\n", object(), this, wtid(), file, line);
         (void) file;
         (void) line;
-        assert_status((status() & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
+        auto s = status();
+        assert_status((s & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
         Transaction::rcu_call(gc_committed_cb, this);
     }
 
@@ -253,15 +327,16 @@ public:
         return reinterpret_cast<history_type*>(prev_[cell].load());
     }
 
-    void print_prevs(size_t max=1000, size_t cell=0) const {
+    void print_prevs(size_t max=1000, size_t cell=0, std::FILE* stream=stderr) const {
         auto h = this;
         for (size_t i = 0;
              h && i < max;
              ++i, h = h->prev_relaxed(cell)) {
-            fprintf(stderr, "%zu.%zu. %p%s %s W%zu R%zu\n", cell, i, (void*)h,
+            fprintf(stream, "%zu.%zu. %p%s %s W%zu R%zu SP%d\n", cell, i, (void*)h,
                     h->object()->is_inlined(h) ? " INLINE" : "",
                     mvstatus::stringof(h->status_.load(std::memory_order_relaxed)).c_str(),
-                    h->wtid_, h->rtid_.load(std::memory_order_relaxed));
+                    h->wtid_, h->rtid_.load(std::memory_order_relaxed),
+                    h->split_.load(std::memory_order_relaxed));
         }
     }
 
@@ -424,6 +499,7 @@ public:
 
     inline T* vp() {
         if (status_is(DELTA)) {
+            //printf("%d %p Calling flatten to resolve value %p\n", TThread::id(), object(), this);
             enflatten();
         }
         return &v_;
@@ -528,6 +604,11 @@ private:
 
     // Initializes the flattening process
     inline void enflatten() {
+        if constexpr (commutators::CommAdapter::Properties<T>::has_record_accessor) {
+            //printf("Using adaptive flatten subroutine.\n");
+            adaptive_flatten(Sto::read_tid(), {this});
+            return;
+        }
         int s = status_.load(std::memory_order_relaxed);
         assert_status(!(s & ABORTED), "enflatten not aborted");
         if ((s & COMMITTED_DELTA) == COMMITTED_DELTA) {
@@ -550,9 +631,14 @@ private:
         history_type* curr = this;
         std::stack<history_type*> trace;  // Of history elements to process
 
+        //printf("%d %p Flattening %p with status %x\n", TThread::id(), object(), this, old_status);
+
         while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
             trace.push(curr);
             curr = curr->prev();
+            if (!curr) {
+                //printf("%d %p Flattening error %p with status %x\n", TThread::id(), object(), curr, old_status);
+            }
         }
 
         TXP_INCREMENT(txp_mvcc_flat_versions);
@@ -590,6 +676,9 @@ private:
 
         auto expected = COMMITTED_DELTA;
         if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
+#if !NDEBUG
+            metadata.flatten_thread = TThread::id();
+#endif
             v_ = value;
             TXP_INCREMENT(txp_mvcc_flat_commits);
             status(COMMITTED);
@@ -609,6 +698,14 @@ private:
     std::array<std::atomic<MvHistoryBase*>, Cells> prev_;
     comm_type c_;
     T v_;
+
+#if !NDEBUG
+    struct metadata_t_ {
+        int creator_thread = TThread::id();
+        int flatten_thread = -1;
+    };
+    metadata_t_ metadata;
+#endif
 
     friend class MvObject<T, Cells>;
 };
@@ -723,13 +820,31 @@ public:
         while (true) {
             // Discover target atomic on which to do CAS
             base_type* t = *target;
+            int aborts = 0;
             if (t->wtid_ > tid) {
                 if (may_commute && !hw->can_precede(reinterpret_cast<history_type*>(t))) {
+                    Sto::transaction()->mark_abort_because(
+                            nullptr, "MVCC Lock: Invalid DU reordering.",
+                            0, __FILE__, __LINE__, __FUNCTION__);
                     return false;
+                }
+                if (t->status_.load(std::memory_order_acquire) & ABORTED) {
+                    ++aborts;
+                } else {
+                    aborts = 0;
+                }
+                if (TThread::id() == 0 && aborts > 0) {
+                    printf("Aborts: %d\n", aborts);
+                }
+                if (aborts > 15) {
+                    fprintf(stdout, "Thread %d encountered abort slide!\n", TThread::id());
                 }
                 target = &reinterpret_cast<history_type*>(t)->prev_[cell];
             } else if (!(t->status_.load(std::memory_order_acquire) & ABORTED)
                        && t->rtid_.load(std::memory_order_acquire) > tid) {
+                Sto::transaction()->mark_abort_because(
+                        nullptr, "MVCC Lock: Predecessor RTID higher than this WTID.",
+                        0, __FILE__, __LINE__, __FUNCTION__);
                 return false;
             } else {
                 // Properly link h's prev_
@@ -748,6 +863,9 @@ public:
             for (history_type* h = head(cell); h != hw; h = h->prev(cell)) {
                 if (!hw->can_precede(h)) {
                     hw->status_abort(ABORTED_WV1);
+                    Sto::transaction()->mark_abort_because(
+                            nullptr, "MVCC Lock: Write version consistency check #1.",
+                            0, __FILE__, __LINE__, __FUNCTION__);
                     return false;
                 }
             }
@@ -759,6 +877,12 @@ public:
             if ((may_commute && !h->can_precede(hw))
                 || (h->status_is(COMMITTED) && h->rtid() > tid)) {
                 hw->status_abort(ABORTED_WV2);
+                std::ostringstream reason;
+                reason << "MVCC Lock: Write version consistency check #2 on cell "
+                       << cell;
+                Sto::transaction()->mark_abort_because(
+                        nullptr, reason.str(),
+                        0, __FILE__, __LINE__, __FUNCTION__);
                 return false;
             }
             if (h->status_is(COMMITTED)) {
@@ -770,6 +894,9 @@ public:
             return true;
         } else {
             hw->status_abort(ABORTED_POISON);
+            Sto::transaction()->mark_abort_because(
+                    nullptr, "MVCC Lock: Poisoned version",
+                    0, __FILE__, __LINE__, __FUNCTION__);
             return false;
         }
     }
@@ -786,6 +913,12 @@ public:
         // Read version consistency check
         for (history_type* h = head(cell); h != hr; h = h->prev(cell)) {
             if (!h->status_is(ABORTED) && h->wtid() < tid) {
+                /*
+                fprintf(stdout, "%p aborting %p @ %zu cell %zu at %p with status %x tid %zu/%zu\n", this, hr, hr->wtid(), cell, h, h->status(), h->wtid(), tid);
+                for (size_t cell = 0; cell < Cells; ++cell) {
+                    head(cell)->print_prevs(5, cell, stdout);
+                }
+                */
                 return false;
             }
         }
@@ -901,9 +1034,11 @@ public:
         return reinterpret_cast<history_type*>(h_[cell].load(std::memory_order_acquire));
     }
 
+    /*
     history_type* headhs() const {
         return reinterpret_cast<history_type*>(hs_.load(std::memory_order_relaxed));
     }
+    */
 
     // Returns whether the given history element is the inlined version
     inline bool is_inlined(const history_type* h) const {
@@ -993,7 +1128,7 @@ protected:
     }
 
     std::array<std::atomic<base_type*>, Cells> h_;
-    std::atomic<base_type*> hs_;  // Split-changing shortchain
+    //std::atomic<base_type*> hs_;  // Split-changing shortchain
     std::atomic<int> cuctr_ = 0;  // For gc-time flattening
     std::atomic<tid_type> flattenv_;
 

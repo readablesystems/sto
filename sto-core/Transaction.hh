@@ -119,6 +119,9 @@
         __label__ abort_in_progress;              \
         __label__ try_commit;                     \
         __label__ after_commit;                   \
+        const char* __sto_abort_file = nullptr;   \
+        int __sto_abort_line = 0;                 \
+        const char* __sto_abort_function = nullptr; \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
             __txn_guard.start();
@@ -128,6 +131,9 @@
         __label__ abort_in_progress;              \
         __label__ try_commit;                     \
         __label__ after_commit;                   \
+        const char* __sto_abort_file = nullptr;   \
+        int __sto_abort_line = 0;                 \
+        const char* __sto_abort_function = nullptr; \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
             __txn_guard.start();                  \
@@ -136,10 +142,10 @@
 #define RETRY(retry)                              \
             goto try_commit;                      \
 abort_in_progress:                                \
-            __txn_guard.silent_abort();           \
+            __txn_guard.silent_abort(__sto_abort_file, __sto_abort_line, __sto_abort_function); \
             goto after_commit;                    \
 try_commit:                                       \
-            if (__txn_guard.try_commit())         \
+            if (__txn_guard.try_commit(__FILE__, __LINE__, __FUNCTION__))         \
                 break;                            \
 after_commit:                                     \
             if (!(retry)) {                       \
@@ -149,12 +155,19 @@ after_commit:                                     \
     } while (false)
 
 #define TXN_DO(trans_op)     \
-if (!(trans_op))             \
-    goto abort_in_progress
+if (!(trans_op)) {           \
+    __sto_abort_file = __FILE__;         \
+    __sto_abort_line = __LINE__;         \
+    __sto_abort_function = __FUNCTION__; \
+    goto abort_in_progress;  \
+}
 
 // Transaction wrapper implemented using exception handling
 #define TRANSACTION_E                             \
     do {                                          \
+        const char* __sto_abort_file = nullptr;   \
+        int __sto_abort_line = 0;                 \
+        const char* __sto_abort_function = nullptr; \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
             __txn_guard.start();                  \
@@ -162,6 +175,9 @@ if (!(trans_op))             \
 
 #define RWTRANSACTION_E                           \
     do {                                          \
+        const char* __sto_abort_file = nullptr;   \
+        int __sto_abort_line = 0;                 \
+        const char* __sto_abort_function = nullptr; \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
             __txn_guard.start();                  \
@@ -169,12 +185,12 @@ if (!(trans_op))             \
             try {
 
 #define RETRY_E(retry)                            \
-                if (__txn_guard.try_commit())     \
+                if (__txn_guard.try_commit(__FILE__, __LINE__, __FUNCTION__))     \
                     break;                        \
                 else                              \
                     throw Transaction::Abort();   \
             } catch (Transaction::Abort e) {      \
-                __txn_guard.silent_abort();       \
+                __txn_guard.silent_abort(__sto_abort_file, __sto_abort_line, __sto_abort_function); \
             }                                     \
             if (!(retry))                         \
                 throw Transaction::Abort();       \
@@ -182,7 +198,12 @@ if (!(trans_op))             \
     } while (false)
 
 #define TXN_DO_E(trans_op)      \
-if (!(trans_op)) {throw Transaction::Abort();}
+if (!(trans_op)) {              \
+    __sto_abort_file = __FILE__;         \
+    __sto_abort_line = __LINE__;         \
+    __sto_abort_function = __FUNCTION__; \
+    throw Transaction::Abort(); \
+}
 
 
 #if STO_USE_EXCEPTION
@@ -701,6 +722,9 @@ private:
         abort_item_ = nullptr;
         abort_reason_ = nullptr;
         abort_version_ = 0;
+        abort_file_ = nullptr;
+        abort_line_ = 0;
+        abort_function_ = nullptr;
 #endif
         TXP_INCREMENT(txp_total_starts);
         state_ = s_in_progress;
@@ -930,14 +954,40 @@ private:
 
 public:
 #if STO_DEBUG_ABORTS
-    void mark_abort_because(TransItem* item, const char* reason, TransactionTid::type version = 0) const {
-        abort_item_ = item;
-        abort_reason_ = reason;
-        if (version)
-            abort_version_ = version;
+    void mark_abort_because(
+            TransItem* item, const char* reason, TransactionTid::type version = 0,
+            const char* file = nullptr, const int line = 0, const char* function = nullptr) const {
+        if (!abort_item_) {
+            abort_item_ = item;
+        }
+        if (!abort_reason_) {
+            abort_reason_ = reason;
+        }
+        if (!abort_version_) {
+            if (version)
+                abort_version_ = version;
+        }
+        if (!abort_file_) {
+            if (file && line && function) {
+                abort_file_ = file;
+                abort_line_ = line;
+                abort_function_ = function;
+            }
+        }
+    }
+    void mark_abort_because(
+            TransItem* item, std::string reason, TransactionTid::type version = 0,
+            const char* file = nullptr, const int line = 0, const char* function = nullptr) const {
+        mark_abort_because(item, reason.c_str(), version, file, line, function);
     }
 #else
-    void mark_abort_because(TransItem*, const char*, TransactionTid::type = 0) const {
+    void mark_abort_because(
+            TransItem*, const char*, TransactionTid::type = 0,
+            const char* = nullptr, const int = 0, const char* = nullptr) const {
+    }
+    void mark_abort_because(
+            TransItem*, std::string, TransactionTid::type = 0,
+            const char* = nullptr, const int = 0, const char* = nullptr) const {
     }
 #endif
 
@@ -957,7 +1007,7 @@ public:
         //longjmp(env, 1);
     }
 
-    bool try_commit();
+    bool try_commit(const char* = nullptr, const int = 0, const char* = nullptr);
 
     void commit() {
         if (!try_commit())
@@ -1230,6 +1280,9 @@ private:
     mutable TransItem* abort_item_;
     mutable const char* abort_reason_;
     mutable tid_type abort_version_;
+    mutable const char* abort_file_;
+    mutable int abort_line_;
+    mutable const char* abort_function_;
 #endif
 #if STO_TSC_PROFILE
     mutable tc_counter_type start_tsc_;
@@ -1571,11 +1624,22 @@ class TransactionLoopGuard {
         Sto::start_transaction();
         next_restarted = true;
     }
-    void silent_abort() {
+    void silent_abort(
+#if STO_DEBUG_ABORTS
+            const char* file = nullptr, const int line = 0, const char* function = nullptr
+#else
+            const char* = nullptr, const int = 0, const char* = nullptr
+#endif
+            ) {
+#if STO_DEBUG_ABORTS
+        if (file && line && function) {
+            fprintf(stderr, "Aborting at %s:%d:%s\n", file, line, function);
+        }
+#endif
         TThread::txn->silent_abort();
     }
-    bool try_commit() {
-        return TThread::txn->in_progress() && TThread::txn->try_commit();
+    bool try_commit(const char* file = nullptr, const int line = 0, const char* function = nullptr) {
+        return TThread::txn->in_progress() && TThread::txn->try_commit(file, line, function);
     }
 
   private:

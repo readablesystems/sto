@@ -176,19 +176,22 @@ public:
         using nc = customer_value::NamedColumn;
         switch (op) {
             case OpType::Delivery: {
+                //fprintf(stderr, "Delivering instead\n");
                 return CommAdapter::required_cells<customer_value>({
                         nc::c_balance, nc::c_delivery_cnt}, split);
                 }
             case OpType::Payment: {
-                return CommAdapter::required_cells<customer_value>({
+                auto cells = CommAdapter::required_cells<customer_value>({
                         nc::c_balance, nc::c_payment_cnt, nc::c_ytd_payment,
                         nc::c_data}, split);
+                //fprintf(stderr, "%d %d %d\n", split, cells[0], cells[1]);
+                return cells;
                 }
             default:
                 break;
         }
         std::array<bool, customer_value::RecordAccessor::MAX_SPLITS> cells;
-        std::fill(cells.begin(), cells.end(), 0);
+        std::fill(cells.begin(), cells.end(), false);
         return cells;
     }
 

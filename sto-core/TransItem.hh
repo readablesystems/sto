@@ -51,10 +51,10 @@ class TransItem {
     static constexpr flags_type special_mask = owner_mask | cl_bit | read_bit | write_bit | lock_bit | predicate_bit | stash_bit | commute_bit | mvhistory_bit;
 
 
-    TransItem() : s_(), key_(), rdata_(), wdata_(), mode_(CCMode::none) {};
+    TransItem() : s_(), key_(), rdata_(), wdata_(), access_tid_(0), mode_(CCMode::none) {};
     TransItem(TObject* owner, void* k)
         : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k), rdata_(),
-          wdata_(), preferred_split_(-1), mode_(CCMode::none) {
+          wdata_(), preferred_split_(-1), access_tid_(0), mode_(CCMode::none) {
     }
 
     TObject* owner() const {
@@ -195,6 +195,15 @@ class TransItem {
         __rm_flags(TransItem::split_bit);
     }
 
+    template <typename T>
+    T access_tid() const {
+        return reinterpret_cast<T>(access_tid_);
+    }
+    template <typename T>
+    void access_tid(T tid) {
+        access_tid_ = reinterpret_cast<uint64_t>(tid);
+    }
+
     inline bool operator==(const TransItem& x) const {
         return same_item(x);
     }
@@ -290,6 +299,7 @@ private:
     void* wdata_;
     uintptr_t ts_origin_; // only used by TicToc
     int preferred_split_;
+    uint64_t access_tid_;  // Only used if nonzero
 
     CCMode mode_;
 

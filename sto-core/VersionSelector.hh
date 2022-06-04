@@ -296,9 +296,18 @@ public:
         std::array<AccessType, NUM_VERSIONS> split_accesses = {};
         std::fill(split_accesses.begin(), split_accesses.end(), AccessType::none);
 
+        bool any_write = false;
         for (auto colaccess : accesses) {
             const auto cell = split_of(split, colaccess.column);
             split_accesses[cell] |= colaccess.access;
+            if ((colaccess.access & AccessType::write) == AccessType::write) {
+                any_write = true;
+            }
+        }
+        if (any_write && split_pending()) {
+            for (auto& access : split_accesses) {
+                access |= AccessType::write;
+            }
         }
 
         return split_accesses;
@@ -398,8 +407,23 @@ public:
         return versions_[0];
     }
 
+    inline void finalize_split() {
+        auto target = target_splitindex_.load(std::memory_order_relaxed);
+        auto current = splitindex_.load(std::memory_order_relaxed);
+        if (target != current) {
+            splitindex_.compare_exchange_strong(current, target);
+        }
+    }
+
+    inline void finalize_split(const SplitType new_split) {
+        auto current = splitindex_.load(std::memory_order_relaxed);
+        if (new_split != current) {
+            splitindex_.compare_exchange_strong(current, new_split);
+        }
+    }
+
     inline bool set_split(const SplitType new_split) {
-        splitindex_.store(new_split, std::memory_order::memory_order_relaxed);
+        target_splitindex_.store(new_split, std::memory_order::memory_order_relaxed);
         //if (splitindex_ != new_split) {
         //    splitindex_ = new_split;
         //}
@@ -409,10 +433,23 @@ public:
         return true;
     }
 
+    inline bool split_pending() {
+        return split() != target_split();
+    }
+
     inline SplitType split() {
         if constexpr (UseATS) {
             return splitindex_.load(std::memory_order::memory_order_relaxed);
             //return splitindex_;
+        } else {
+            return DefaultSplit;
+        }
+    }
+
+    inline SplitType target_split() {
+        if constexpr (UseATS) {
+            return target_splitindex_.load(std::memory_order::memory_order_relaxed);
+            //return target_splitindex_;
         } else {
             return DefaultSplit;
         }
@@ -498,6 +535,7 @@ private:
     */
 
     std::atomic<SplitType> splitindex_ = {RecordAccessor::DEFAULT_SPLIT};
+    std::atomic<SplitType> target_splitindex_ = {RecordAccessor::DEFAULT_SPLIT};
     //SplitType splitindex_ = {};
     std::array<version_type, num_versions> versions_;
 };

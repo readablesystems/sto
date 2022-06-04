@@ -201,10 +201,14 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
     if (!committed) {
         TXP_INCREMENT(txp_total_aborts);
 #if STO_DEBUG_ABORTS
-        if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_ABORTS_FRACTION)) {
+        //if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_ABORTS_FRACTION)) {
+        if (true) { //threadid_ == 0) {
             std::ostringstream buf;
             buf << "$" << (threadid_ < 10 ? "0" : "") << threadid_;
             //    << " abort " << state_name(state_);
+            if (abort_file_ && abort_line_ && abort_function_) {
+                buf << " " << abort_file_ << ":" << abort_line_ << ":" << abort_function_;
+            }
             if (abort_reason_)
                 buf << " " << abort_reason_;
             buf << " tset_size_ = [" << tset_size_ << "]";
@@ -213,7 +217,9 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
             if (abort_version_)
                 buf << " V" << TVersion(abort_version_);
             buf << '\n';
-            std::cerr << buf.str();
+            //std::cerr << buf.str();
+            static std::ofstream ferr("f.txt", std::ios::trunc);
+            ferr << buf.str();
         }
 #endif
     }
@@ -332,7 +338,7 @@ unlock_all:
     //COZ_PROGRESS;
 }
 
-bool Transaction::try_commit() {
+bool Transaction::try_commit(const char* file, const int line, const char* function) {
 #if STO_TSC_PROFILE
     TimeKeeper<tc_commit> tk;
 #endif
@@ -386,7 +392,7 @@ bool Transaction::try_commit() {
                 state_ = s_committing_locked;
             }
             if (!it->needs_unlock() && !it->owner()->lock(*it, *this)) {
-                mark_abort_because(it, "commit lock");
+                mark_abort_because(it, "commit lock", 0, file, line, function);
                 goto abort;
             }
             it->__or_flags(TransItem::lock_bit);
@@ -408,7 +414,7 @@ bool Transaction::try_commit() {
         } else if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);
             if (!it->owner()->check_predicate(*it, *this, true)) {
-                mark_abort_because(it, "commit check_predicate");
+                mark_abort_because(it, "commit check_predicate", 0, file, line, function);
                 goto abort;
             }
         }
@@ -430,7 +436,7 @@ bool Transaction::try_commit() {
         for (auto it = writeset; it != writeset_end; ) {
             TransItem* me = &tset_[*it / tset_chunk][*it % tset_chunk];
             if (!me->owner()->lock(*me, *this)) {
-                mark_abort_because(me, "commit lock");
+                mark_abort_because(me, "commit lock", 0, file, line, function);
                 goto abort;
             }
             me->__or_flags(TransItem::lock_bit);
@@ -452,7 +458,7 @@ bool Transaction::try_commit() {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
-                mark_abort_because(it, "commit check");
+                mark_abort_because(it, "commit check", 0, file, line, function);
                 goto abort;
             }
         }

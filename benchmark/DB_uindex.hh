@@ -655,6 +655,10 @@ public:
                             Sto::commit_tid(), std::move(wval));
                     h->split(e->row_container.split());
                 }
+                if (hprev && hprev->split() != h->split()) {
+                    auto status = h->status();
+                    h->status(status | MvStatus::RESPLIT);
+                }
             } else {
                 auto wval = item.template raw_write_value<value_type*>();
                 if (h) {  /// XXX: what actually happens here?
@@ -673,6 +677,8 @@ public:
                     h->split(e->row_container.split());
                 }
                 if (hprev && hprev->split() != h->split()) {
+                    auto status = h->status();
+                    h->status(status | MvStatus::RESPLIT);
                     //printf("%p Resplitting %p %d to %p %d, cell %d\n", h->object(), hprev, hprev->split(), h, h->split(), key.cell_num());
                 }
             }
@@ -713,7 +719,12 @@ public:
                 if (!h) {
                     return true;
                 }
-                return e->row_container.row.cp_check(Sto::read_tid(), h, key.cell_num());
+                using tid_type = typename mvhistory_type::tid_type;
+                auto rtid = Sto::read_tid();
+                if (item.template access_tid<tid_type>()) {
+                    rtid = item.template access_tid<tid_type>();
+                }
+                return e->row_container.row.cp_check(rtid, h, key.cell_num());
             } else {
                 if (key.is_row_item())
                     return e->version().cp_check_version(txn, item);
@@ -734,6 +745,9 @@ public:
             if (h) {
                 //printf("%p installing %p cell %d\n", &e->row_container.row, h, key.cell_num());
                 if (h->status_is(MvStatus::PENDING)) {
+                    if (h->status_is(MvStatus::RESPLIT_DELTA)) {
+                        h->adaptive_flatten_pending(h->wtid());
+                    }
                     h->object()->cp_install(h);
                     if (has_delete(item)) {
                         Transaction::rcu_call(_mvcc_delete_callback, h);
@@ -775,6 +789,9 @@ public:
                         }
                     }
                 }
+                if constexpr (DBParams::UseATS) {
+                    e->row_container.finalize_split();
+                }
                 txn.set_version_unlock(e->version(), item);
             } else {
                 auto row_item = Sto::item(this, item_key_t::row_item_key(e));
@@ -809,7 +826,11 @@ public:
             internal_elem *e = key.internal_elem_ptr();
             auto preferred_split = item.preferred_split();
             if (preferred_split >= 0) {
-                e->row_container.set_split(preferred_split);
+                if constexpr (DBParams::MVCC) {
+                    e->row_container.finalize_split(preferred_split);
+                } else {
+                    e->row_container.set_split(preferred_split);
+                }
             }
             item.clear_preferred_split();
         }
