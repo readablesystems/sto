@@ -206,6 +206,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
             std::ostringstream buf;
             buf << "$" << (threadid_ < 10 ? "0" : "") << threadid_;
             //    << " abort " << state_name(state_);
+            buf << " TXN" << read_tid_;
             if (abort_file_ && abort_line_ && abort_function_) {
                 buf << " " << abort_file_ << ":" << abort_line_ << ":" << abort_function_;
             }
@@ -218,8 +219,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
                 buf << " V" << TVersion(abort_version_);
             buf << '\n';
             //std::cerr << buf.str();
-            static std::ofstream ferr("f.txt", std::ios::trunc);
-            ferr << buf.str();
+            Transaction::fprint(buf.str());
         }
 #endif
     }

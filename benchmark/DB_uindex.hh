@@ -634,7 +634,9 @@ public:
             MvAccess::get_read(TransProxy(txn, item), &hprev);
             if (item.has_read()) {
                 if (hprev && Sto::commit_tid() < hprev->rtid()) {
-                    TransProxy(txn, row_item).add_write(nullptr);
+                    if (!row_item.has_write()) {
+                        TransProxy(txn, row_item).add_write(nullptr);
+                    }
                     TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
                     return false;
                 }
@@ -689,6 +691,9 @@ public:
                 h->cells_.fetch_add(1, std::memory_order::memory_order_relaxed);
             }
             bool result = e->row_container.row.template cp_lock<DBParams::Commute>(Sto::commit_tid(), h, key.cell_num());
+            if (!result) {
+                Transaction::fprint("TX", Sto::read_tid(), " locking ", &e->row_container.row, " history ", h, " with status ", h->status(), ": result is ", result, "\n");
+            }
             if (!result && !new_history && !h->status_is(MvStatus::ABORTED)) {
                 e->row_container.row.delete_history(h);
                 TransProxy(txn, row_item).add_mvhistory(nullptr);
@@ -843,7 +848,14 @@ public:
                 if (item.has_mvhistory()) {
                     auto h = item.template write_value<mvhistory_type*>();
                     if (h) {
+                        Transaction::fprint(
+                                "TX", Sto::read_tid(), " abort for cell ", item.key<item_key_t>().cell_num(), item.key<item_key_t>().is_row_item() ? "[ROW ITEM] of " : " of ", &item.key<item_key_t>().internal_elem_ptr()->row_container.row,
+                                ": ", h, " with status ", h->status(), "\n");
                         h->status_txn_abort();
+                    } else {
+                        Transaction::fprint(
+                                "TX", Sto::read_tid(), " abort for cell ", item.key<item_key_t>().cell_num(), item.key<item_key_t>().is_row_item() ? "[ROW ITEM] of " : " of ", &item.key<item_key_t>().internal_elem_ptr()->row_container.row,
+                                ": nullptr\n");
                     }
                 }
                 /*

@@ -266,6 +266,10 @@ public:
             }
         }
         c_.operate(v_);
+        Transaction::fprint(
+            "This is ", this, ", with status ", status(), " and histories ",
+            histories[0], " and ", histories[1], "; prevs ", prev(0), " and ", prev(1), "\n");
+        status(status() & ~DELTA);
     }
 
 #if NDEBUG

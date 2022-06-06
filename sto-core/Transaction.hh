@@ -523,7 +523,40 @@ private:
     static std::atomic<tid_type> _RTID;
     static unsigned us_per_epoch;  // Defaults to 100ms
 public:
+    static std::ofstream& ferr() {
+        static std::ofstream ferr("log.txt", std::ios::trunc);
+        return ferr;
+    }
 
+#if STO_DEBUG_ABORTS
+    template <typename ...Args>
+    static std::ofstream& fprint(Args... args) {
+        std::ostringstream stream;
+        ferr() << fprints(stream, std::forward<Args>(args)...).str();
+        ferr().flush();
+        return ferr();
+    }
+
+private:
+    inline static std::ostringstream& fprints(std::ostringstream& stream) {
+        return stream;
+    }
+
+    template <typename Arg, typename ...Args>
+    inline static std::ostringstream& fprints(std::ostringstream& stream, Arg arg, Args... args) {
+        stream << arg;
+        fprints(stream, std::forward<Args>(args)...);
+        return stream;
+    }
+#else
+    template <typename ...Args>
+    inline static std::ofstream& fprint(Args...) {
+        static std::ofstream fnull("/dev/null");
+        return fnull;
+    }
+#endif
+
+public:
     static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
 
     static txp_counters txp_counters_combined() {
