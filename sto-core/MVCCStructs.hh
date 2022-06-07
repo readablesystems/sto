@@ -332,16 +332,33 @@ public:
     }
 
     void print_prevs(size_t max=1000, size_t cell=0, std::FILE* stream=stderr) const {
+        fprintf(stream, "%s", list_prevs(max, cell).c_str());
+    }
+
+    std::string list_prevs(size_t max, size_t cell) const {
+        std::ostringstream stream;
+        stream << "Thread " << TThread::id() << ", TX" << Sto::read_tid()
+               << "; obj " << object() << std::endl;
         auto h = this;
         for (size_t i = 0;
              h && i < max;
              ++i, h = h->prev_relaxed(cell)) {
+            stream << cell << "." << i << ". "
+                   << h << (h->object()->is_inlined(h) ? " INLINE " : " ")
+                   << mvstatus::stringof(h->status_.load(std::memory_order_relaxed))
+                   << " W" << h->wtid_
+                   << " R" << h->rtid_.load(std::memory_order_relaxed)
+                   << " SP" << h->split_.load(std::memory_order_relaxed)
+                   << std::endl;
+            /*
             fprintf(stream, "%zu.%zu. %p%s %s W%zu R%zu SP%d\n", cell, i, (void*)h,
                     h->object()->is_inlined(h) ? " INLINE" : "",
                     mvstatus::stringof(h->status_.load(std::memory_order_relaxed)).c_str(),
                     h->wtid_, h->rtid_.load(std::memory_order_relaxed),
                     h->split_.load(std::memory_order_relaxed));
+            */
         }
+        return stream.str();
     }
 
     // Returns the current rtid
@@ -515,6 +532,23 @@ public:
     }
 
 private:
+    bool check_consistency(size_t depth, size_t cell) {
+        for (history_type* h = this; depth > 0; --depth) {
+            if (!h) {
+                break;
+            }
+            auto prev = h->prev(cell);
+            if (!prev) {
+                break;
+            }
+            if (h->wtid_ <= prev->wtid_) {
+                return false;
+            }
+            h = prev;
+        }
+        return true;
+    }
+
     static void gc_committed_cb(void* ptr) {
         history_type* hptr = static_cast<history_type*>(ptr);
         //printf("%p gc cb on %p\n", hptr->object(), hptr);
@@ -824,28 +858,16 @@ public:
         while (true) {
             // Discover target atomic on which to do CAS
             base_type* t = *target;
-            int aborts = 0;
+            history_type* ht = reinterpret_cast<history_type*>(t);
             if (t->wtid_ > tid) {
-                if (may_commute && !hw->can_precede(reinterpret_cast<history_type*>(t))) {
+                if (may_commute && !hw->can_precede(ht)) {
                     Sto::transaction()->mark_abort_because(
                             nullptr, "MVCC Lock: Invalid DU reordering.",
                             0, __FILE__, __LINE__, __FUNCTION__);
                     return false;
                 }
-                if (t->status_.load(std::memory_order_acquire) & ABORTED) {
-                    ++aborts;
-                } else {
-                    aborts = 0;
-                }
-                if (TThread::id() == 0 && aborts > 0) {
-                    printf("Aborts: %d\n", aborts);
-                }
-                if (aborts > 15) {
-                    fprintf(stdout, "Thread %d encountered abort slide!\n", TThread::id());
-                }
-                target = &reinterpret_cast<history_type*>(t)->prev_[cell];
-            } else if (!(t->status_.load(std::memory_order_acquire) & ABORTED)
-                       && t->rtid_.load(std::memory_order_acquire) > tid) {
+                target = &ht->prev_[cell];
+            } else if (!ht->status_is(ABORTED) && ht->rtid() > tid) {
                 Sto::transaction()->mark_abort_because(
                         nullptr, "MVCC Lock: Predecessor RTID higher than this WTID.",
                         0, __FILE__, __LINE__, __FUNCTION__);
@@ -853,10 +875,22 @@ public:
             } else {
                 // Properly link h's prev_
                 assert(hw != t);
+                if (!ht->check_consistency(10, cell)) {
+                    Transaction::fprint("ht prevs:\n", ht->list_prevs(10, cell));
+                    while (true) wait_cycles(1000000);
+                }
                 hw->prev_[cell].store(t, std::memory_order_release);
+                if (!hw->check_consistency(10, cell)) {
+                    Transaction::fprint("hw prevs:\n", hw->list_prevs(10, cell));
+                    while (true) wait_cycles(1000000);
+                }
 
                 // Attempt to CAS onto the target
                 if (target->compare_exchange_strong(t, hw)) {
+                    if (!hw->check_consistency(10, cell)) {
+                        Transaction::fprint("hw prevs:\n", hw->list_prevs(10, cell));
+                        while (true) wait_cycles(1000000);
+                    }
                     break;
                 }
             }
@@ -917,6 +951,9 @@ public:
         // Read version consistency check
         for (history_type* h = head(cell); h != hr; h = h->prev(cell)) {
             if (!h->status_is(ABORTED) && h->wtid() < tid) {
+                Transaction::fprint(
+                        "hr: ", hr, "; h: ", h, "\n",
+                        hr->list_prevs(10, cell));
                 /*
                 fprintf(stdout, "%p aborting %p @ %zu cell %zu at %p with status %x tid %zu/%zu\n", this, hr, hr->wtid(), cell, h, h->status(), h->wtid(), tid);
                 for (size_t cell = 0; cell < Cells; ++cell) {

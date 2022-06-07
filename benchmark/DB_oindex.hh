@@ -1101,7 +1101,7 @@ public:
             if (!result) {
                 Transaction::fprint("TX", Sto::read_tid(), " locking ", &e->row_container.row, " history ", h, " with status ", h->status(), ": result is ", result, "\n");
             }
-            if (!result && !new_history && !h->status_is(MvStatus::ABORTED)) {
+            if (!result && new_history && !h->status_is(MvStatus::ABORTED)) {
                 e->row_container.row.delete_history(h);
                 TransProxy(txn, row_item).add_mvhistory(nullptr);
                 TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);

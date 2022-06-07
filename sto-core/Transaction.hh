@@ -523,14 +523,14 @@ private:
     static std::atomic<tid_type> _RTID;
     static unsigned us_per_epoch;  // Defaults to 100ms
 public:
-    static std::ofstream& ferr() {
+    inline static std::ofstream& ferr() {
         static std::ofstream ferr("log.txt", std::ios::trunc);
         return ferr;
     }
 
 #if STO_DEBUG_ABORTS
     template <typename ...Args>
-    static std::ofstream& fprint(Args... args) {
+    inline static std::ofstream& fprint(Args... args) {
         std::ostringstream stream;
         ferr() << fprints(stream, std::forward<Args>(args)...).str();
         ferr().flush();
@@ -753,7 +753,7 @@ private:
         buf_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
-        abort_reason_ = nullptr;
+        abort_reason_.clear();
         abort_version_ = 0;
         abort_file_ = nullptr;
         abort_line_ = 0;
@@ -993,8 +993,8 @@ public:
         if (!abort_item_) {
             abort_item_ = item;
         }
-        if (!abort_reason_) {
-            abort_reason_ = reason;
+        if (abort_reason_.empty()) {
+            abort_reason_.append(reason);
         }
         if (!abort_version_) {
             if (version)
@@ -1311,7 +1311,7 @@ private:
     mutable uint32_t lrng_state_;
 #if STO_DEBUG_ABORTS
     mutable TransItem* abort_item_;
-    mutable const char* abort_reason_;
+    mutable std::string abort_reason_;
     mutable tid_type abort_version_;
     mutable const char* abort_file_;
     mutable int abort_line_;

@@ -210,7 +210,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
             if (abort_file_ && abort_line_ && abort_function_) {
                 buf << " " << abort_file_ << ":" << abort_line_ << ":" << abort_function_;
             }
-            if (abort_reason_)
+            if (!abort_reason_.empty())
                 buf << " " << abort_reason_;
             buf << " tset_size_ = [" << tset_size_ << "]";
             if (abort_item_)
