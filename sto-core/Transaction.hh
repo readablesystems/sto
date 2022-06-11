@@ -51,6 +51,10 @@
 #define STO_DEBUG_ABORTS_FRACTION 0.001
 #endif
 
+#ifndef VERBOSE
+#define VERBOSE 0
+#endif
+
 #ifndef STO_SORT_WRITESET
 #define STO_SORT_WRITESET 0
 #endif
@@ -530,7 +534,7 @@ public:
         return ferr;
     }
 
-#if STO_DEBUG_ABORTS
+#if STO_DEBUG_ABORTS || (VERBOSE > 0)
     template <typename ...Args>
     inline static std::ofstream& fprint(Args... args) {
         std::ostringstream stream;

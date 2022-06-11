@@ -21,6 +21,10 @@
 #include "TBox.hh"
 #include "TMvBox.hh"
 
+#ifndef VERBOSE
+#define VERBOSE 0
+#endif
+
 namespace bench {
 
 class version_adapter {

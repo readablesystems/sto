@@ -1091,7 +1091,7 @@ public:
             }
             assert(h);
             bool result = e->row_container.row.template cp_lock<DBParams::Commute>(Sto::commit_tid(), h, key.cell_num());
-#if !NDEBUG
+#if VERBOSE > 0
             if (!result) {
                 Transaction::fprint(
                         "TX", Sto::read_tid(), " locking ", &e->row_container.row,
@@ -1309,14 +1309,14 @@ public:
                 if (item.has_mvhistory()) {
                     auto h = item.template write_value<mvhistory_type*>();
                     if (h) {
-#if !NDEBUG
+#if VERBOSE > 0
                         Transaction::fprint(
                                 "TX", Sto::read_tid(), " abort for cell ", item.key<item_key_t>().cell_num(), item.key<item_key_t>().is_row_item() ? "[ROW ITEM] of " : " of ", &item.key<item_key_t>().internal_elem_ptr()->row_container.row,
                                 ": ", h, " with status ", h->status(), "\n");
 #endif
                         h->status_txn_abort();
                     } else {
-#if !NDEBUG
+#if VERBOSE > 0
                         Transaction::fprint(
                                 "TX", Sto::read_tid(), " abort for cell ", item.key<item_key_t>().cell_num(), item.key<item_key_t>().is_row_item() ? "[ROW ITEM] of " : " of ", &item.key<item_key_t>().internal_elem_ptr()->row_container.row,
                                 ": nullptr\n");

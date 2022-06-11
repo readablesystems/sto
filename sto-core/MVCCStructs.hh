@@ -9,7 +9,11 @@
 #include "MVCCTypes.hh"
 #include "Transaction.hh"
 #include "TRcu.hh"
-#define MVCC_GARBAGE_DEBUG !NDEBUG
+
+#ifndef VERBOSE
+#define VERBOSE 0
+#endif
+#define MVCC_GARBAGE_DEBUG (!NDEBUG && (VERBOSE > 1))
 
 // Status types of MvHistory elements
 enum MvStatus {
@@ -224,7 +228,7 @@ public:
             auto desired = static_cast<MvStatus>(LOCKED | expected);
             //printf("%d %p Adaptively flattening %p with status %x expecting %x\n", TThread::id(), h->object(), h, h->status(), expected);
             if (h->status_.compare_exchange_strong(expected, desired)) {
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
                 Transaction::fprint(
                         h, " is being flattened with status ", expected,
                         " to status ", (status & ~LOCKED_DELTA), "\n");
@@ -273,7 +277,7 @@ public:
             }
         }
         c_.operate(v_);
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
         Transaction::fprint(
             "This is ", this, ", with status ", status(), " and histories ",
             histories[0], " and ", histories[1], "; prevs ", prev(0), " and ", prev(1), "\n");
@@ -310,14 +314,14 @@ public:
     }
 
     // Enqueues the deleted version for future cleanup
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
     inline void enqueue_for_committed(const char* file, const int line)
 #else
     inline void enqueue_for_committed(const char*, const int)
 #endif
     {
         //printf("%p committed enq %p tid %zu %s:%d\n", object(), this, wtid(), file, line);
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
         if constexpr (commutators::CommAdapter::Properties<T>::has_record_accessor) {
             Transaction::fprint(
                     "TX", Sto::read_tid(), " th", TThread::id(), " object ",
@@ -619,7 +623,7 @@ private:
                 assert(!expected || expected == older[cell]);
 
                 if (expected) {
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
                     auto before = older[cell]->cells_.fetch_add(-1, std::memory_order_relaxed);
                     Transaction::fprint(
                             "Precleared pointer from ", hptr, " to ", older[cell],
@@ -697,7 +701,7 @@ private:
                                     "Cleared pointer from ", h, " to ", older[ncell],
                                     " on cell ", ncell, ", ", kcount, " remaining \n");
                             */
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
                             auto before = older[ncell]->cells_.fetch_add(-1, std::memory_order_relaxed);
                             Transaction::fprint(
                                     "Cleared pointer from ", h, " to ", older[ncell],
@@ -736,6 +740,8 @@ private:
                 while (!(status & GARBAGE)
                        && h->status_.compare_exchange_weak(status, MvStatus(status | GARBAGE))) {
                 }
+#endif
+#if VERBOSE > 0
                 Transaction::fprint(
                         "Enqueuing gc for ", h, " with prevs ", h->prev(0), " and ", h->prev(1),
                         " after ", iterations, " iterations at ",
@@ -766,12 +772,16 @@ private:
 
     static void gc_deleted_cb(void* ptr) {
         history_type* h = static_cast<history_type*>(ptr);
-#if MVCC_GARBAGE_DEBUG
+#if MVCC_GARBAGE_DEBUG || (VERBOSE > 0)
         MvStatus status = h->status_.load(std::memory_order_relaxed);
+#endif
+#if MVCC_GARBAGE_DEBUG
         h->assert_status((status & GARBAGE), "gc_deleted_cb garbage");
         h->assert_status(!(status & GARBAGE2), "gc_deleted_cb garbage");
         bool ok = h->status_.compare_exchange_strong(status, MvStatus(status | GARBAGE2));
         assert(ok);
+#endif
+#if VERBOSE > 0
         Transaction::fprint(
                 "Thread ", TThread::id(), " intending to delete from ", h->object(),
                 " element: ", h, " status ", h->status(), "\n");
@@ -1020,14 +1030,14 @@ public:
             } else {
                 // Properly link h's prev_
                 assert(hw != t);
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
                 if (!ht->check_consistency(10, cell)) {
                     Transaction::fprint("ht prevs:\n", ht->list_prevs(10, cell));
                     while (true) wait_cycles(1000000);
                 }
 #endif
                 hw->prev_[cell].store(t, std::memory_order_release);
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
                 if (!hw->check_consistency(10, cell)) {
                     Transaction::fprint("hw prevs:\n", hw->list_prevs(10, cell));
                     while (true) wait_cycles(1000000);
@@ -1036,7 +1046,7 @@ public:
 
                 // Attempt to CAS onto the target
                 if (target->compare_exchange_strong(t, hw)) {
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
                     if (!hw->check_consistency(10, cell)) {
                         Transaction::fprint("hw prevs:\n", hw->list_prevs(10, cell));
                         while (true) wait_cycles(1000000);
@@ -1105,7 +1115,7 @@ public:
         // Read version consistency check
         for (history_type* h = head(cell); h != hr; h = h->prev(cell)) {
             if (!h->status_is(ABORTED) && h->wtid() < tid) {
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
                 Transaction::fprint(
                         "hr: ", hr, "; h: ", h, "\n",
                         hr->list_prevs(10, cell));
@@ -1156,7 +1166,7 @@ public:
     // This function should only be used to free history nodes that have NOT been
     // hooked into the version chain
     void delete_history(history_type* h) {
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
         Transaction::fprint(
                 "Thread ", TThread::id(), " deleting from ", this, " element: ",
                 h, " status ", h->status(),
@@ -1277,7 +1287,7 @@ public:
 #if MVCC_INLINING
         }
 #endif
-#if MVCC_GARBAGE_DEBUG
+#if VERBOSE > 0
         Transaction::fprint("Allocating ", h, " to ", this, "\n");
 #endif
         return h;
