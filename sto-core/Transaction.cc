@@ -218,8 +218,11 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
             if (abort_version_)
                 buf << " V" << TVersion(abort_version_);
             buf << '\n';
-            //std::cerr << buf.str();
+#if VERBOSE > 0
             Transaction::fprint(buf.str());
+#else
+            std::cerr << buf.str();
+#endif
         }
 #endif
     }
