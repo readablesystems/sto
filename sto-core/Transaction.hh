@@ -521,10 +521,12 @@ public:
 private:
     static std::atomic<tid_type> _TID;
     static std::atomic<tid_type> _RTID;
-    static unsigned us_per_epoch;  // Defaults to 100ms
+    static unsigned us_per_epoch;  // Defaults to 1s
 public:
     inline static std::ofstream& ferr() {
-        static std::ofstream ferr("log.txt", std::ios::trunc);
+        char ferrname[10];
+        snprintf(ferrname, 10, "log%02d.txt", TThread::id());
+        static __thread std::ofstream ferr(ferrname, std::ios::trunc);
         return ferr;
     }
 
@@ -532,7 +534,9 @@ public:
     template <typename ...Args>
     inline static std::ofstream& fprint(Args... args) {
         std::ostringstream stream;
-        ferr() << fprints(stream, std::forward<Args>(args)...).str();
+        ferr() << fprints(
+                stream, " ", global_epochs.global_epoch.load(std::memory_order_relaxed), " ",
+                std::forward<Args>(args)...).str();
         ferr().flush();
         return ferr();
     }

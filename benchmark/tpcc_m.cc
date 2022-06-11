@@ -15,4 +15,5 @@ int tpcc_m(int argc, char const* const* argv, db_split_type split) {
         return tpcc_access<db_mvcc_ats_params>::execute(argc, argv);
     }
     assert(false);
+    return 1;
 }

@@ -8,21 +8,6 @@ std::ostream& operator<<(std::ostream& w, MvStatus s) {
 
 namespace mvstatus {
 std::string stringof(MvStatus s) {
-    if (s & ABORTED) {
-        switch (s) {
-            case ABORTED:                return "ABORTED";
-            case ABORTED_RV:             return "ABORTED_RV";
-            case ABORTED_WV1:            return "ABORTED_WV1";
-            case ABORTED_WV2:            return "ABORTED_WV2";
-            case ABORTED_TXNV:           return "ABORTED_TXNV";
-            case ABORTED_POISON:         return "ABORTED_POISON";
-            default:
-                std::ostringstream status;
-                status << "MvStatus[" << (unsigned long)s << "]";
-                return status.str();
-        }
-    }
-
     bool empty = true;
     std::ostringstream status;
     std::array statuses  {UNUSED, DELETED, PENDING, COMMITTED, DELTA, LOCKED, GARBAGE, GARBAGE2, POISONED, RESPLIT};
@@ -34,6 +19,25 @@ std::string stringof(MvStatus s) {
             }
             status << statusstr[i];
             empty = false;
+            s = static_cast<MvStatus>(static_cast<unsigned>(s) & ~statuses[i]);
+        }
+    }
+
+    if (s & ABORTED) {
+        if (!empty) {
+            status << ' ';
+        }
+        switch (s) {
+            case ABORTED:                status << "ABORTED"; break;
+            case ABORTED_RV:             status << "ABORTED_RV"; break;
+            case ABORTED_WV1:            status << "ABORTED_WV1"; break;
+            case ABORTED_WV2:            status << "ABORTED_WV2"; break;
+            case ABORTED_TXNV:           status << "ABORTED_TXNV"; break;
+            case ABORTED_POISON:         status << "ABORTED_POISON"; break;
+            default:
+                std::ostringstream status;
+                status << "[" << (unsigned long)s << "]";
+                break;
         }
     }
 

@@ -32,6 +32,7 @@
 /hashtable_nostm
 /ht_mt
 /iterators
+/log*.txt
 /pqVsIt
 /ex-counter
 /unit-rcu

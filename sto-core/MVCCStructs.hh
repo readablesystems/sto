@@ -9,7 +9,7 @@
 #include "MVCCTypes.hh"
 #include "Transaction.hh"
 #include "TRcu.hh"
-#define MVCC_GARBAGE_DEBUG 1
+#define MVCC_GARBAGE_DEBUG !NDEBUG
 
 // Status types of MvHistory elements
 enum MvStatus {
@@ -58,7 +58,7 @@ public:
 
     MvHistoryBase() = delete;
     MvHistoryBase(void* obj, tid_type tid, MvStatus status)
-        : status_(status), wtid_(tid), rtid_(tid), obj_(obj), split_(0), cells_(1) {}
+        : status_(status), wtid_(tid), rtid_(tid), obj_(obj), split_(0), cells_(0) {}
 
     std::atomic<MvStatus> status_;  // Status of this element
     tid_type wtid_;  // Write TID
@@ -123,7 +123,7 @@ private:
 
 public:
     // Initiate a multi-cell flattening procedure
-    static void adaptive_flatten(tid_type, Scaled<history_type*> histories) {
+    static void adaptive_flatten(tid_type, Scaled<history_type*> histories, const bool /*fg*/=true) {
         using RecordAccessor = typename T::RecordAccessor;
         // Current element is the one initiating the flattening here. It is not
         // included in the trace, but it is included in the committed trace.
@@ -224,6 +224,11 @@ public:
             auto desired = static_cast<MvStatus>(LOCKED | expected);
             //printf("%d %p Adaptively flattening %p with status %x expecting %x\n", TThread::id(), h->object(), h, h->status(), expected);
             if (h->status_.compare_exchange_strong(expected, desired)) {
+#if MVCC_GARBAGE_DEBUG
+                Transaction::fprint(
+                        h, " is being flattened with status ", expected,
+                        " to status ", (status & ~LOCKED_DELTA), "\n");
+#endif
 #if !NDEBUG
                 h->metadata.flatten_thread = TThread::id();
 #endif
@@ -235,10 +240,12 @@ public:
                     //printf("%p flatten enq %p tid %zu\n", object(), this, wtid());
                 }
                 assert((status & PENDING_RESPLIT) != PENDING_RESPLIT);
+                /*
                 h->enqueue_for_committed(__FILE__, __LINE__);
-                //if (fg) {
-                h->object()->flattenv_.store(0, std::memory_order_relaxed);
-                //}
+                if (fg) {
+                    h->object()->flattenv_.store(0, std::memory_order_relaxed);
+                }
+                */
             } else {
                 //printf("%d %p Flattening lock failed %p with status %x\n", TThread::id(), h->object(), h, expected);
                 TXP_INCREMENT(txp_mvcc_flat_spins);
@@ -266,9 +273,11 @@ public:
             }
         }
         c_.operate(v_);
+#if MVCC_GARBAGE_DEBUG
         Transaction::fprint(
             "This is ", this, ", with status ", status(), " and histories ",
             histories[0], " and ", histories[1], "; prevs ", prev(0), " and ", prev(1), "\n");
+#endif
         status(status() & ~DELTA);
     }
 
@@ -301,10 +310,24 @@ public:
     }
 
     // Enqueues the deleted version for future cleanup
-    inline void enqueue_for_committed(const char* file, const int line) {
+#if MVCC_GARBAGE_DEBUG
+    inline void enqueue_for_committed(const char* file, const int line)
+#else
+    inline void enqueue_for_committed(const char*, const int)
+#endif
+    {
         //printf("%p committed enq %p tid %zu %s:%d\n", object(), this, wtid(), file, line);
-        (void) file;
-        (void) line;
+#if MVCC_GARBAGE_DEBUG
+        if constexpr (commutators::CommAdapter::Properties<T>::has_record_accessor) {
+            Transaction::fprint(
+                    "TX", Sto::read_tid(), " th", TThread::id(), " object ",
+                    object(), " committed enq ", this, " tid ", wtid(), " ",
+                    file, ":", line, "\n");
+        } else {
+            (void) file;
+            (void) line;
+        }
+#endif
         auto s = status();
         assert_status((s & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
         Transaction::rcu_call(gc_committed_cb, this);
@@ -350,6 +373,11 @@ public:
                    << " R" << h->rtid_.load(std::memory_order_relaxed)
                    << " SP" << h->split_.load(std::memory_order_relaxed)
                    << std::endl;
+            /*
+            if (h->status_is(COMMITTED)) {
+                break;
+            }
+            */
             /*
             fprintf(stream, "%zu.%zu. %p%s %s W%zu R%zu SP%d\n", cell, i, (void*)h,
                     h->object()->is_inlined(h) ? " INLINE" : "",
@@ -541,6 +569,11 @@ private:
             if (!prev) {
                 break;
             }
+            /*
+            if (h->status_is(COMMITTED)) {
+                break;
+            }
+            */
             if (h->wtid_ <= prev->wtid_) {
                 return false;
             }
@@ -568,61 +601,164 @@ private:
         // `gc_committed_cb` are in the past).
         // EXCEPTION: Some nontransactional accesses (`v()`, `nontrans_*`)
         // ignore this protocol.
-        history_type* nexts[Cells];
+        //history_type* newer[Cells];
+        history_type* older[Cells];
         //auto obj = hptr->object();
         auto count = 0;
         for (size_t cell = 0; cell < Cells; ++cell) {
-            nexts[cell] = hptr->prev_relaxed(cell);
-            if (nexts[cell]) {
-                ++count;
+            //newer[cell] = hptr;
+            older[cell] = hptr->prev_relaxed(cell);
+            if (older[cell]) {
+                MvHistoryBase* expected = older[cell];
+                while (!hptr->prev_[cell].compare_exchange_weak(expected, nullptr)) {
+                    if (!expected) {
+                        break;
+                    }
+                    expected = older[cell];
+                }
+                assert(!expected || expected == older[cell]);
+
+                if (expected) {
+#if MVCC_GARBAGE_DEBUG
+                    auto before = older[cell]->cells_.fetch_add(-1, std::memory_order_relaxed);
+                    Transaction::fprint(
+                            "Precleared pointer from ", hptr, " to ", older[cell],
+                            " on cell ", cell, ", ", before - 1, " remaining \n");
+#else
+                    older[cell]->cells_.fetch_add(-1, std::memory_order_relaxed);
+#endif
+                    ++count;
+                } else {
+                    older[cell] = nullptr;
+                }
             }
         }
         while (count > 0) {
-            auto cell = 0;
+            auto h = older[0];
+            //auto cell = 0;
             for (size_t ncell = 1; ncell < Cells; ++ncell) {
-                if (!nexts[cell]) {
+                if (!h) {
+                    h = older[ncell];
+                } else if (older[ncell]) {
+                    if (older[ncell]->wtid() > h->wtid()) {
+                        h = older[ncell];
+                    }
+                }
+                /*
+                if (!older[cell]) {
                     cell = ncell;
-                } else if (nexts[ncell]) {
-                    if (nexts[ncell]->wtid() > nexts[cell]->wtid()) {
+                } else if (older[ncell]) {
+                    if (older[ncell]->wtid() > older[cell]->wtid()) {
                         cell = ncell;
                     }
                 }
+                */
             }
-            auto h = nexts[cell];
+            //auto h = older[cell];
             assert(h);
-            bool skip = true;
+            //bool skip = true;
+            ssize_t iterations = 0;
             for (size_t ncell = 0; ncell < Cells; ++ncell) {
-                auto hnext = h->prev_relaxed(ncell);
-                if (nexts[ncell] == h) {
-                    nexts[ncell] = hnext;
-                    if (!nexts[ncell]) {  // Assumes that there are no dangling pointers
-                        --count;
+                if (older[ncell] == h) {
+
+                    /*
+                    MvHistoryBase* expected = h;
+                    while (!newer[ncell]->prev_[ncell].compare_exchange_weak(expected, nullptr)) {
+                        expected = h;
                     }
+                    assert(expected == h);
+                    Transaction::fprint(
+                            "Cleared pointer from ", newer[ncell], " to ", h,
+                            " on cell ", ncell, "\n");
+                    */
+
+                    //newer[ncell] = h;
+                    older[ncell] = h->prev_relaxed(ncell);
+                    if (!older[ncell]) {  // Assumes that there are no dangling pointers
+                        --count;
+                    } else {
+                        MvHistoryBase* expected = older[ncell];
+                        while (!h->prev_[ncell].compare_exchange_weak(expected, nullptr)) {
+                            if (!expected) {
+                                break;
+                            }
+                            expected = older[ncell];
+                        }
+                        assert(!expected || expected == older[ncell]);
+                        if (expected) {
+                            /*
+                            size_t kcount = 0;
+                            for (size_t kcell = 0; kcell < Cells; ++kcell) {
+                                if (h->prev_relaxed(kcell)) {
+                                    ++kcount;
+                                }
+                            }
+                            Transaction::fprint(
+                                    "Cleared pointer from ", h, " to ", older[ncell],
+                                    " on cell ", ncell, ", ", kcount, " remaining \n");
+                            */
+#if MVCC_GARBAGE_DEBUG
+                            auto before = older[ncell]->cells_.fetch_add(-1, std::memory_order_relaxed);
+                            Transaction::fprint(
+                                    "Cleared pointer from ", h, " to ", older[ncell],
+                                    " on cell ", ncell, ", ", before - 1, " remaining \n");
+#else
+                            older[ncell]->cells_.fetch_add(-1, std::memory_order_relaxed);
+#endif
+                        } else {
+                            older[ncell] = nullptr;
+                            --count;
+                        }
+                    }
+                    ++iterations;
+                    /*
                     ssize_t c;
                     if ((c = h->cells_.fetch_add(-1, std::memory_order::memory_order_relaxed)) == 1) {
                         skip = false;
                     }
+                    */
                     //printf("%p decr %p on cell %zu to %zx\n", obj, h, ncell, c - 1);
                 }
             }
             MvStatus status = h->status();
-            assert(h->cells_.load(std::memory_order::memory_order_relaxed) >= 0);
-            if (skip) {
+            //assert(h->cells_.load(std::memory_order::memory_order_relaxed) >= iterations);
+            //if (skip) {
                 // Skipping versions that are still in use by another chain,
                 // should be cleaned up by gc there
                 //printf("%p skipping %p with %zx references left\n", obj, h, h->cells_.load());
-            } else {
+            //} else {
                 //printf("%p enqueuing delete %p\n", obj, h);
+            //if (h->cells_.fetch_add(-iterations, std::memory_order_relaxed) == iterations) {
+            ssize_t gc_cells = 0;
+            if (h->cells_.compare_exchange_strong(gc_cells, -1, std::memory_order_relaxed)) {
 #if MVCC_GARBAGE_DEBUG
                 h->assert_status(!(status & (GARBAGE | GARBAGE2)), "gc_committed_cb garbage tracking");
                 while (!(status & GARBAGE)
                        && h->status_.compare_exchange_weak(status, MvStatus(status | GARBAGE))) {
+                }
+                Transaction::fprint(
+                        "Enqueuing gc for ", h, " with prevs ", h->prev(0), " and ", h->prev(1),
+                        " after ", iterations, " iterations at ",
+                        h->cells_.load(std::memory_order_relaxed), " cells\n");
+                for (size_t cell = 0; cell < Cells; ++cell) {
+                    if (h->prev_relaxed(cell)) {
+                        Transaction::fprint(
+                                h, " has non-null prev in cell ", cell, ": ",
+                                h->prev_relaxed(cell), "\n");
+                    }
                 }
 #endif
                 Transaction::rcu_call(gc_deleted_cb, h);
             }
             h->assert_status(!(status & (LOCKED | PENDING)), "gc_committed_cb unlocked not pending");
             if ((status & COMMITTED_DELTA) == COMMITTED) {
+                /*
+                for (size_t cell = 0; cell < Cells; ++cell) {
+                    if (h->prev_relaxed(cell)) {
+                        h->prev_[cell].store(nullptr, std::memory_order_relaxed);
+                    }
+                }
+                */
                 break;
             }
         }
@@ -630,12 +766,15 @@ private:
 
     static void gc_deleted_cb(void* ptr) {
         history_type* h = static_cast<history_type*>(ptr);
-        MvStatus status = h->status_.load(std::memory_order_relaxed);
 #if MVCC_GARBAGE_DEBUG
+        MvStatus status = h->status_.load(std::memory_order_relaxed);
         h->assert_status((status & GARBAGE), "gc_deleted_cb garbage");
         h->assert_status(!(status & GARBAGE2), "gc_deleted_cb garbage");
         bool ok = h->status_.compare_exchange_strong(status, MvStatus(status | GARBAGE2));
         assert(ok);
+        Transaction::fprint(
+                "Thread ", TThread::id(), " intending to delete from ", h->object(),
+                " element: ", h, " status ", h->status(), "\n");
 #endif
         h->object()->delete_history(h);
     }
@@ -663,6 +802,9 @@ private:
     // To be called from the source of the flattening.
     void flatten(int old_status, bool fg) {
         assert(old_status == COMMITTED_DELTA);
+#if NDEBUG
+        (void) old_status;
+#endif
 
         // Current element is the one initiating the flattening here. It is not
         // included in the trace, but it is included in the committed trace.
@@ -855,6 +997,7 @@ public:
         //printf("%p cp_lock %p cell %zu\n", this, hw, cell);
 
         std::atomic<base_type*>* target = &h_[cell];
+        hw->cells_.fetch_add(1, std::memory_order_relaxed);
         while (true) {
             // Discover target atomic on which to do CAS
             base_type* t = *target;
@@ -864,6 +1007,7 @@ public:
                     Sto::transaction()->mark_abort_because(
                             nullptr, "MVCC Lock: Invalid DU reordering.",
                             0, __FILE__, __LINE__, __FUNCTION__);
+                    hw->cells_.fetch_add(-1, std::memory_order_relaxed);
                     return false;
                 }
                 target = &ht->prev_[cell];
@@ -871,28 +1015,38 @@ public:
                 Sto::transaction()->mark_abort_because(
                         nullptr, "MVCC Lock: Predecessor RTID higher than this WTID.",
                         0, __FILE__, __LINE__, __FUNCTION__);
+                hw->cells_.fetch_add(-1, std::memory_order_relaxed);
                 return false;
             } else {
                 // Properly link h's prev_
                 assert(hw != t);
+#if MVCC_GARBAGE_DEBUG
                 if (!ht->check_consistency(10, cell)) {
                     Transaction::fprint("ht prevs:\n", ht->list_prevs(10, cell));
                     while (true) wait_cycles(1000000);
                 }
+#endif
                 hw->prev_[cell].store(t, std::memory_order_release);
+#if MVCC_GARBAGE_DEBUG
                 if (!hw->check_consistency(10, cell)) {
                     Transaction::fprint("hw prevs:\n", hw->list_prevs(10, cell));
                     while (true) wait_cycles(1000000);
                 }
+#endif
 
                 // Attempt to CAS onto the target
                 if (target->compare_exchange_strong(t, hw)) {
+#if MVCC_GARBAGE_DEBUG
                     if (!hw->check_consistency(10, cell)) {
                         Transaction::fprint("hw prevs:\n", hw->list_prevs(10, cell));
                         while (true) wait_cycles(1000000);
                     }
+#endif
                     break;
                 }
+
+                // Unset the prev
+                hw->prev_[cell].store(nullptr, std::memory_order_release);
             }
         }
 
@@ -951,9 +1105,11 @@ public:
         // Read version consistency check
         for (history_type* h = head(cell); h != hr; h = h->prev(cell)) {
             if (!h->status_is(ABORTED) && h->wtid() < tid) {
+#if MVCC_GARBAGE_DEBUG
                 Transaction::fprint(
                         "hr: ", hr, "; h: ", h, "\n",
                         hr->list_prevs(10, cell));
+#endif
                 /*
                 fprintf(stdout, "%p aborting %p @ %zu cell %zu at %p with status %x tid %zu/%zu\n", this, hr, hr->wtid(), cell, h, h->status(), h->wtid(), tid);
                 for (size_t cell = 0; cell < Cells; ++cell) {
@@ -1000,7 +1156,17 @@ public:
     // This function should only be used to free history nodes that have NOT been
     // hooked into the version chain
     void delete_history(history_type* h) {
-        //printf("%p deleting %p, heads %p, %p\n", this, h, head(0), head(1));
+#if MVCC_GARBAGE_DEBUG
+        Transaction::fprint(
+                "Thread ", TThread::id(), " deleting from ", this, " element: ",
+                h, " status ", h->status(),
+                " with ", h->cells_.load(std::memory_order_relaxed),
+                " cell connections remaining\n");
+        assert(h->cells_.load(std::memory_order_relaxed) == -1);
+        for (size_t cell = 0; cell < Cells; ++cell) {
+            assert(h->prev_relaxed(cell) == nullptr);
+        }
+#endif
         if (is_inlined(h)) {
             //printf("%p deleting %p\n", this, h);
             h->status_.store(UNUSED, std::memory_order_release);
@@ -1096,6 +1262,7 @@ public:
     // version as needed.
     template <typename... Args>
     history_type* new_history(Args&&... args) {
+        history_type* h = nullptr;
 #if MVCC_INLINING
         auto status = ih_.status();
         if (status == UNUSED &&
@@ -1103,10 +1270,17 @@ public:
             //printf("%p reallocating %p\n", this, &ih_);
             // Use inlined history element
             new (&ih_) history_type(this, std::forward<Args>(args)...);
-            return &ih_;
+            h = &ih_;
+        } else {
+#endif
+        h = new(std::nothrow) history_type(this, std::forward<Args>(args)...);
+#if MVCC_INLINING
         }
 #endif
-        return new(std::nothrow) history_type(this, std::forward<Args>(args)...);
+#if MVCC_GARBAGE_DEBUG
+        Transaction::fprint("Allocating ", h, " to ", this, "\n");
+#endif
+        return h;
     }
 
     // Read-only
@@ -1163,7 +1337,15 @@ protected:
                 status = h->status();
             }
             if (h && status == COMMITTED_DELTA) {
-                h->flatten(status, false);
+                if constexpr (commutators::CommAdapter::Properties<T>::has_record_accessor) {
+                    std::array<history_type*, Cells> histories = {};
+                    for (size_t cell = 0; cell < Cells; ++cell) {
+                        histories[cell] = (h->prev_relaxed(cell) ? h : nullptr);
+                    }
+                    history_type::adaptive_flatten(h->wtid(), histories, false);
+                } else {
+                    h->flatten(status, false);
+                }
             }
         }
     }

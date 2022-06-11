@@ -1048,11 +1048,9 @@ public:
                 }
             }
             mvhistory_type *h = nullptr;
-            bool new_history = true;
             // Reuse existing history object if available
             if (row_item.has_mvhistory()) {
                 h = row_item.template raw_write_value<mvhistory_type*>();
-                new_history = false;
             }
             if (item.has_commute()) {
                 auto wval = item.template raw_write_value<comm_type>();
@@ -1092,18 +1090,22 @@ public:
                 }
             }
             assert(h);
-            if (new_history) {
-                h->cells_.store(1, std::memory_order::memory_order_relaxed);
-            } else {
-                h->cells_.fetch_add(1, std::memory_order::memory_order_relaxed);
-            }
             bool result = e->row_container.row.template cp_lock<DBParams::Commute>(Sto::commit_tid(), h, key.cell_num());
+#if !NDEBUG
             if (!result) {
-                Transaction::fprint("TX", Sto::read_tid(), " locking ", &e->row_container.row, " history ", h, " with status ", h->status(), ": result is ", result, "\n");
+                Transaction::fprint(
+                        "TX", Sto::read_tid(), " locking ", &e->row_container.row,
+                        " cell ", key.cell_num(),
+                        " history ", h, " with status ", h->status(),
+                        ": result is ", result, "\n");
             }
-            if (!result && new_history && !h->status_is(MvStatus::ABORTED)) {
-                e->row_container.row.delete_history(h);
-                TransProxy(txn, row_item).add_mvhistory(nullptr);
+#endif
+            if (!result && !h->status_is(MvStatus::ABORTED)) {
+                ssize_t gc_cells = 0;
+                if (h->cells_.compare_exchange_strong(gc_cells, -1, std::memory_order_relaxed)) {
+                    e->row_container.row.delete_history(h);
+                    TransProxy(txn, row_item).add_mvhistory(nullptr);
+                }
                 TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
             } else {
                 TransProxy(txn, row_item).add_mvhistory(h);
@@ -1307,14 +1309,18 @@ public:
                 if (item.has_mvhistory()) {
                     auto h = item.template write_value<mvhistory_type*>();
                     if (h) {
+#if !NDEBUG
                         Transaction::fprint(
                                 "TX", Sto::read_tid(), " abort for cell ", item.key<item_key_t>().cell_num(), item.key<item_key_t>().is_row_item() ? "[ROW ITEM] of " : " of ", &item.key<item_key_t>().internal_elem_ptr()->row_container.row,
                                 ": ", h, " with status ", h->status(), "\n");
+#endif
                         h->status_txn_abort();
                     } else {
+#if !NDEBUG
                         Transaction::fprint(
                                 "TX", Sto::read_tid(), " abort for cell ", item.key<item_key_t>().cell_num(), item.key<item_key_t>().is_row_item() ? "[ROW ITEM] of " : " of ", &item.key<item_key_t>().internal_elem_ptr()->row_container.row,
                                 ": nullptr\n");
+#endif
                     }
                 }
                 /*
