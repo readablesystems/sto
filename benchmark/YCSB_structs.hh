@@ -54,6 +54,7 @@ struct ycsb_even_half_value {
     std::array<col_type, HALF_NUM_COLUMNS> even_columns;
 };
 
+/*
 struct ycsb_value {
     explicit ycsb_value() = default;
 
@@ -65,6 +66,8 @@ struct ycsb_value {
     std::array<col_type, HALF_NUM_COLUMNS> odd_columns;
     std::array<col_type, HALF_NUM_COLUMNS> even_columns;
 };
+*/
+#include "YCSB_structs_generated.hh"
 
 class ycsb_input_generator {
 public:

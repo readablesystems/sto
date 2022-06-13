@@ -14,7 +14,7 @@ using bench::db_profiler;
 
 enum {
     opt_dbid = 1, opt_nthrs, opt_mode, opt_time, opt_perf, opt_pfcnt, opt_gc,
-    opt_node, opt_comm
+    opt_node, opt_comm, opt_splt
 };
 
 static const Clp_Option options[] = {
@@ -27,6 +27,7 @@ static const Clp_Option options[] = {
     { "gc",           'g', opt_gc,    Clp_NoVal,     Clp_Negate| Clp_Optional },
     { "node",         'n', opt_node,  Clp_NoVal,     Clp_Negate| Clp_Optional },
     { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate| Clp_Optional },
+    { "split",        's', opt_splt,  Clp_ValString, Clp_Optional },
 };
 
 static inline void print_usage(const char *argv_0) {
@@ -50,7 +51,10 @@ static inline void print_usage(const char *argv_0) {
        << "  --node (or -n)" << std::endl
        << "    Enable node tracking (default false)." << std::endl
        << "  --commute (or -x)" << std::endl
-       << "    Enable commutative updates in MVCC (default false)." << std::endl;
+       << "    Enable commutative updates in MVCC (default false)." << std::endl
+       << "  --split=<STRING> (or -s<STRING>)" << std::endl
+       << "    Specify the split algorithm to use. Can be one of:" << std::endl
+       << "      none (default), static, adaptive" << std::endl;
     std::cout << ss.str() << std::flush;
 }
 
@@ -245,6 +249,8 @@ public:
                 break;
             case opt_comm:
                 break;
+            case opt_splt:
+                break;
             default:
                 print_usage(argv[0]);
                 ret = 1;
@@ -320,6 +326,7 @@ double constants::processor_tsc_frequency;
 
 int main(int argc, const char *const *argv) {
     db_params_id dbid = db_params_id::Default;
+    db_split_type split_type = db_split_type::None;
     int ret_code = 0;
 
     Sto::global_init();
@@ -347,6 +354,9 @@ int main(int argc, const char *const *argv) {
         case opt_comm:
             enable_commute = !clp->negated;
             break;
+        case opt_splt:
+            split_type = parse_split_type(clp->val.s);
+            break;
         default:
             break;
         }
@@ -369,9 +379,31 @@ int main(int argc, const char *const *argv) {
         } else if (node_tracking) {
             ret_code = ycsb_access<db_default_node_params>::execute(argc, argv);
         } else if (enable_commute) {
-            ret_code = ycsb_access<db_default_commute_params>::execute(argc, argv);
+            switch (split_type) {
+            case db_split_type::None:
+                return ycsb_access<db_default_commute_params>::execute(argc, argv);
+            case db_split_type::Static:
+                return ycsb_access<db_default_sts_commute_params>::execute(argc, argv);
+            case db_split_type::Adaptive:
+                return ycsb_access<db_default_ats_commute_params>::execute(argc, argv);
+            default:
+                std::cerr << "Invalid TS choice" << std::endl;
+                ret_code = 1;
+                break;
+            }
         } else {
-            ret_code = ycsb_access<db_default_params>::execute(argc, argv);
+            switch (split_type) {
+            case db_split_type::None:
+                return ycsb_access<db_default_params>::execute(argc, argv);
+            case db_split_type::Static:
+                return ycsb_access<db_default_sts_params>::execute(argc, argv);
+            case db_split_type::Adaptive:
+                return ycsb_access<db_default_ats_params>::execute(argc, argv);
+            default:
+                std::cerr << "Invalid TS choice" << std::endl;
+                ret_code = 1;
+                break;
+            }
         }
         break;
     /*
@@ -404,9 +436,31 @@ int main(int argc, const char *const *argv) {
         } else if (node_tracking) {
             ret_code = ycsb_access<db_mvcc_node_params>::execute(argc, argv);
         } else if (enable_commute) {
-            ret_code = ycsb_access<db_mvcc_commute_params>::execute(argc, argv);
+            switch (split_type) {
+            case db_split_type::None:
+                return ycsb_access<db_mvcc_commute_params>::execute(argc, argv);
+            case db_split_type::Static:
+                return ycsb_access<db_mvcc_sts_commute_params>::execute(argc, argv);
+            case db_split_type::Adaptive:
+                return ycsb_access<db_mvcc_ats_commute_params>::execute(argc, argv);
+            default:
+                std::cerr << "Invalid TS choice" << std::endl;
+                ret_code = 1;
+                break;
+            }
         } else {
-            ret_code = ycsb_access<db_mvcc_params>::execute(argc, argv);
+            switch (split_type) {
+            case db_split_type::None:
+                return ycsb_access<db_mvcc_params>::execute(argc, argv);
+            case db_split_type::Static:
+                return ycsb_access<db_mvcc_sts_params>::execute(argc, argv);
+            case db_split_type::Adaptive:
+                return ycsb_access<db_mvcc_ats_params>::execute(argc, argv);
+            default:
+                std::cerr << "Invalid TS choice" << std::endl;
+                ret_code = 1;
+                break;
+            }
         }
         break;
     default:

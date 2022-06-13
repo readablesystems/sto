@@ -322,15 +322,9 @@ public:
     {
         //printf("%p committed enq %p tid %zu %s:%d\n", object(), this, wtid(), file, line);
 #if VERBOSE > 0
-        if constexpr (commutators::CommAdapter::Properties<T>::has_record_accessor) {
-            Transaction::fprint(
-                    "TX", Sto::read_tid(), " th", TThread::id(), " object ",
-                    object(), " committed enq ", this, " tid ", wtid(), " ",
-                    file, ":", line, "\n");
-        } else {
-            (void) file;
-            (void) line;
-        }
+        Transaction::fprint(
+                "object ", object(), " committed enq ", this, " tid ", wtid(),
+                " ", file, ":", line, "\n");
 #endif
         auto s = status();
         assert_status((s & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
@@ -588,6 +582,9 @@ private:
 
     static void gc_committed_cb(void* ptr) {
         history_type* hptr = static_cast<history_type*>(ptr);
+#if VERBOSE > 0
+        Transaction::fprint("gc_committed_cb called on ", hptr, "\n");
+#endif
         //printf("%p gc cb on %p\n", hptr->object(), hptr);
         auto s = hptr->status();
         if ((s & COMMITTED_DELTA) != COMMITTED) {
@@ -772,10 +769,8 @@ private:
 
     static void gc_deleted_cb(void* ptr) {
         history_type* h = static_cast<history_type*>(ptr);
-#if MVCC_GARBAGE_DEBUG || (VERBOSE > 0)
-        MvStatus status = h->status_.load(std::memory_order_relaxed);
-#endif
 #if MVCC_GARBAGE_DEBUG
+        MvStatus status = h->status_.load(std::memory_order_relaxed);
         h->assert_status((status & GARBAGE), "gc_deleted_cb garbage");
         h->assert_status(!(status & GARBAGE2), "gc_deleted_cb garbage");
         bool ok = h->status_.compare_exchange_strong(status, MvStatus(status | GARBAGE2));
@@ -791,7 +786,7 @@ private:
 
     // Initializes the flattening process
     inline void enflatten() {
-        if constexpr (commutators::CommAdapter::Properties<T>::has_record_accessor) {
+        if constexpr (Cells > 1 && commutators::CommAdapter::Properties<T>::has_record_accessor) {
             //printf("Using adaptive flatten subroutine.\n");
             adaptive_flatten(Sto::read_tid(), {this});
             return;
@@ -1144,10 +1139,13 @@ public:
         if (!(s & DELTA)) {
             cuctr_.store(0, std::memory_order_relaxed);
             flattenv_.store(0, std::memory_order_relaxed);
+            /*
             if (this->is_inlined(h)) {
                 //printf("%p enqueuing %p tid %zu for gc\n", this, h, h->wtid());
             }
+            */
             h->enqueue_for_committed(__FILE__, __LINE__);
+            //Transaction::rcu_call(gc_flatten_cb, this);
         } else {
             int dc = cuctr_.load(std::memory_order_relaxed) + 1;
             if (dc <= gc_flattening_length) {
@@ -1287,6 +1285,7 @@ public:
 #if MVCC_INLINING
         }
 #endif
+        std::fill(h->prev_.begin(), h->prev_.end(), nullptr);
 #if VERBOSE > 0
         Transaction::fprint("Allocating ", h, " to ", this, "\n");
 #endif
@@ -1347,7 +1346,7 @@ protected:
                 status = h->status();
             }
             if (h && status == COMMITTED_DELTA) {
-                if constexpr (commutators::CommAdapter::Properties<T>::has_record_accessor) {
+                if constexpr (Cells > 1 && commutators::CommAdapter::Properties<T>::has_record_accessor) {
                     std::array<history_type*, Cells> histories = {};
                     for (size_t cell = 0; cell < Cells; ++cell) {
                         histories[cell] = (h->prev_relaxed(cell) ? h : nullptr);

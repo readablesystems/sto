@@ -300,7 +300,7 @@ public:
     //template <NamedColumn Column>
     //using ValueAccessor = ::sto::adapter::ValueAccessor<accessor_info<Column>>;
     using ValueType = warehouse_value;
-    static constexpr auto DEFAULT_SPLIT = 0;
+    static constexpr auto DEFAULT_SPLIT = 1;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
     static constexpr auto POLICIES = 2;
@@ -796,7 +796,7 @@ public:
     //template <NamedColumn Column>
     //using ValueAccessor = ::sto::adapter::ValueAccessor<accessor_info<Column>>;
     using ValueType = district_value;
-    static constexpr auto DEFAULT_SPLIT = 0;
+    static constexpr auto DEFAULT_SPLIT = 1;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
     static constexpr auto POLICIES = 2;
@@ -2718,7 +2718,7 @@ public:
     //template <NamedColumn Column>
     //using ValueAccessor = ::sto::adapter::ValueAccessor<accessor_info<Column>>;
     using ValueType = order_value;
-    static constexpr auto DEFAULT_SPLIT = 0;
+    static constexpr auto DEFAULT_SPLIT = 1;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
     static constexpr auto POLICIES = 2;
@@ -3141,7 +3141,7 @@ public:
     //template <NamedColumn Column>
     //using ValueAccessor = ::sto::adapter::ValueAccessor<accessor_info<Column>>;
     using ValueType = orderline_value;
-    static constexpr auto DEFAULT_SPLIT = 0;
+    static constexpr auto DEFAULT_SPLIT = 1;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
     static constexpr auto POLICIES = 2;
@@ -3918,7 +3918,7 @@ public:
     //template <NamedColumn Column>
     //using ValueAccessor = ::sto::adapter::ValueAccessor<accessor_info<Column>>;
     using ValueType = stock_value;
-    static constexpr auto DEFAULT_SPLIT = 0;
+    static constexpr auto DEFAULT_SPLIT = 1;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
     static constexpr auto POLICIES = 2;

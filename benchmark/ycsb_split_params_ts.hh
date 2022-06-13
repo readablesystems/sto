@@ -2,7 +2,7 @@ namespace bench {
 
 
 template <>
-struct SplitParams<ycsb::ycsb_value> {
+struct SplitParams<ycsb::ycsb_value, true> {
   using split_type_list = std::tuple<ycsb::ycsb_odd_half_value, ycsb::ycsb_even_half_value>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -37,7 +37,7 @@ struct SplitParams<ycsb::ycsb_value> {
 
 
 template <typename A>
-class RecordAccessor<A, ycsb::ycsb_value> {
+class RecordAccessor<A, ycsb::ycsb_value, true> {
  public:
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() const {
@@ -61,8 +61,9 @@ class RecordAccessor<A, ycsb::ycsb_value> {
 };
 
 template <>
-class UniRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<UniRecordAccessor<ycsb::ycsb_value>, ycsb::ycsb_value> {
+class UniRecordAccessor<ycsb::ycsb_value, true> : public RecordAccessor<UniRecordAccessor<ycsb::ycsb_value, true>, ycsb::ycsb_value, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const ycsb::ycsb_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -88,25 +89,28 @@ class UniRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<UniRecordAcces
 
 
   const ycsb::ycsb_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<ycsb::ycsb_value>, ycsb::ycsb_value>;
+  friend RecordAccessor<UniRecordAccessor<ycsb::ycsb_value, true>, ycsb::ycsb_value, true>;
 };
 
 template <>
-class SplitRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<SplitRecordAccessor<ycsb::ycsb_value>, ycsb::ycsb_value> {
+class SplitRecordAccessor<ycsb::ycsb_value, true> : public RecordAccessor<SplitRecordAccessor<ycsb::ycsb_value, true>, ycsb::ycsb_value, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<ycsb::ycsb_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<ycsb::ycsb_value, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<ycsb::ycsb_odd_half_value*>(vptrs[0])), vptr_1_(reinterpret_cast<ycsb::ycsb_even_half_value*>(vptrs[1])) {}
 
  private:
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns_impl() const {
+      while (!vptr_0_) wait_cycles(10000);
     return vptr_0_->odd_columns;
   }
 
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns_impl() const {
+      while (!vptr_1_) wait_cycles(10000);
     return vptr_1_->even_columns;
   }
 
@@ -129,7 +133,7 @@ class SplitRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<SplitRecordA
   const ycsb::ycsb_odd_half_value* vptr_0_;
   const ycsb::ycsb_even_half_value* vptr_1_;
 
-  friend RecordAccessor<SplitRecordAccessor<ycsb::ycsb_value>, ycsb::ycsb_value>;
+  friend RecordAccessor<SplitRecordAccessor<ycsb::ycsb_value, true>, ycsb::ycsb_value, true>;
 };
 
 } // namespace bench

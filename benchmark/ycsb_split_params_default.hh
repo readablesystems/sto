@@ -2,7 +2,7 @@ namespace bench {
 
 
 template <>
-struct SplitParams<ycsb::ycsb_value> {
+struct SplitParams<ycsb::ycsb_value, false> {
   using split_type_list = std::tuple<ycsb::ycsb_value>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -31,7 +31,7 @@ struct SplitParams<ycsb::ycsb_value> {
 
 
 template <typename A>
-class RecordAccessor<A, ycsb::ycsb_value> {
+class RecordAccessor<A, ycsb::ycsb_value, false> {
  public:
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns() const {
@@ -55,8 +55,9 @@ class RecordAccessor<A, ycsb::ycsb_value> {
 };
 
 template <>
-class UniRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<UniRecordAccessor<ycsb::ycsb_value>, ycsb::ycsb_value> {
+class UniRecordAccessor<ycsb::ycsb_value, false> : public RecordAccessor<UniRecordAccessor<ycsb::ycsb_value, false>, ycsb::ycsb_value, false> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const ycsb::ycsb_value* const vptr) : vptr_(vptr) {}
 
  private:
@@ -82,14 +83,15 @@ class UniRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<UniRecordAcces
 
 
   const ycsb::ycsb_value* vptr_;
-  friend RecordAccessor<UniRecordAccessor<ycsb::ycsb_value>, ycsb::ycsb_value>;
+  friend RecordAccessor<UniRecordAccessor<ycsb::ycsb_value, false>, ycsb::ycsb_value, false>;
 };
 
 template <>
-class SplitRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<SplitRecordAccessor<ycsb::ycsb_value>, ycsb::ycsb_value> {
+class SplitRecordAccessor<ycsb::ycsb_value, false> : public RecordAccessor<SplitRecordAccessor<ycsb::ycsb_value, false>, ycsb::ycsb_value, false> {
  public:
-   static constexpr size_t num_splits = SplitParams<ycsb::ycsb_value>::num_splits;
+   static constexpr size_t num_splits = SplitParams<ycsb::ycsb_value, false>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<ycsb::ycsb_value*>(vptrs[0])) {}
 
@@ -118,7 +120,7 @@ class SplitRecordAccessor<ycsb::ycsb_value> : public RecordAccessor<SplitRecordA
 
   const ycsb::ycsb_value* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<ycsb::ycsb_value>, ycsb::ycsb_value>;
+  friend RecordAccessor<SplitRecordAccessor<ycsb::ycsb_value, false>, ycsb::ycsb_value, false>;
 };
 
 } // namespace bench

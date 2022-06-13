@@ -82,6 +82,9 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
     col_type output;
     typedef ycsb_value::NamedColumn nm;
 
+    bool abort, result;
+    uintptr_t row;
+
     (void)output;
 
     TRANSACTION {
@@ -91,22 +94,31 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
         for (auto& op : txn.ops) {
             bool col_parity = op.col_n % 2;
             auto col_group = col_parity ? nm::odd_columns : nm::even_columns;
+            if constexpr (DBParams::Split == db_split_type::Adaptive) {
+                col_group += op.col_n / 2;
+            }
             (void)col_group;
             if (op.is_write) {
                 ycsb_key key(op.key);
-                auto [success, result, row, value]
-                    = db.ycsb_table().select_split_row(key,
-                    {{col_group, Commute ? access_t::write : access_t::update}}
-                );
+                Record<ycsb_value> value;
+                if constexpr (DBParams::Split == db_split_type::Adaptive) {
+                    std::tie(abort, result, row, value) = db.ycsb_table().select_row(
+                            key,
+                            {{col_group, Commute ? AccessType::write : AccessType::update}},
+                            1);
+                } else {
+                    std::tie(abort, result, row, value) = db.ycsb_table().select_split_row(
+                            key,
+                            {{col_group, Commute ? access_t::write : access_t::update}});
+                }
                 (void)result;
-                TXN_DO(success);
+                TXN_DO(abort);
                 assert(result);
 
                 if constexpr (Commute) {
                     commutators::Commutator<ycsb_value> comm(op.col_n, op.write_value);
                     db.ycsb_table().update_row(row, comm);
-#if TABLE_FINE_GRAINED
-                } else if (DBParams::MVCC) {
+                } else if constexpr (DBParams::MVCC && DBParams::Split == db_split_type::Static) {
                     // MVCC loop also does a tx_alloc, so we don't need to do
                     // one here
                     ycsb_value new_val_base;
@@ -119,7 +131,6 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                         new_val->even_columns[op.col_n/2] = op.write_value;
                     }
                     db.ycsb_table().update_row(row, new_val);
-#endif
                 } else {
                     auto new_val = Sto::tx_alloc<ycsb_value>();
                     if (col_parity) {
@@ -133,10 +144,16 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                 }
             } else {
                 ycsb_key key(op.key);
-                auto [success, result, row, value]
-                    = db.ycsb_table().select_split_row(key, {{col_group, access_t::read}});
+                Record<ycsb_value> value;
+                if constexpr (DBParams::Split == db_split_type::Adaptive) {
+                    std::tie(abort, result, row, value) = db.ycsb_table().select_row(
+                            key, {{col_group, AccessType::read}}, 1);
+                } else {
+                    std::tie(abort, result, row, value) = db.ycsb_table().select_split_row(
+                            key, {{col_group, access_t::read}});
+                }
                 (void)result; (void)row;
-                TXN_DO(success);
+                TXN_DO(abort);
                 assert(result);
 
                 if (col_parity) {

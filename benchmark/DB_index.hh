@@ -241,6 +241,9 @@ public:
 
         for (auto it = accesses.begin(); it != accesses.end(); ++it) {
             int cell_id = T::map(it->col_id);
+#if VERBOSE > 0
+            Transaction::fprint("Mapping ", it->col_id, " to ", cell_id, "\n");
+#endif
             cell_accesses[cell_id]  = static_cast<access_t>(
                     static_cast<uint8_t>(cell_accesses[cell_id]) | static_cast<uint8_t>(it->access));
         }

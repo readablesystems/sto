@@ -9,17 +9,14 @@
 #include "SystemProfiler.hh"
 #include "YCSB_structs.hh"
 #include "YCSB_commutators.hh"
-#if TABLE_FINE_GRAINED
+//#if TABLE_FINE_GRAINED
 #include "YCSB_selectors.hh"
-#endif
+//#endif
 #include "DB_index.hh"
 #include "DB_params.hh"
 
-#if TABLE_FINE_GRAINED
 #include "ycsb_split_params_ts.hh"
-#else
 #include "ycsb_split_params_default.hh"
-#endif
 
 namespace ycsb {
 
@@ -28,19 +25,31 @@ using bench::ordered_index;
 using bench::mvcc_unordered_index;
 using bench::unordered_index;
 
+using namespace db_params;
+
 static constexpr uint64_t ycsb_table_size = 10000000;
+
+#ifndef YCSB_HASH_INDEX
+#define YCSB_HASH_INDEX 1
+#endif
 
 template <typename DBParams>
 class ycsb_db {
 public:
     template <typename K, typename V>
-    using OIndex = typename std::conditional<DBParams::MVCC,
+    using OIndex = typename std::conditional<DBParams::MVCC && !DBParams::UseATS,
           mvcc_ordered_index<K, V, DBParams>,
           ordered_index<K, V, DBParams>>::type;
+
+#if YCSB_HASH_INDEX
     template <typename K, typename V>
-    using UIndex = typename std::conditional<DBParams::MVCC,
-        mvcc_unordered_index<K, V, DBParams>,
-        unordered_index<K, V, DBParams>>::type;
+    using UIndex = typename std::conditional<DBParams::MVCC && !DBParams::UseATS,
+          mvcc_unordered_index<K, V, DBParams>,
+          unordered_index<K, V, DBParams>>::type;
+#else
+    template <typename K, typename V>
+    using UIndex = OIndex<K, V>;
+#endif
 
     typedef UIndex<ycsb_key, ycsb_value> ycsb_table_type;
 
@@ -81,6 +90,15 @@ struct ycsb_txn_t {
 template <typename DBParams>
 class ycsb_runner {
 public:
+    template <typename T>
+    using Record = typename std::conditional_t<
+        DBParams::Split == db_split_type::Adaptive,
+        typename T::RecordAccessor,
+            std::conditional_t<
+            DBParams::MVCC,
+            bench::SplitRecordAccessor<T, (static_cast<int>(DBParams::Split) > 0)>,
+            bench::UniRecordAccessor<T, (static_cast<int>(DBParams::Split) > 0)>>>;
+
     static constexpr bool Commute = DBParams::Commute;
     ycsb_runner(int tid, ycsb_db<DBParams>& database, mode_id mid)
         : db(database), ig(tid), runner_id(tid), mode(mid),
