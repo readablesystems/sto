@@ -159,6 +159,7 @@ inline double determine_cpu_freq() {
 }
 
 struct TopologyInfo {
+    int num_cpus;
     int num_nodes;
     std::vector<std::vector<int>> cpu_id_list;
 };

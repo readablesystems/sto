@@ -158,7 +158,7 @@ public:
     AdaptiveValueContainer(type v, const ValueType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v);
         if constexpr (UseMVCC) {
-            row.split(RecordAccessor::DEFAULT_SPLIT);
+            row.split(DefaultSplit);
         }
     }
 
@@ -166,14 +166,14 @@ public:
     AdaptiveValueContainer(type v, bool insert, const ValueType& r) : row(r), versions_() {
         new (&versions_[0]) version_type(v, insert);
         if constexpr (UseMVCC) {
-            row.head()->split(RecordAccessor::DEFAULT_SPLIT);
+            row.head()->split(DefaultSplit);
         }
     }
 
     AdaptiveValueContainer(type v, bool insert) : row(), versions_() {
         new (&versions_[0]) version_type(v, insert);
         if constexpr (UseMVCC) {
-            row.head()->split(RecordAccessor::DEFAULT_SPLIT);
+            row.head()->split(DefaultSplit);
         }
     }
 
@@ -534,8 +534,8 @@ private:
     }
     */
 
-    std::atomic<SplitType> splitindex_ = {RecordAccessor::DEFAULT_SPLIT};
-    std::atomic<SplitType> target_splitindex_ = {RecordAccessor::DEFAULT_SPLIT};
+    std::atomic<SplitType> splitindex_ = {DefaultSplit};
+    std::atomic<SplitType> target_splitindex_ = {DefaultSplit};
     //SplitType splitindex_ = {};
     std::array<version_type, num_versions> versions_;
 };

@@ -10,6 +10,8 @@
 #include <numa.h>
 #include <pthread.h>
 
+#include <thread>
+
 TopologyInfo topo_info;
 
 void discover_topology() {
@@ -29,6 +31,7 @@ void discover_topology() {
     std::cout << "[discover_topology] Detected number of NUMA nodes: " << r << std::endl;
     info.num_nodes = r;
 
+    info.num_cpus = 0;
     int max_cpus = numa_num_possible_cpus();
     auto cpu_mask = numa_allocate_cpumask();
 
@@ -50,6 +53,7 @@ void discover_topology() {
                 std::cout << c;
                 first = false;
                 node_cpu_list.push_back(c);
+                ++info.num_cpus;
             }
         }
         std::cout << std::endl << std::flush;

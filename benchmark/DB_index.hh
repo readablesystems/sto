@@ -820,12 +820,18 @@ public:
     static constexpr uintptr_t item_key_tag = 1;
 
     static constexpr bool Commute = DBParams::Commute;
-    static constexpr bool EnableSplit = static_cast<int>(DBParams::Split) > 0;
+private:
+    static constexpr int  SplitMode = static_cast<int>(DBParams::Split);
+    static_assert(SplitMode >= 0 && SplitMode <= 2, "Invalid Split value in DBParams.");
+public:
+    static constexpr bool EnableSplit = SplitMode > 0;
+    static constexpr int  DefaultSplit =
+        (SplitMode == 2 ? V::RecordAccessor::DEFAULT_SPLIT : SplitMode);
 
     typedef typename value_type::NamedColumn NamedColumn;
     typedef typename get_version<DBParams>::type version_type;
     using value_container_type = AdaptiveValueContainer<
-        V, version_type, EnableSplit ? 1 : 0, DBParams::MVCC, DBParams::UseATS>;
+        V, version_type, DefaultSplit, DBParams::MVCC, DBParams::UseATS>;
     typedef commutators::Commutator<value_type> comm_type;
     using RecordAccessor = typename value_container_type::RecordAccessor;
     using ColumnAccess = typename value_container_type::ColumnAccess;
