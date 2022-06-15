@@ -10,8 +10,8 @@ namespace mvstatus {
 std::string stringof(MvStatus s) {
     bool empty = true;
     std::ostringstream status;
-    std::array statuses  {UNUSED, DELETED, PENDING, COMMITTED, DELTA, LOCKED, GARBAGE, GARBAGE2, POISONED, RESPLIT};
-    std::array statusstr {"UNUSED", "DELETED", "PENDING", "COMMITTED", "DELTA", "LOCKED", "GARBAGE", "GARBAGE2", "POISONED", "RESPLIT"};
+    std::array statuses  {UNUSED, DELETED, PENDING, COMMITTED, DELTA, LOCKED, GARBAGE, GARBAGE2, POISONED, RESPLIT, ENQUEUED};
+    std::array statusstr {"UNUSED", "DELETED", "PENDING", "COMMITTED", "DELTA", "LOCKED", "GARBAGE", "GARBAGE2", "POISONED", "RESPLIT", "ENQUEUED"};
     for (size_t i = 0; i < statuses.size(); ++i) {
         if (s & statuses[i]) {
             if (!empty) {

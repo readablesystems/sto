@@ -18,37 +18,38 @@
 // Status types of MvHistory elements
 enum MvStatus {
     // Single-bit states first, sorted by bit index
-    UNUSED                         = 0b0'0000'0000'0000,
-    DELETED                        = 0b0'0000'0000'0001,  // Not a valid state on its own, but defined as a flag
-    PENDING                        = 0b0'0000'0000'0010,
-    COMMITTED                      = 0b0'0000'0000'0100,
-    DELTA                          = 0b0'0000'0000'1000,  // Commutative update delta
-    LOCKED                         = 0b0'0000'0001'0000,
-    ABORTED                        = 0b0'0000'0010'0000,
-    GARBAGE                        = 0b0'0000'0100'0000,
-    GARBAGE2                       = 0b0'0000'1000'0000,
-    POISONED                       = 0b0'1000'0000'0000,  // Standalone poison bit
-    RESPLIT                        = 0b1'0000'0000'0000,  // This version signals a resplit
+    UNUSED                         = 0b00'0000'0000'0000,
+    DELETED                        = 0b00'0000'0000'0001,  // Not a valid state on its own, but defined as a flag
+    PENDING                        = 0b00'0000'0000'0010,
+    COMMITTED                      = 0b00'0000'0000'0100,
+    DELTA                          = 0b00'0000'0000'1000,  // Commutative update delta
+    LOCKED                         = 0b00'0000'0001'0000,
+    ABORTED                        = 0b00'0000'0010'0000,
+    GARBAGE                        = 0b00'0000'0100'0000,
+    GARBAGE2                       = 0b00'0000'1000'0000,
+    POISONED                       = 0b00'1000'0000'0000,  // Standalone poison bit
+    RESPLIT                        = 0b01'0000'0000'0000,  // This version signals a resplit
+    ENQUEUED                       = 0b10'0000'0000'0000,  // This version leads a GC enqueue
 
     // Multi-bit states
-    ABORTED_RV                     = 0b0'0001'0010'0000,
-    ABORTED_WV1                    = 0b0'0010'0010'0000,
-    ABORTED_WV2                    = 0b0'0011'0010'0000,
-    ABORTED_TXNV                   = 0b0'0100'0010'0000,
-    ABORTED_POISON                 = 0b0'0101'0010'0000,
-    PENDING_DELTA                  = 0b0'0000'0000'1010,
-    COMMITTED_DELTA                = 0b0'0000'0000'1100,
-    PENDING_DELETED                = 0b0'0000'0000'0011,
-    COMMITTED_DELETED              = 0b0'0000'0000'0101,
-    PENDING_RESPLIT                = 0b1'0000'0000'0010,
-    COMMITTED_RESPLIT              = 0b1'0000'0000'0100,
-    RESPLIT_DELTA                  = 0b1'0000'0000'1000,
-    LOCKED_DELTA                   = 0b0'0000'0001'1000,
-    LOCKED_COMMITTED_DELTA         = 0b0'0000'0001'1100,  // Converting from delta to flattened
-    PENDING_RESPLIT_DELTA          = 0b1'0000'0000'1010,
-    COMMITTED_RESPLIT_DELTA        = 0b1'0000'0000'1100,
-    LOCKED_PENDING_RESPLIT_DELTA   = 0b1'0000'0001'1010,
-    LOCKED_COMMITTED_RESPLIT_DELTA = 0b1'0000'0001'1100,
+    ABORTED_RV                     = 0b00'0001'0010'0000,
+    ABORTED_WV1                    = 0b00'0010'0010'0000,
+    ABORTED_WV2                    = 0b00'0011'0010'0000,
+    ABORTED_TXNV                   = 0b00'0100'0010'0000,
+    ABORTED_POISON                 = 0b00'0101'0010'0000,
+    PENDING_DELTA                  = 0b00'0000'0000'1010,
+    COMMITTED_DELTA                = 0b00'0000'0000'1100,
+    PENDING_DELETED                = 0b00'0000'0000'0011,
+    COMMITTED_DELETED              = 0b00'0000'0000'0101,
+    PENDING_RESPLIT                = 0b01'0000'0000'0010,
+    COMMITTED_RESPLIT              = 0b01'0000'0000'0100,
+    RESPLIT_DELTA                  = 0b01'0000'0000'1000,
+    LOCKED_DELTA                   = 0b00'0000'0001'1000,
+    LOCKED_COMMITTED_DELTA         = 0b00'0000'0001'1100,  // Converting from delta to flattened
+    PENDING_RESPLIT_DELTA          = 0b01'0000'0000'1010,
+    COMMITTED_RESPLIT_DELTA        = 0b01'0000'0000'1100,
+    LOCKED_PENDING_RESPLIT_DELTA   = 0b01'0000'0001'1010,
+    LOCKED_COMMITTED_RESPLIT_DELTA = 0b01'0000'0001'1100,
 };
 
 std::ostream& operator<<(std::ostream& w, MvStatus s);
@@ -62,7 +63,11 @@ public:
 
     MvHistoryBase() = delete;
     MvHistoryBase(void* obj, tid_type tid, MvStatus status)
-        : status_(status), wtid_(tid), rtid_(tid), obj_(obj), split_(0), cells_(0) {}
+        : status_(status), wtid_(tid), rtid_(tid), obj_(obj), split_(0), cells_(0) {
+#if VERBOSE > 0
+        Transaction::fprint("Creating history ", this, " at TID ", tid, "\n");
+#endif
+    }
 
     std::atomic<MvStatus> status_;  // Status of this element
     tid_type wtid_;  // Write TID
@@ -245,8 +250,8 @@ public:
                 }
                 assert((status & PENDING_RESPLIT) != PENDING_RESPLIT);
                 /*
-                h->enqueue_for_committed(__FILE__, __LINE__);
                 if (fg) {
+                    h->enqueue_for_committed(__FILE__, __LINE__);
                     h->object()->flattenv_.store(0, std::memory_order_relaxed);
                 }
                 */
@@ -326,8 +331,11 @@ public:
                 "object ", object(), " committed enq ", this, " tid ", wtid(),
                 " ", file, ":", line, "\n");
 #endif
-        auto s = status();
-        assert_status((s & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
+        MvStatus s;
+        do {
+            s = status();
+            assert_status((s & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
+        } while (!status_.compare_exchange_weak(s, static_cast<MvStatus>(s | ENQUEUED)));
         Transaction::rcu_call(gc_committed_cb, this);
     }
 
@@ -591,6 +599,7 @@ private:
             //printf("%p status %p: %d\n", hptr->object(), hptr, s);
         }
         hptr->assert_status((s & COMMITTED_DELTA) == COMMITTED, "gc_committed_cb");
+        hptr->assert_status((s & ENQUEUED) == ENQUEUED, "gc_committed_cb enq flag");
         // Here is how we ensure that `gc_committed_cb` never conflicts
         // with a flatten operation.
         // (1) When `gc_committed_cb` runs, `h->prev()`
@@ -603,6 +612,9 @@ private:
         // EXCEPTION: Some nontransactional accesses (`v()`, `nontrans_*`)
         // ignore this protocol.
         //history_type* newer[Cells];
+#if !NDEBUG
+        bool active[Cells];
+#endif
         history_type* older[Cells];
         //auto obj = hptr->object();
         auto count = 0;
@@ -633,6 +645,10 @@ private:
                     older[cell] = nullptr;
                 }
             }
+#if !NDEBUG
+            active[cell] = !!older[cell];
+            (void)active[cell];
+#endif
         }
         while (count > 0) {
             auto h = older[0];
@@ -657,6 +673,22 @@ private:
             }
             //auto h = older[cell];
             assert(h);
+            auto status = h->status();
+            //if ((status & COMMITTED_DELTA) == COMMITTED) {
+            if ((status & ENQUEUED) == ENQUEUED) {
+#if VERBOSE > 0
+                Transaction::fprint(
+                        "Ending GC loop because ", h, " has status ", status, "\n");
+#endif
+                /*
+                for (size_t cell = 0; cell < Cells; ++cell) {
+                    if (h->prev_relaxed(cell)) {
+                        h->prev_[cell].store(nullptr, std::memory_order_relaxed);
+                    }
+                }
+                */
+                break;
+            }
             //bool skip = true;
             ssize_t iterations = 0;
             for (size_t ncell = 0; ncell < Cells; ++ncell) {
@@ -719,9 +751,11 @@ private:
                     }
                     */
                     //printf("%p decr %p on cell %zu to %zx\n", obj, h, ncell, c - 1);
+                } else {
+                    assert(!older[ncell] || older[ncell]->wtid() < h->wtid());
                 }
             }
-            MvStatus status = h->status();
+            status = h->status();
             //assert(h->cells_.load(std::memory_order::memory_order_relaxed) >= iterations);
             //if (skip) {
                 // Skipping versions that are still in use by another chain,
@@ -731,6 +765,12 @@ private:
                 //printf("%p enqueuing delete %p\n", obj, h);
             //if (h->cells_.fetch_add(-iterations, std::memory_order_relaxed) == iterations) {
             ssize_t gc_cells = 0;
+            /*
+            if ((status & ENQUEUED) != ENQUEUED && h->status_.compare_exchange_strong(
+                        status, static_cast<MvStatus>(status | ENQUEUED))) {
+                assert((status & COMMITTED_DELTA) == COMMITTED);
+                h->enqueue_for_committed(__FILE__, __LINE__);
+            */
             if (h->cells_.compare_exchange_strong(gc_cells, -1, std::memory_order_relaxed)) {
 #if MVCC_GARBAGE_DEBUG
                 h->assert_status(!(status & (GARBAGE | GARBAGE2)), "gc_committed_cb garbage tracking");
@@ -747,23 +787,14 @@ private:
                     if (h->prev_relaxed(cell)) {
                         Transaction::fprint(
                                 h, " has non-null prev in cell ", cell, ": ",
-                                h->prev_relaxed(cell), "\n");
+                                h->prev_relaxed(cell),
+                                active[cell] ? " (active)" : " (inactive)", "\n");
                     }
                 }
 #endif
                 Transaction::rcu_call(gc_deleted_cb, h);
             }
             h->assert_status(!(status & (LOCKED | PENDING)), "gc_committed_cb unlocked not pending");
-            if ((status & COMMITTED_DELTA) == COMMITTED) {
-                /*
-                for (size_t cell = 0; cell < Cells; ++cell) {
-                    if (h->prev_relaxed(cell)) {
-                        h->prev_[cell].store(nullptr, std::memory_order_relaxed);
-                    }
-                }
-                */
-                break;
-            }
         }
     }
 

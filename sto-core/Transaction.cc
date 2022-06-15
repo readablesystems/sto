@@ -198,6 +198,10 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
 #if STO_TSC_PROFILE
     TimeKeeper<tc_cleanup> tk;
 #endif
+#if VERBOSE > 0
+    Transaction::fprint(
+            "TX", commit_tid_, ": ", committed ? "COMMITTED" : "ABORTED", "\n");
+#endif
     if (!committed) {
         TXP_INCREMENT(txp_total_aborts);
 #if STO_DEBUG_ABORTS

@@ -2,14 +2,19 @@
 
 while [ 1 ]; do
   if [ "$1" != "" ]; then
-    query="$1";
+    cmd="$1";
     shift;
   else
-    read -p "grep for what? << " -e query;
-  fi
-  if [ "$query" == "exit" ]; then
-    break;
-  fi
+    read -p "grep for what? << " -e cmd;
+  fi;
+  case "$cmd" in
+    "exit")
+      break;;
+    "")
+      ;;
+    *)
+      query="$cmd";;
+  esac
   if [ "$query" == "" ]; then
     continue;
   elif [ -f "$query" ]; then

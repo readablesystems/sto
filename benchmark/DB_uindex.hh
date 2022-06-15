@@ -634,7 +634,7 @@ public:
             MvAccess::get_read(TransProxy(txn, item), &hprev);
             if (item.has_read()) {
                 if (hprev && Sto::commit_tid() < hprev->rtid()) {
-                    if (!row_item.has_write()) {
+                    if (!row_item.has_mvhistory()) {
                         TransProxy(txn, row_item).add_write(nullptr);
                     }
                     TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
@@ -684,24 +684,28 @@ public:
             }
             assert(h);
             bool result = e->row_container.row.template cp_lock<DBParams::Commute>(Sto::commit_tid(), h, key.cell_num());
-#if VERBOSe > 0
-            if (!result) {
-                Transaction::fprint(
-                        "TX", Sto::read_tid(), " locking ", &e->row_container.row,
-                        " cell ", key.cell_num(),
-                        " history ", h, " with status ", h->status(),
-                        ": result is ", result, "\n");
-            }
+#if VERBOSE > 0
+            Transaction::fprint(
+                    "TX", Sto::read_tid(), " locking ", &e->row_container.row,
+                    " cell ", key.cell_num(),
+                    " history ", h, " with status ", h->status(),
+                    " and cell count ", h->cells_.load(std::memory_order_relaxed),
+                    ": result is ", result, "\n");
 #endif
             if (!result && !h->status_is(MvStatus::ABORTED)) {
                 ssize_t gc_cells = 0;
                 if (h->cells_.compare_exchange_strong(gc_cells, -1, std::memory_order_relaxed)) {
                     e->row_container.row.delete_history(h);
+                    assert(!row_item.has_mvhistory());
                     TransProxy(txn, row_item).add_mvhistory(nullptr);
+                } else {
+                    assert(row_item.has_mvhistory());
+                    TransProxy(txn, item).add_mvhistory(h);
                 }
                 TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
             } else {
-                TransProxy(txn, row_item).add_mvhistory(h);
+                TransProxy(txn, row_item).add_mvhistory(h);  // Shared storage
+                TransProxy(txn, item).add_mvhistory(h);
                 TXP_ACCOUNT(txp_tpcc_lock_abort3, txn.special_txp && !result);
             }
             return result;
@@ -848,7 +852,10 @@ public:
             if (!committed) {
                 //auto key = item.key<item_key_t>();
                 if (item.has_mvhistory()) {
-                    auto h = item.template write_value<mvhistory_type*>();
+                    auto key = item.key<item_key_t>();
+                    auto row_item = Sto::item(
+                            this, item_key_t::row_item_key(key.internal_elem_ptr()));
+                    auto h = row_item.template write_value<mvhistory_type*>();
                     if (h) {
 #if VERBOSE > 0
                         Transaction::fprint(
@@ -856,6 +863,7 @@ public:
                                 ": ", h, " with status ", h->status(), "\n");
 #endif
                         h->status_txn_abort();
+                        row_item.add_mvhistory(nullptr);
                     } else {
 #if VERBOSE > 0
                         Transaction::fprint(
@@ -863,6 +871,12 @@ public:
                                 ": nullptr\n");
 #endif
                     }
+                } else {
+#if VERBOSE > 0
+                    Transaction::fprint(
+                            "TX", Sto::read_tid(), " abort for cell ", item.key<item_key_t>().cell_num(), item.key<item_key_t>().is_row_item() ? "[ROW ITEM] of " : " of ", &item.key<item_key_t>().internal_elem_ptr()->row_container.row,
+                            ": no history\n");
+#endif
                 }
                 /*
                 {
