@@ -76,7 +76,11 @@ void ycsb_prepopulation_thread(int thread_id, ycsb_db<DBParams>& db, uint64_t ke
 
 template <typename DBParams>
 void ycsb_db<DBParams>::prepopulate() {
-    static const uint64_t nthreads = topo_info.num_cpus / 2;  // Be conservative for hyperthreading
+    static uint64_t nthreads = topo_info.num_cpus / 2;  // Be conservative for hyperthreading
+    while (ycsb_table_size % nthreads) {
+        --nthreads;
+    }
+    std::cout << "Using " << nthreads << " threads to prepopulate database..." << std::endl;
     uint64_t key_begin, key_end;
     uint64_t segment_size = ycsb_table_size / nthreads;
     key_begin = 0;
