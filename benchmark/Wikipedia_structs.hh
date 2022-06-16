@@ -23,6 +23,7 @@ private:
 
 typedef masstree_key_adapter<ipblocks_key_bare> ipblocks_key;
 
+/*
 struct ipblocks_row {
     enum class NamedColumn : int { ipb_address = 0,
                                    ipb_user,
@@ -58,6 +59,7 @@ struct ipblocks_row {
     int32_t ipb_block_email;
     int32_t ipb_allow_usertalk;
 };
+*/
 
 struct __attribute__((packed)) ipblocks_addr_idx_key_bare {
     var_string<255> ipb_address;
@@ -117,6 +119,7 @@ struct __attribute__((packed)) logging_key_bare {
 
 typedef masstree_key_adapter<logging_key_bare> logging_key;
 
+/*
 struct logging_row {
     enum class NamedColumn : int { log_type = 0,
                                    log_action,
@@ -142,6 +145,7 @@ struct logging_row {
     var_string<255> log_user_text;
     int32_t log_page;
 };
+*/
 
 // New table: page
 
@@ -181,6 +185,7 @@ struct page_row_frequpd {
     int32_t page_len;
 };
 
+/*
 struct page_row {
     enum class NamedColumn : int { page_namespace = 0,
                                    page_title,
@@ -204,6 +209,7 @@ struct page_row {
     int32_t page_latest;
     int32_t page_len;
 };
+*/
 
 struct __attribute__((packed)) page_idx_key_bare {
     int32_t page_namespace;
@@ -220,10 +226,12 @@ private:
 
 typedef masstree_key_adapter<page_idx_key_bare> page_idx_key;
 
+/*
 struct page_idx_row {
     enum class NamedColumn : int { page_id = 0 };
     int32_t page_id;
 };
+*/
 
 // New table: page_restrictions
 
@@ -235,6 +243,7 @@ struct __attribute__((packed)) page_restrictions_key_bare {
 
 typedef masstree_key_adapter<page_restrictions_key_bare> page_restrictions_key;
 
+/*
 struct page_restrictions_row {
     enum class NamedColumn : int { pr_page = 0,
                                    pr_type,
@@ -249,6 +258,7 @@ struct page_restrictions_row {
     int32_t pr_user;
     var_string<14> pr_expiry;
 };
+*/
 
 struct __attribute__((packed)) page_restrictions_idx_key_bare {
     int32_t pr_page;
@@ -264,10 +274,12 @@ private:
 
 typedef masstree_key_adapter<page_restrictions_idx_key_bare> page_restrictions_idx_key;
 
+/*
 struct page_restrictions_idx_row {
     enum class NamedColumn : int { pr_id = 0 };
     int32_t pr_id;
 };
+*/
 
 // New table: recentchanges
 
@@ -279,6 +291,7 @@ struct __attribute__((packed)) recentchanges_key_bare {
 
 typedef masstree_key_adapter<recentchanges_key_bare> recentchanges_key;
 
+/*
 struct recentchanges_row {
     enum class NamedColumn : int { rc_timestamp = 0,
                                    rc_cur_time,
@@ -332,6 +345,7 @@ struct recentchanges_row {
     var_string<255> rc_log_action;
     var_string<255> rc_params;
 };
+*/
 
 // New table: revision
 
@@ -343,6 +357,7 @@ struct __attribute__((packed)) revision_key_bare {
 
 typedef masstree_key_adapter<revision_key_bare> revision_key;
 
+/*
 struct revision_row {
     enum class NamedColumn : int { rev_page = 0,
                                    rev_text_id,
@@ -366,6 +381,7 @@ struct revision_row {
     int32_t rev_len;
     int32_t rev_parent_id;
 };
+*/
 
 // New table: text
 
@@ -377,6 +393,7 @@ struct __attribute__((packed)) text_key_bare {
 
 typedef masstree_key_adapter<text_key_bare> text_key;
 
+/*
 struct text_row {
     enum class NamedColumn : int { old_text = 0,
                                    old_flags,
@@ -386,6 +403,7 @@ struct text_row {
     var_string<30> old_flags;
     int32_t old_page;
 };
+*/
 
 // New table: useracct
 
@@ -433,6 +451,7 @@ struct useracct_row_frequpd {
     int32_t user_editcount;
 };
 
+/*
 struct useracct_row {
     enum class NamedColumn : int { user_name = 0,
                                    user_real_name,
@@ -464,6 +483,7 @@ struct useracct_row {
     var_string<14> user_touched;
     int32_t user_editcount;
 };
+*/
 
 struct __attribute__((packed)) useracct_idx_key_bare {
     var_string<255> user_name;
@@ -473,10 +493,12 @@ struct __attribute__((packed)) useracct_idx_key_bare {
 
 typedef masstree_key_adapter<useracct_idx_key_bare> useracct_idx_key;
 
+/*
 struct useracct_idx_row {
     enum class NamedColumn : int { user_id = 0 };
     int32_t user_id;
 };
+*/
 
 // New table: user_groups
 
@@ -488,10 +510,12 @@ struct __attribute__((packed)) user_groups_key_bare {
 
 typedef masstree_key_adapter<user_groups_key_bare> user_groups_key;
 
+/*
 struct user_groups_row {
     enum class NamedColumn : int { ug_group = 0 };
     var_string<16> ug_group;
 };
+*/
 
 // New table: watchlist
 
@@ -508,11 +532,13 @@ struct __attribute__((packed)) watchlist_key_bare {
 
 typedef masstree_key_adapter<watchlist_key_bare> watchlist_key;
 
+/*
 struct watchlist_row {
     enum class NamedColumn : int { wl_notificationtimestamp = 0 };
 
     var_string<14> wl_notificationtimestamp;
 };
+*/
 
 struct __attribute__((packed)) watchlist_idx_key_bare {
     int32_t wl_namespace;
@@ -542,5 +568,7 @@ struct article_type {
     std::string old_text;
     std::string user_text;
 };
+
+#include "Wikipedia_structs_generated.hh"
 
 }; // namespace wikipedia

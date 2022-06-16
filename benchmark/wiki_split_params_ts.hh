@@ -2,7 +2,7 @@ namespace bench {
 
 
 template <>
-struct SplitParams<wikipedia::ipblocks_row> {
+struct SplitParams<wikipedia::ipblocks_row, true> {
   using split_type_list = std::tuple<wikipedia::ipblocks_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -59,7 +59,7 @@ struct SplitParams<wikipedia::ipblocks_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::ipblocks_row> {
+class RecordAccessor<A, wikipedia::ipblocks_row, true> {
  public:
   
   const var_string<255>& ipb_address() const {
@@ -153,8 +153,9 @@ class RecordAccessor<A, wikipedia::ipblocks_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::ipblocks_row> : public RecordAccessor<UniRecordAccessor<wikipedia::ipblocks_row>, wikipedia::ipblocks_row> {
+class UniRecordAccessor<wikipedia::ipblocks_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::ipblocks_row, true>, wikipedia::ipblocks_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::ipblocks_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -264,14 +265,15 @@ class UniRecordAccessor<wikipedia::ipblocks_row> : public RecordAccessor<UniReco
 
 
   const wikipedia::ipblocks_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::ipblocks_row>, wikipedia::ipblocks_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::ipblocks_row, true>, wikipedia::ipblocks_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::ipblocks_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::ipblocks_row>, wikipedia::ipblocks_row> {
+class SplitRecordAccessor<wikipedia::ipblocks_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::ipblocks_row, true>, wikipedia::ipblocks_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::ipblocks_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::ipblocks_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::ipblocks_row*>(vptrs[0])) {}
 
@@ -384,12 +386,12 @@ class SplitRecordAccessor<wikipedia::ipblocks_row> : public RecordAccessor<Split
 
   const wikipedia::ipblocks_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::ipblocks_row>, wikipedia::ipblocks_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::ipblocks_row, true>, wikipedia::ipblocks_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::logging_row> {
+struct SplitParams<wikipedia::logging_row, true> {
   using split_type_list = std::tuple<wikipedia::logging_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -436,7 +438,7 @@ struct SplitParams<wikipedia::logging_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::logging_row> {
+class RecordAccessor<A, wikipedia::logging_row, true> {
  public:
   
   const var_string<32>& log_type() const {
@@ -505,8 +507,9 @@ class RecordAccessor<A, wikipedia::logging_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::logging_row> : public RecordAccessor<UniRecordAccessor<wikipedia::logging_row>, wikipedia::logging_row> {
+class UniRecordAccessor<wikipedia::logging_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::logging_row, true>, wikipedia::logging_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::logging_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -586,14 +589,15 @@ class UniRecordAccessor<wikipedia::logging_row> : public RecordAccessor<UniRecor
 
 
   const wikipedia::logging_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::logging_row>, wikipedia::logging_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::logging_row, true>, wikipedia::logging_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::logging_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::logging_row>, wikipedia::logging_row> {
+class SplitRecordAccessor<wikipedia::logging_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::logging_row, true>, wikipedia::logging_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::logging_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::logging_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::logging_row*>(vptrs[0])) {}
 
@@ -676,12 +680,12 @@ class SplitRecordAccessor<wikipedia::logging_row> : public RecordAccessor<SplitR
 
   const wikipedia::logging_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::logging_row>, wikipedia::logging_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::logging_row, true>, wikipedia::logging_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::page_row> {
+struct SplitParams<wikipedia::page_row, true> {
   using split_type_list = std::tuple<wikipedia::page_row_infreq, wikipedia::page_row_frequpd>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -732,7 +736,7 @@ struct SplitParams<wikipedia::page_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::page_row> {
+class RecordAccessor<A, wikipedia::page_row, true> {
  public:
   
   const int32_t& page_namespace() const {
@@ -796,8 +800,9 @@ class RecordAccessor<A, wikipedia::page_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::page_row> : public RecordAccessor<UniRecordAccessor<wikipedia::page_row>, wikipedia::page_row> {
+class UniRecordAccessor<wikipedia::page_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::page_row, true>, wikipedia::page_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::page_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -871,14 +876,15 @@ class UniRecordAccessor<wikipedia::page_row> : public RecordAccessor<UniRecordAc
 
 
   const wikipedia::page_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::page_row>, wikipedia::page_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::page_row, true>, wikipedia::page_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::page_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::page_row>, wikipedia::page_row> {
+class SplitRecordAccessor<wikipedia::page_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::page_row, true>, wikipedia::page_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::page_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::page_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::page_row_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<wikipedia::page_row_frequpd*>(vptrs[1])) {}
 
@@ -960,12 +966,12 @@ class SplitRecordAccessor<wikipedia::page_row> : public RecordAccessor<SplitReco
   const wikipedia::page_row_infreq* vptr_0_;
   const wikipedia::page_row_frequpd* vptr_1_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::page_row>, wikipedia::page_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::page_row, true>, wikipedia::page_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::page_idx_row> {
+struct SplitParams<wikipedia::page_idx_row, true> {
   using split_type_list = std::tuple<wikipedia::page_idx_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -992,7 +998,7 @@ struct SplitParams<wikipedia::page_idx_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::page_idx_row> {
+class RecordAccessor<A, wikipedia::page_idx_row, true> {
  public:
   
   const int32_t& page_id() const {
@@ -1011,8 +1017,9 @@ class RecordAccessor<A, wikipedia::page_idx_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::page_idx_row> : public RecordAccessor<UniRecordAccessor<wikipedia::page_idx_row>, wikipedia::page_idx_row> {
+class UniRecordAccessor<wikipedia::page_idx_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::page_idx_row, true>, wikipedia::page_idx_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::page_idx_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -1032,14 +1039,15 @@ class UniRecordAccessor<wikipedia::page_idx_row> : public RecordAccessor<UniReco
 
 
   const wikipedia::page_idx_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::page_idx_row>, wikipedia::page_idx_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::page_idx_row, true>, wikipedia::page_idx_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::page_idx_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::page_idx_row>, wikipedia::page_idx_row> {
+class SplitRecordAccessor<wikipedia::page_idx_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::page_idx_row, true>, wikipedia::page_idx_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::page_idx_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::page_idx_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::page_idx_row*>(vptrs[0])) {}
 
@@ -1062,12 +1070,12 @@ class SplitRecordAccessor<wikipedia::page_idx_row> : public RecordAccessor<Split
 
   const wikipedia::page_idx_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::page_idx_row>, wikipedia::page_idx_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::page_idx_row, true>, wikipedia::page_idx_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::page_restrictions_row> {
+struct SplitParams<wikipedia::page_restrictions_row, true> {
   using split_type_list = std::tuple<wikipedia::page_restrictions_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -1104,7 +1112,7 @@ struct SplitParams<wikipedia::page_restrictions_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::page_restrictions_row> {
+class RecordAccessor<A, wikipedia::page_restrictions_row, true> {
  public:
   
   const int32_t& pr_page() const {
@@ -1148,8 +1156,9 @@ class RecordAccessor<A, wikipedia::page_restrictions_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::page_restrictions_row> : public RecordAccessor<UniRecordAccessor<wikipedia::page_restrictions_row>, wikipedia::page_restrictions_row> {
+class UniRecordAccessor<wikipedia::page_restrictions_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::page_restrictions_row, true>, wikipedia::page_restrictions_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::page_restrictions_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -1199,14 +1208,15 @@ class UniRecordAccessor<wikipedia::page_restrictions_row> : public RecordAccesso
 
 
   const wikipedia::page_restrictions_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::page_restrictions_row>, wikipedia::page_restrictions_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::page_restrictions_row, true>, wikipedia::page_restrictions_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::page_restrictions_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::page_restrictions_row>, wikipedia::page_restrictions_row> {
+class SplitRecordAccessor<wikipedia::page_restrictions_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::page_restrictions_row, true>, wikipedia::page_restrictions_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::page_restrictions_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::page_restrictions_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::page_restrictions_row*>(vptrs[0])) {}
 
@@ -1259,12 +1269,12 @@ class SplitRecordAccessor<wikipedia::page_restrictions_row> : public RecordAcces
 
   const wikipedia::page_restrictions_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::page_restrictions_row>, wikipedia::page_restrictions_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::page_restrictions_row, true>, wikipedia::page_restrictions_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::page_restrictions_idx_row> {
+struct SplitParams<wikipedia::page_restrictions_idx_row, true> {
   using split_type_list = std::tuple<wikipedia::page_restrictions_idx_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -1291,7 +1301,7 @@ struct SplitParams<wikipedia::page_restrictions_idx_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::page_restrictions_idx_row> {
+class RecordAccessor<A, wikipedia::page_restrictions_idx_row, true> {
  public:
   
   const int32_t& pr_id() const {
@@ -1310,8 +1320,9 @@ class RecordAccessor<A, wikipedia::page_restrictions_idx_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::page_restrictions_idx_row> : public RecordAccessor<UniRecordAccessor<wikipedia::page_restrictions_idx_row>, wikipedia::page_restrictions_idx_row> {
+class UniRecordAccessor<wikipedia::page_restrictions_idx_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::page_restrictions_idx_row, true>, wikipedia::page_restrictions_idx_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::page_restrictions_idx_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -1331,14 +1342,15 @@ class UniRecordAccessor<wikipedia::page_restrictions_idx_row> : public RecordAcc
 
 
   const wikipedia::page_restrictions_idx_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::page_restrictions_idx_row>, wikipedia::page_restrictions_idx_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::page_restrictions_idx_row, true>, wikipedia::page_restrictions_idx_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::page_restrictions_idx_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::page_restrictions_idx_row>, wikipedia::page_restrictions_idx_row> {
+class SplitRecordAccessor<wikipedia::page_restrictions_idx_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::page_restrictions_idx_row, true>, wikipedia::page_restrictions_idx_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::page_restrictions_idx_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::page_restrictions_idx_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::page_restrictions_idx_row*>(vptrs[0])) {}
 
@@ -1361,12 +1373,12 @@ class SplitRecordAccessor<wikipedia::page_restrictions_idx_row> : public RecordA
 
   const wikipedia::page_restrictions_idx_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::page_restrictions_idx_row>, wikipedia::page_restrictions_idx_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::page_restrictions_idx_row, true>, wikipedia::page_restrictions_idx_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::recentchanges_row> {
+struct SplitParams<wikipedia::recentchanges_row, true> {
   using split_type_list = std::tuple<wikipedia::recentchanges_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -1441,7 +1453,7 @@ struct SplitParams<wikipedia::recentchanges_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::recentchanges_row> {
+class RecordAccessor<A, wikipedia::recentchanges_row, true> {
  public:
   
   const var_string<14>& rc_timestamp() const {
@@ -1580,8 +1592,9 @@ class RecordAccessor<A, wikipedia::recentchanges_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::recentchanges_row> : public RecordAccessor<UniRecordAccessor<wikipedia::recentchanges_row>, wikipedia::recentchanges_row> {
+class UniRecordAccessor<wikipedia::recentchanges_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::recentchanges_row, true>, wikipedia::recentchanges_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::recentchanges_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -1745,14 +1758,15 @@ class UniRecordAccessor<wikipedia::recentchanges_row> : public RecordAccessor<Un
 
 
   const wikipedia::recentchanges_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::recentchanges_row>, wikipedia::recentchanges_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::recentchanges_row, true>, wikipedia::recentchanges_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::recentchanges_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::recentchanges_row>, wikipedia::recentchanges_row> {
+class SplitRecordAccessor<wikipedia::recentchanges_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::recentchanges_row, true>, wikipedia::recentchanges_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::recentchanges_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::recentchanges_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::recentchanges_row*>(vptrs[0])) {}
 
@@ -1919,12 +1933,12 @@ class SplitRecordAccessor<wikipedia::recentchanges_row> : public RecordAccessor<
 
   const wikipedia::recentchanges_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::recentchanges_row>, wikipedia::recentchanges_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::recentchanges_row, true>, wikipedia::recentchanges_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::revision_row> {
+struct SplitParams<wikipedia::revision_row, true> {
   using split_type_list = std::tuple<wikipedia::revision_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -1969,7 +1983,7 @@ struct SplitParams<wikipedia::revision_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::revision_row> {
+class RecordAccessor<A, wikipedia::revision_row, true> {
  public:
   
   const int32_t& rev_page() const {
@@ -2033,8 +2047,9 @@ class RecordAccessor<A, wikipedia::revision_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::revision_row> : public RecordAccessor<UniRecordAccessor<wikipedia::revision_row>, wikipedia::revision_row> {
+class UniRecordAccessor<wikipedia::revision_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::revision_row, true>, wikipedia::revision_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::revision_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -2108,14 +2123,15 @@ class UniRecordAccessor<wikipedia::revision_row> : public RecordAccessor<UniReco
 
 
   const wikipedia::revision_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::revision_row>, wikipedia::revision_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::revision_row, true>, wikipedia::revision_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::revision_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::revision_row>, wikipedia::revision_row> {
+class SplitRecordAccessor<wikipedia::revision_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::revision_row, true>, wikipedia::revision_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::revision_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::revision_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::revision_row*>(vptrs[0])) {}
 
@@ -2192,12 +2208,12 @@ class SplitRecordAccessor<wikipedia::revision_row> : public RecordAccessor<Split
 
   const wikipedia::revision_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::revision_row>, wikipedia::revision_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::revision_row, true>, wikipedia::revision_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::text_row> {
+struct SplitParams<wikipedia::text_row, true> {
   using split_type_list = std::tuple<wikipedia::text_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -2228,7 +2244,7 @@ struct SplitParams<wikipedia::text_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::text_row> {
+class RecordAccessor<A, wikipedia::text_row, true> {
  public:
   
   char* old_text() const {
@@ -2257,8 +2273,9 @@ class RecordAccessor<A, wikipedia::text_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::text_row> : public RecordAccessor<UniRecordAccessor<wikipedia::text_row>, wikipedia::text_row> {
+class UniRecordAccessor<wikipedia::text_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::text_row, true>, wikipedia::text_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::text_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -2290,14 +2307,15 @@ class UniRecordAccessor<wikipedia::text_row> : public RecordAccessor<UniRecordAc
 
 
   const wikipedia::text_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::text_row>, wikipedia::text_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::text_row, true>, wikipedia::text_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::text_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::text_row>, wikipedia::text_row> {
+class SplitRecordAccessor<wikipedia::text_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::text_row, true>, wikipedia::text_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::text_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::text_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::text_row*>(vptrs[0])) {}
 
@@ -2332,12 +2350,12 @@ class SplitRecordAccessor<wikipedia::text_row> : public RecordAccessor<SplitReco
 
   const wikipedia::text_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::text_row>, wikipedia::text_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::text_row, true>, wikipedia::text_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::useracct_row> {
+struct SplitParams<wikipedia::useracct_row, true> {
   using split_type_list = std::tuple<wikipedia::useracct_row_infreq, wikipedia::useracct_row_frequpd>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -2396,7 +2414,7 @@ struct SplitParams<wikipedia::useracct_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::useracct_row> {
+class RecordAccessor<A, wikipedia::useracct_row, true> {
  public:
   
   const var_string<255>& user_name() const {
@@ -2480,8 +2498,9 @@ class RecordAccessor<A, wikipedia::useracct_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::useracct_row> : public RecordAccessor<UniRecordAccessor<wikipedia::useracct_row>, wikipedia::useracct_row> {
+class UniRecordAccessor<wikipedia::useracct_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::useracct_row, true>, wikipedia::useracct_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::useracct_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -2579,14 +2598,15 @@ class UniRecordAccessor<wikipedia::useracct_row> : public RecordAccessor<UniReco
 
 
   const wikipedia::useracct_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::useracct_row>, wikipedia::useracct_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::useracct_row, true>, wikipedia::useracct_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::useracct_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::useracct_row>, wikipedia::useracct_row> {
+class SplitRecordAccessor<wikipedia::useracct_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::useracct_row, true>, wikipedia::useracct_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::useracct_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::useracct_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::useracct_row_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<wikipedia::useracct_row_frequpd*>(vptrs[1])) {}
 
@@ -2692,12 +2712,12 @@ class SplitRecordAccessor<wikipedia::useracct_row> : public RecordAccessor<Split
   const wikipedia::useracct_row_infreq* vptr_0_;
   const wikipedia::useracct_row_frequpd* vptr_1_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::useracct_row>, wikipedia::useracct_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::useracct_row, true>, wikipedia::useracct_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::useracct_idx_row> {
+struct SplitParams<wikipedia::useracct_idx_row, true> {
   using split_type_list = std::tuple<wikipedia::useracct_idx_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -2724,7 +2744,7 @@ struct SplitParams<wikipedia::useracct_idx_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::useracct_idx_row> {
+class RecordAccessor<A, wikipedia::useracct_idx_row, true> {
  public:
   
   const int32_t& user_id() const {
@@ -2743,8 +2763,9 @@ class RecordAccessor<A, wikipedia::useracct_idx_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::useracct_idx_row> : public RecordAccessor<UniRecordAccessor<wikipedia::useracct_idx_row>, wikipedia::useracct_idx_row> {
+class UniRecordAccessor<wikipedia::useracct_idx_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::useracct_idx_row, true>, wikipedia::useracct_idx_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::useracct_idx_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -2764,14 +2785,15 @@ class UniRecordAccessor<wikipedia::useracct_idx_row> : public RecordAccessor<Uni
 
 
   const wikipedia::useracct_idx_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::useracct_idx_row>, wikipedia::useracct_idx_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::useracct_idx_row, true>, wikipedia::useracct_idx_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::useracct_idx_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::useracct_idx_row>, wikipedia::useracct_idx_row> {
+class SplitRecordAccessor<wikipedia::useracct_idx_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::useracct_idx_row, true>, wikipedia::useracct_idx_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::useracct_idx_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::useracct_idx_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::useracct_idx_row*>(vptrs[0])) {}
 
@@ -2794,12 +2816,12 @@ class SplitRecordAccessor<wikipedia::useracct_idx_row> : public RecordAccessor<S
 
   const wikipedia::useracct_idx_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::useracct_idx_row>, wikipedia::useracct_idx_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::useracct_idx_row, true>, wikipedia::useracct_idx_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::user_groups_row> {
+struct SplitParams<wikipedia::user_groups_row, true> {
   using split_type_list = std::tuple<wikipedia::user_groups_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -2826,7 +2848,7 @@ struct SplitParams<wikipedia::user_groups_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::user_groups_row> {
+class RecordAccessor<A, wikipedia::user_groups_row, true> {
  public:
   
   const var_string<16>& ug_group() const {
@@ -2845,8 +2867,9 @@ class RecordAccessor<A, wikipedia::user_groups_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::user_groups_row> : public RecordAccessor<UniRecordAccessor<wikipedia::user_groups_row>, wikipedia::user_groups_row> {
+class UniRecordAccessor<wikipedia::user_groups_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::user_groups_row, true>, wikipedia::user_groups_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::user_groups_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -2866,14 +2889,15 @@ class UniRecordAccessor<wikipedia::user_groups_row> : public RecordAccessor<UniR
 
 
   const wikipedia::user_groups_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::user_groups_row>, wikipedia::user_groups_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::user_groups_row, true>, wikipedia::user_groups_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::user_groups_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::user_groups_row>, wikipedia::user_groups_row> {
+class SplitRecordAccessor<wikipedia::user_groups_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::user_groups_row, true>, wikipedia::user_groups_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::user_groups_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::user_groups_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::user_groups_row*>(vptrs[0])) {}
 
@@ -2896,12 +2920,12 @@ class SplitRecordAccessor<wikipedia::user_groups_row> : public RecordAccessor<Sp
 
   const wikipedia::user_groups_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::user_groups_row>, wikipedia::user_groups_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::user_groups_row, true>, wikipedia::user_groups_row, true>;
 };
 
 
 template <>
-struct SplitParams<wikipedia::watchlist_row> {
+struct SplitParams<wikipedia::watchlist_row, true> {
   using split_type_list = std::tuple<wikipedia::watchlist_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -2928,7 +2952,7 @@ struct SplitParams<wikipedia::watchlist_row> {
 
 
 template <typename A>
-class RecordAccessor<A, wikipedia::watchlist_row> {
+class RecordAccessor<A, wikipedia::watchlist_row, true> {
  public:
   
   const var_string<14>& wl_notificationtimestamp() const {
@@ -2947,8 +2971,9 @@ class RecordAccessor<A, wikipedia::watchlist_row> {
 };
 
 template <>
-class UniRecordAccessor<wikipedia::watchlist_row> : public RecordAccessor<UniRecordAccessor<wikipedia::watchlist_row>, wikipedia::watchlist_row> {
+class UniRecordAccessor<wikipedia::watchlist_row, true> : public RecordAccessor<UniRecordAccessor<wikipedia::watchlist_row, true>, wikipedia::watchlist_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const wikipedia::watchlist_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -2968,14 +2993,15 @@ class UniRecordAccessor<wikipedia::watchlist_row> : public RecordAccessor<UniRec
 
 
   const wikipedia::watchlist_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<wikipedia::watchlist_row>, wikipedia::watchlist_row>;
+  friend RecordAccessor<UniRecordAccessor<wikipedia::watchlist_row, true>, wikipedia::watchlist_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<wikipedia::watchlist_row> : public RecordAccessor<SplitRecordAccessor<wikipedia::watchlist_row>, wikipedia::watchlist_row> {
+class SplitRecordAccessor<wikipedia::watchlist_row, true> : public RecordAccessor<SplitRecordAccessor<wikipedia::watchlist_row, true>, wikipedia::watchlist_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<wikipedia::watchlist_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<wikipedia::watchlist_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<wikipedia::watchlist_row*>(vptrs[0])) {}
 
@@ -2998,7 +3024,7 @@ class SplitRecordAccessor<wikipedia::watchlist_row> : public RecordAccessor<Spli
 
   const wikipedia::watchlist_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<wikipedia::watchlist_row>, wikipedia::watchlist_row>;
+  friend RecordAccessor<SplitRecordAccessor<wikipedia::watchlist_row, true>, wikipedia::watchlist_row, true>;
 };
 
 } // namespace bench

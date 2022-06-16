@@ -8,6 +8,7 @@
 #include "clp.h"
 
 using db_params::constants;
+using db_params::db_split_type;
 using db_params::db_params_id;
 using db_params::db_default_params;
 using db_params::db_default_commute_params;
@@ -27,7 +28,8 @@ int* wikipedia::wikipedia_loader<DBParams>::page_last_rev_lens = nullptr;
 
 // @section: clp parser definitions
 enum {
-    opt_dbid = 1, opt_nthrs, opt_users, opt_pages, opt_time, opt_gc, opt_comm, opt_perf, opt_pfcnt
+    opt_dbid = 1, opt_nthrs, opt_users, opt_pages, opt_time, opt_gc, opt_comm,
+    opt_splt, opt_perf, opt_pfcnt
 };
 
 static const Clp_Option options[] = {
@@ -38,6 +40,7 @@ static const Clp_Option options[] = {
         { "time",         'l', opt_time,  Clp_ValDouble, Clp_Optional },
         { "garbage-collect", 'b', opt_gc, Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate | Clp_Optional },
+        { "split",        's', opt_splt,  Clp_ValString, Clp_Optional },
         { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
         { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate | Clp_Optional }
 };
@@ -60,6 +63,9 @@ static inline void print_usage(const char *argv_0) {
        << "    Enable garbage collection/epoch advancer thread." << std::endl
        << "  --commute (or -x)" << std::endl
        << "    Enable commutative update support." << std::endl
+       << "  --split=<STRING> (or -s<STRING>)" << std::endl
+       << "    Specify the split algorithm to use. Can be one of:" << std::endl
+       << "      none (default), static, adaptive" << std::endl
        << "  --perf (or -p)" << std::endl
        << "    Spawns perf profiler in record mode for the duration of the benchmark run." << std::endl
        << "  --perf-counter (or -c)" << std::endl
@@ -75,6 +81,7 @@ struct cmd_params {
     double time;
     bool enable_gc;
     bool enable_comm;
+    db_split_type split_type;
     bool spawn_perf;
     bool perf_counter_mode;
 
@@ -82,6 +89,7 @@ struct cmd_params {
         : db_id(db_params::db_params_id::Default),
           num_threads(1), scale_user(10), scale_page(10),
           time(10.0), enable_gc(false), enable_comm(false),
+          split_type(db_split_type::None),
           spawn_perf(false), perf_counter_mode(false) {}
 };
 
@@ -224,6 +232,9 @@ int main(int argc, const char * const *argv) {
         case opt_comm:
             params.enable_comm = !clp->negated;
             break;
+        case opt_splt:
+            params.split_type = db_params::parse_split_type(clp->val.s);
+            break;
         case opt_perf:
             params.spawn_perf = !clp->negated;
             break;
@@ -250,9 +261,33 @@ int main(int argc, const char * const *argv) {
 
     switch (params.db_id) {
         case db_params_id::Default:
-            ret_code = params.enable_comm ?
-                    bench_access<db_default_commute_params>::execute(params) :
-                    bench_access<db_default_params>::execute(params);
+            if (params.enable_comm) {
+                switch (params.split_type) {
+                case db_split_type::None:
+                    return bench_access<db_params::db_default_commute_params>::execute(params);
+                case db_split_type::Static:
+                    return bench_access<db_params::db_default_sts_commute_params>::execute(params);
+                case db_split_type::Adaptive:
+                    return bench_access<db_params::db_default_ats_commute_params>::execute(params);
+                default:
+                    std::cerr << "Invalid TS choice" << std::endl;
+                    ret_code = 1;
+                    break;
+                }
+            } else {
+                switch (params.split_type) {
+                case db_split_type::None:
+                    return bench_access<db_params::db_default_params>::execute(params);
+                case db_split_type::Static:
+                    return bench_access<db_params::db_default_sts_params>::execute(params);
+                case db_split_type::Adaptive:
+                    return bench_access<db_params::db_default_ats_params>::execute(params);
+                default:
+                    std::cerr << "Invalid TS choice" << std::endl;
+                    ret_code = 1;
+                    break;
+                }
+            }
             break;
         case db_params_id::TicToc:
             ret_code = params.enable_comm ?
@@ -274,9 +309,33 @@ int main(int argc, const char * const *argv) {
             break;
 #endif
         case db_params_id::MVCC:
-            ret_code = params.enable_comm ?
-                    bench_access<db_mvcc_commute_params>::execute(params) :
-                    bench_access<db_mvcc_params>::execute(params);
+            if (params.enable_comm) {
+                switch (params.split_type) {
+                case db_split_type::None:
+                    return bench_access<db_params::db_mvcc_commute_params>::execute(params);
+                case db_split_type::Static:
+                    return bench_access<db_params::db_mvcc_sts_commute_params>::execute(params);
+                case db_split_type::Adaptive:
+                    return bench_access<db_params::db_mvcc_ats_commute_params>::execute(params);
+                default:
+                    std::cerr << "Invalid TS choice" << std::endl;
+                    ret_code = 1;
+                    break;
+                }
+            } else {
+                switch (params.split_type) {
+                case db_split_type::None:
+                    return bench_access<db_params::db_mvcc_params>::execute(params);
+                case db_split_type::Static:
+                    return bench_access<db_params::db_mvcc_sts_params>::execute(params);
+                case db_split_type::Adaptive:
+                    return bench_access<db_params::db_mvcc_ats_params>::execute(params);
+                default:
+                    std::cerr << "Invalid TS choice" << std::endl;
+                    ret_code = 1;
+                    break;
+                }
+            }
             break;
         default:
             std::cerr << "unknown db config parameter id" << std::endl;

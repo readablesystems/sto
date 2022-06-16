@@ -27,6 +27,9 @@ size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
     typedef useracct_row::NamedColumn nc;
     size_t nexecs = 0;
 
+    bool abort, result;
+    uintptr_t row;
+
     RWTRANSACTION {
 
     ++nexecs;
@@ -37,7 +40,6 @@ size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
     bzero(wiv, sizeof(watchlist_idx_row));
 
     {
-    bool abort;
     std::tie(abort, std::ignore) = db.tbl_watchlist().insert_row(watchlist_key(user_id, name_space, page_title), wv);
     TXN_DO(abort);
 
@@ -46,14 +48,21 @@ size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
     }
 
     if (name_space == 0) {
-        bool abort;
         std::tie(abort, std::ignore) = db.tbl_watchlist().insert_row(watchlist_key(user_id, 1, page_title), wv);
         TXN_DO(abort);
     }
 
-    auto [abort, result, row, value] = db.tbl_useracct().select_split_row(useracct_key(user_id),
-        {{nc::user_touched, Commute ? access_t::write : access_t::update}}
-    );
+    Record<useracct_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+            {{nc::user_touched, Commute ? AccessType::write : AccessType::update}},
+            1
+        );
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_useracct().select_split_row(useracct_key(user_id),
+            {{nc::user_touched, Commute ? access_t::write : access_t::update}}
+        );
+    }
     (void)value; (void)result;
     TXN_DO(abort);
     assert(result);
@@ -79,6 +88,9 @@ size_t wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
     typedef useracct_row::NamedColumn nc;
     size_t nexecs = 0;
 
+    bool abort, result;
+    uintptr_t row;
+
     RWTRANSACTION {
 
     ++nexecs;
@@ -92,9 +104,17 @@ size_t wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
     TXN_DO(abort);
     }
 
-    auto [abort, result, row, value] = db.tbl_useracct().select_split_row(useracct_key(user_id),
-        {{nc::user_touched, Commute ? access_t::write : access_t::update}}
-    );
+    Record<useracct_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+            {{nc::user_touched, Commute ? AccessType::write : AccessType::update}},
+            1
+        );
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_useracct().select_split_row(useracct_key(user_id),
+            {{nc::user_touched, Commute ? access_t::write : access_t::update}}
+        );
+    }
     (void)value; (void)result;
     TXN_DO(abort);
     assert(result);
@@ -129,6 +149,9 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
     size_t nexecs = 0;
     article_type art;
 
+    bool abort, result;
+    uintptr_t row;
+
     TRANSACTION {
 
     ++nexecs;
@@ -138,7 +161,12 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
     int32_t rev_text_id;
 
     {
-    auto [abort, result, row, value] = db.idx_page().select_split_row(page_idx_key(name_space, page_title), {{pi_nc::page_id, access_t::read}});
+    Record<page_idx_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.idx_page().select_row(page_idx_key(name_space, page_title), {{pi_nc::page_id, AccessType::read}}, 1);
+    } else {
+        std::tie(abort, result, row, value) = db.idx_page().select_split_row(page_idx_key(name_space, page_title), {{pi_nc::page_id, access_t::read}});
+    }
     (void)row; (void)result;
     TXN_DO(abort);
     assert(result);
@@ -146,9 +174,17 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
     }
 
     {
-    auto [abort, result, row, value] = db.tbl_page().select_split_row(page_key(page_id),
-        {{page_nc::page_latest, access_t::read}}
-    );
+    Record<page_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_page().select_row(page_key(page_id),
+            {{page_nc::page_latest, AccessType::read}},
+            1
+        );
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_page().select_split_row(page_key(page_id),
+            {{page_nc::page_latest, access_t::read}}
+        );
+    }
     (void)row; (void)result;
     TXN_DO(abort);
     assert(result);
@@ -193,8 +229,14 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
     */
 
     {
-    auto [abort, result, row, value] = db.tbl_revision().select_split_row(revision_key(rev_id),
-        {{rev_nc::rev_text_id, access_t::read}});
+    Record<revision_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_revision().select_row(revision_key(rev_id),
+            {{rev_nc::rev_text_id, AccessType::read}}, 1);
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_revision().select_split_row(revision_key(rev_id),
+            {{rev_nc::rev_text_id, access_t::read}});
+    }
     (void)row; (void)result;
     TXN_DO(abort);
     assert(result);
@@ -202,8 +244,14 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
     }
 
     {
-    auto [abort, result, row, value] = db.tbl_text().select_split_row(text_key(rev_text_id),
-        {{text_nc::old_text, access_t::read}});
+    Record<text_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_text().select_row(text_key(rev_text_id),
+            {{text_nc::old_text, AccessType::read}}, 1);
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_text().select_split_row(text_key(rev_text_id),
+            {{text_nc::old_text, access_t::read}});
+    }
     (void)row; (void)result;
     TXN_DO(abort);
     assert(result);
@@ -238,6 +286,9 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
     size_t nexecs = 0;
     article_type art;
 
+    bool abort, result;
+    uintptr_t row;
+
     TRANSACTION {
 
     ++nexecs;
@@ -247,9 +298,17 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
     int32_t rev_text_id;
 
     {
-    auto [abort, result, row, value] = db.tbl_useracct().select_split_row(useracct_key(user_id),
-        {{user_nc::user_name, access_t::read}}
-    );
+    Record<useracct_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+            {{user_nc::user_name, AccessType::read}},
+            1
+        );
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_useracct().select_split_row(useracct_key(user_id),
+            {{user_nc::user_name, access_t::read}}
+        );
+    }
     (void)result; (void)row; (void)value;
     TXN_DO(abort);
     assert(result);
@@ -262,8 +321,14 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
     // From this point is pretty much the same as getPageAnonymous 
 
     {
-    auto [abort, result, row, value] = db.idx_page().select_split_row(page_idx_key(name_space, page_title),
-        {{pi_nc::page_id, access_t::read}});
+    Record<page_idx_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.idx_page().select_row(page_idx_key(name_space, page_title),
+            {{pi_nc::page_id, AccessType::read}}, 1);
+    } else {
+        std::tie(abort, result, row, value) = db.idx_page().select_split_row(page_idx_key(name_space, page_title),
+            {{pi_nc::page_id, access_t::read}});
+    }
     (void)result; (void)row;
     TXN_DO(abort);
     assert(result);
@@ -271,8 +336,14 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
     }
 
     {
-    auto [abort, result, row, value] = db.tbl_page().select_split_row(page_key(page_id),
-        {{page_nc::page_latest, access_t::read}});
+    Record<page_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_page().select_row(page_key(page_id),
+            {{page_nc::page_latest, AccessType::read}}, 1);
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_page().select_split_row(page_key(page_id),
+            {{page_nc::page_latest, access_t::read}});
+    }
     (void)result; (void)row;
     TXN_DO(abort);
     assert(result);
@@ -317,8 +388,14 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
     */
 
     {
-    auto [abort, result, row, value] = db.tbl_revision().select_split_row(revision_key(rev_id),
-        {{rev_nc::rev_text_id, access_t::read}});
+    Record<revision_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_revision().select_row(revision_key(rev_id),
+            {{rev_nc::rev_text_id, AccessType::read}}, 1);
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_revision().select_split_row(revision_key(rev_id),
+            {{rev_nc::rev_text_id, access_t::read}});
+    }
     (void)result; (void)row;
     TXN_DO(abort);
     assert(result);
@@ -326,8 +403,14 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
     }
 
     {
-    auto [abort, result, row, value] = db.tbl_text().select_split_row(text_key(rev_text_id),
-        {{text_nc::old_text, access_t::read}});
+    Record<text_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_text().select_row(text_key(rev_text_id),
+            {{text_nc::old_text, AccessType::read}}, 1);
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_text().select_split_row(text_key(rev_text_id),
+            {{text_nc::old_text, access_t::read}});
+    }
     (void)result; (void)row;
     TXN_DO(abort);
     assert(result);
@@ -349,6 +432,9 @@ size_t wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
     typedef page_row::NamedColumn page_nc;
     size_t nexecs = 0;
 
+    bool abort, result;
+    uintptr_t row;
+
     TRANSACTION {
 
     ++nexecs;
@@ -356,7 +442,7 @@ size_t wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
     std::vector<std::pair<int, std::string>> pages;
 
     auto scan_callback = [&](const page_idx_key& key, const auto& scan_value) {
-        auto row = (typename std::remove_reference_t<decltype(db)>::page_idx_type::accessor_t)(scan_value);
+        auto row = (Record<page_idx_row>)(scan_value);
         pages.push_back({row.page_id(), std::string(key.page_title.c_str())});
         return true;
     };
@@ -369,9 +455,16 @@ size_t wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
     }
 
     for (auto pair : pages) {
-        auto [abort, result, row, value]
-                = db.tbl_page().select_split_row(page_key(pair.first),
-                    {{page_nc::page_title, access_t::read}});
+        Record<page_row> value;
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            std::tie(abort, result, row, value)
+                    = db.tbl_page().select_row(page_key(pair.first),
+                        {{page_nc::page_title, AccessType::read}}, 1);
+        } else {
+            std::tie(abort, result, row, value)
+                    = db.tbl_page().select_split_row(page_key(pair.first),
+                        {{page_nc::page_title, access_t::read}});
+        }
         (void)result; (void)row;
         TXN_DO(abort);
         assert(result);
@@ -400,6 +493,9 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     typedef useracct_row::NamedColumn user_nc;
     typedef watchlist_row::NamedColumn wl_nc;
 
+    bool abort, result;
+    uintptr_t row;
+
     INTERACTIVE_RWTXN_START;
 
     ++nstarts;
@@ -416,7 +512,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     memcpy(text_v->old_text, page_text.c_str(), page_text.length() + 1);
 
     {
-    auto [abort, result] = db.tbl_text().insert_row(new_text_k, text_v);
+    std::tie(abort, result) = db.tbl_text().insert_row(new_text_k, text_v);
     (void)result;
     TXN_CHECK(abort);
     assert(!result);
@@ -438,7 +534,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     rev_v->rev_parent_id = rev_id;
 
     {
-    auto [abort, result] = db.tbl_revision().insert_row(new_rev_k, rev_v);
+    std::tie(abort, result) = db.tbl_revision().insert_row(new_rev_k, rev_v);
     (void)result;
     TXN_CHECK(abort);
     assert(!result);
@@ -446,14 +542,27 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
     {
     // UPDATE PAGE TABLE
-    auto [abort, result, row, value] =
-        db.tbl_page().select_split_row(page_key(page_id),
-            {{page_nc::page_latest, Commute ? access_t::write : access_t::update},
-             {page_nc::page_touched, Commute ? access_t::write : access_t::update},
-             {page_nc::page_is_new, Commute ? access_t::write : access_t::update},
-             {page_nc::page_is_redirect, Commute ? access_t::write : access_t::update},
-             {page_nc::page_len, Commute ? access_t::write : access_t::update}}
-        );
+    Record<page_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) =
+            db.tbl_page().select_row(page_key(page_id),
+                {{page_nc::page_latest, Commute ? AccessType::write : AccessType::update},
+                 {page_nc::page_touched, Commute ? AccessType::write : AccessType::update},
+                 {page_nc::page_is_new, Commute ? AccessType::write : AccessType::update},
+                 {page_nc::page_is_redirect, Commute ? AccessType::write : AccessType::update},
+                 {page_nc::page_len, Commute ? AccessType::write : AccessType::update}},
+                 1
+            );
+    } else {
+        std::tie(abort, result, row, value) =
+            db.tbl_page().select_split_row(page_key(page_id),
+                {{page_nc::page_latest, Commute ? access_t::write : access_t::update},
+                 {page_nc::page_touched, Commute ? access_t::write : access_t::update},
+                 {page_nc::page_is_new, Commute ? access_t::write : access_t::update},
+                 {page_nc::page_is_redirect, Commute ? access_t::write : access_t::update},
+                 {page_nc::page_len, Commute ? access_t::write : access_t::update}}
+            );
+    }
     (void)result;
     TXN_CHECK(abort);
     assert(result);
@@ -500,7 +609,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     rc_v->rc_new_len = (int32_t)page_text.length();
 
     {
-    auto [abort, result] = db.tbl_recentchanges().insert_row(rc_k, rc_v);
+    std::tie(abort, result) = db.tbl_recentchanges().insert_row(rc_k, rc_v);
     (void)result;
     TXN_CHECK(abort);
     assert(!result);
@@ -528,12 +637,18 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         RWTRANSACTION {
 
         for (auto& u : watching_users) {
-            auto [abort, result, row, value] = db.tbl_watchlist().select_split_row(watchlist_key(u, page_name_space, page_title),
-                {{wl_nc::wl_notificationtimestamp, access_t::write}});
+            Record<watchlist_row> value;
+            if constexpr (DBParams::Split == db_split_type::Adaptive) {
+                std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title),
+                    {{wl_nc::wl_notificationtimestamp, AccessType::write}}, 1);
+            } else {
+                std::tie(abort, result, row, value) = db.tbl_watchlist().select_split_row(watchlist_key(u, page_name_space, page_title),
+                    {{wl_nc::wl_notificationtimestamp, access_t::write}});
+            }
             TXN_DO(abort);
             if (result) {
                 auto new_wlv = Sto::tx_alloc<watchlist_row>();
-                value.copy_into(new_wlv);
+                //value.copy_into(new_wlv);
                 new_wlv->wl_notificationtimestamp = timestamp_str;
                 db.tbl_watchlist().update_row(row, new_wlv);
             }
@@ -560,7 +675,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         lg_v->log_page = page_id;
 
         {
-        auto [abort, result] = db.tbl_logging().insert_row(lg_k, lg_v);
+        std::tie(abort, result) = db.tbl_logging().insert_row(lg_k, lg_v);
         (void)result;
         TXN_DO(abort);
         assert(!result);
@@ -568,10 +683,19 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
         {
         // UPDATE USER
-        auto [abort, result, row, value] = db.tbl_useracct().select_split_row(useracct_key(user_id),
-            {{user_nc::user_editcount, Commute ? access_t::write : access_t::update},
-             {user_nc::user_touched,   Commute ? access_t::write : access_t::update}}
-        );
+        Record<useracct_row> value;
+        if constexpr (DBParams::Split == db_split_type::Adaptive) {
+            std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+                {{user_nc::user_editcount, Commute ? AccessType::write : AccessType::update},
+                 {user_nc::user_touched,   Commute ? AccessType::write : AccessType::update}},
+                1
+            );
+        } else {
+            std::tie(abort, result, row, value) = db.tbl_useracct().select_split_row(useracct_key(user_id),
+                {{user_nc::user_editcount, Commute ? access_t::write : access_t::update},
+                 {user_nc::user_touched,   Commute ? access_t::write : access_t::update}}
+            );
+        }
         (void)result;
         TXN_DO(abort);
         assert(result);
@@ -610,7 +734,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     lg_v->log_page = page_id;
 
     {
-    auto [abort, result] = db.tbl_logging().insert_row(lg_k, lg_v);
+    std::tie(abort, result) = db.tbl_logging().insert_row(lg_k, lg_v);
     (void)result;
     TXN_CHECK(abort);
     assert(!result);
@@ -618,10 +742,19 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
     {
     // UPDATE USER
-    auto [abort, result, row, value] = db.tbl_useracct().select_split_row(useracct_key(user_id),
-        {{user_nc::user_editcount, Commute ? access_t::write : access_t::update},
-         {user_nc::user_touched,   Commute ? access_t::write : access_t::update}}
-    );
+    Record<useracct_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+            {{user_nc::user_editcount, Commute ? AccessType::write : AccessType::update},
+             {user_nc::user_touched,   Commute ? AccessType::write : AccessType::update}},
+            1
+        );
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_useracct().select_split_row(useracct_key(user_id),
+            {{user_nc::user_editcount, Commute ? access_t::write : access_t::update},
+             {user_nc::user_touched,   Commute ? access_t::write : access_t::update}}
+        );
+    }
     (void)result;
     TXN_CHECK(abort);
     assert(result);

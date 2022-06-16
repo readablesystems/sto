@@ -18,13 +18,12 @@
 #include "DB_index.hh"
 #include "DB_params.hh"
 
-#if TABLE_FINE_GRAINED
 #include "wiki_split_params_ts.hh"
-#else
 #include "wiki_split_params_default.hh"
-#endif
 
 namespace wikipedia {
+
+using namespace db_params;
 
 struct constants {
     static constexpr int anonymous_page_update_prob = 26;
@@ -45,10 +44,9 @@ template <typename DBParams>
 class wikipedia_db {
 public:
     template <typename K, typename V>
-    using OIndex = typename std::conditional<
-            DBParams::MVCC,
-            mvcc_ordered_index<K, V, DBParams>,
-            ordered_index<K, V, DBParams>>::type;
+    using OIndex = typename std::conditional<DBParams::MVCC && !DBParams::UseATS,
+          mvcc_ordered_index<K, V, DBParams>,
+          ordered_index<K, V, DBParams>>::type;
 
     //typedef OIndex<ipblocks_key, ipblocks_row>                           ipb_tbl_type;
     //typedef OIndex<ipblocks_addr_idx_key, ipblocks_addr_idx_row>         ipb_addr_idx_type;
@@ -474,6 +472,14 @@ template <typename DBParams>
 class wikipedia_runner {
 public:
     typedef wikipedia_db<DBParams> db_type;
+    template <typename T>
+    using Record = typename std::conditional_t<
+        DBParams::Split == db_split_type::Adaptive,
+        typename T::RecordAccessor,
+            std::conditional_t<
+            DBParams::MVCC,
+            bench::SplitRecordAccessor<T, (static_cast<int>(DBParams::Split) > 0)>,
+            bench::UniRecordAccessor<T, (static_cast<int>(DBParams::Split) > 0)>>>;
 
     static constexpr bool Commute = DBParams::Commute;
 

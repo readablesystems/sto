@@ -27,6 +27,13 @@ public:
         val.user_touched = new_timestamp;
     }
 
+    using supports_cellsplit = bool;  // For detection purposes
+    auto required_cells(int split) {
+        using nc = useracct_row::NamedColumn;
+        return CommAdapter::required_cells<useracct_row>({
+                nc::user_editcount, nc::user_touched}, split);
+    }
+
     friend Commutator<useracct_row_infreq>;
     friend Commutator<useracct_row_frequpd>;
 
@@ -75,6 +82,14 @@ public:
         val.page_touched = new_touched;
         val.page_latest = new_latest;
         val.page_len = new_len;
+    }
+
+    using supports_cellsplit = bool;  // For detection purposes
+    auto required_cells(int split) {
+        using nc = page_row::NamedColumn;
+        return CommAdapter::required_cells<page_row>({
+                nc::page_is_redirect, nc::page_is_new, nc::page_touched,
+                nc::page_latest, nc::page_len}, split);
     }
 
     friend Commutator<page_row_infreq>;
@@ -126,6 +141,14 @@ public:
     void operate(watchlist_row& val) const {
         val.wl_notificationtimestamp = new_timestamp;
     }
+
+    using supports_cellsplit = bool;  // For detection purposes
+    auto required_cells(int split) {
+        using nc = watchlist_row::NamedColumn;
+        return CommAdapter::required_cells<watchlist_row>({
+                nc::wl_notificationtimestamp}, split);
+    }
+
 private:
     bench::var_string<14> new_timestamp;
 };
