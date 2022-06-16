@@ -104,13 +104,11 @@ class SplitRecordAccessor<ycsb::ycsb_value, true> : public RecordAccessor<SplitR
  private:
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& odd_columns_impl() const {
-      while (!vptr_0_) wait_cycles(10000);
     return vptr_0_->odd_columns;
   }
 
   
   const std::array<fix_string<COL_WIDTH>, HALF_NUM_COLUMNS>& even_columns_impl() const {
-      while (!vptr_1_) wait_cycles(10000);
     return vptr_1_->even_columns;
   }
 
