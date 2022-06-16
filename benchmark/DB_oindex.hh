@@ -1096,7 +1096,7 @@ public:
                     "TX", Sto::read_tid(), " locking ", &e->row_container.row,
                     " cell ", key.cell_num(),
                     " history ", h, " with status ", h->status(),
-                    " and cell count", h->cells_.load(std::memory_order_relaxed),
+                    " and cell count ", h->cells_.load(std::memory_order_relaxed),
                     ": result is ", result, "\n");
 #endif
             if (!result && !h->status_is(MvStatus::ABORTED)) {
@@ -1107,8 +1107,8 @@ public:
                     TransProxy(txn, row_item).add_mvhistory(nullptr);
                 } else {
                     assert(row_item.has_mvhistory());
+                    TransProxy(txn, item).add_mvhistory(h);
                 }
-                TransProxy(txn, item).add_mvhistory(h);
                 TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
             } else {
                 TransProxy(txn, row_item).add_mvhistory(h);  // Shared storage
