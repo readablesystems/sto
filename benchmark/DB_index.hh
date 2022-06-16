@@ -388,9 +388,9 @@ public:
         }
 
         for (size_t i = 0; i < T::NUM_VERSIONS; ++i) {
-            if (current_split >= 0 &&
-                    !T::RecordAccessor::cell_col_count(current_split, i) &&
-                    accesses[i] == AccessType::none) {
+            if (current_split >= 0 && (
+                    !T::RecordAccessor::cell_col_count(current_split, i) ||
+                    accesses[i] == AccessType::none)) {
                 // Skip cell if it's not part of the split at all
                 continue;
             }
@@ -401,44 +401,46 @@ public:
                 item.set_preferred_split(preferred_split);
             }
 
-            // ancestor == null means start at the head
-            auto* h = histories[i] ? histories[i] : (ancestor ?
-                row.find_from(ancestor, Sto::read_tid(), i) :
-                row.find(Sto::read_tid(), i));
+            if ((accesses[i] & AccessType::read) != AccessType::none) {
+                // ancestor == null means start at the head
+                auto* h = histories[i] ? histories[i] : (ancestor ?
+                    row.find_from(ancestor, Sto::read_tid(), i) :
+                    row.find(Sto::read_tid(), i));
 
-            /*
-            // current_split < 0 means fill it in automagically
-            if (current_split < 0) {
-                current_split = h->get_split();
-            }
-            */
-
-            if (!h || h->status_is(COMMITTED_DELETED)) {
-                if ((accesses[i] & AccessType::read) != AccessType::none) {
-                    MvAccess::template read<ValueType>(item, h);
-                    return { false, values };
+                /*
+                // current_split < 0 means fill it in automagically
+                if (current_split < 0) {
+                    current_split = h->get_split();
                 }
-            } else if (!IndexType::is_phantom(h, item)) {
-                if ((accesses[i] & AccessType::read) != AccessType::none) {
-                    // XXX No read-my-write stuff for now.
-                    MvAccess::template read<ValueType>(item, h);
+                */
+
+                if (!h || h->status_is(COMMITTED_DELETED)) {
+                    if ((accesses[i] & AccessType::read) != AccessType::none) {
+                        MvAccess::template read<ValueType>(item, h);
+                        return { false, values };
+                    }
+                } else if (!IndexType::is_phantom(h, item)) {
+                    if ((accesses[i] & AccessType::read) != AccessType::none) {
+                        // XXX No read-my-write stuff for now.
+                        MvAccess::template read<ValueType>(item, h);
+                    } else {
+                        MvAccess::template store_read<ValueType>(item, h);
+                    }
+                    if (required[i] && required_tid) {
+                        item.item().access_tid(required_tid);
+                    }
+
+                    if (h) {
+                        //fprintf(stderr, "%d %p Seeking value for %p cell %zu\n", TThread::id(), h->object(), h, i);
+                        auto vp = h->vp();
+                        assert(vp);
+                        values[i] = vp;
+                    } else {
+                        values[i] = nullptr;
+                    }
                 } else {
-                    MvAccess::template store_read<ValueType>(item, h);
+                    printf("Skipping read\n");
                 }
-                if (required[i] && required_tid) {
-                    item.item().access_tid(required_tid);
-                }
-
-                if (h) {
-                    //fprintf(stderr, "%d %p Seeking value for %p cell %zu\n", TThread::id(), h->object(), h, i);
-                    auto vp = h->vp();
-                    assert(vp);
-                    values[i] = vp;
-                } else {
-                    values[i] = nullptr;
-                }
-            } else {
-                printf("Skipping read\n");
             }
             if ((accesses[i] & AccessType::write) != AccessType::none) {
                 item.add_write();

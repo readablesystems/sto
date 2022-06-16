@@ -155,7 +155,9 @@ public:
             history_type* curr = base;
             while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
                 trace.push(curr);
-                curr = curr->prev(cell);
+                auto prev = curr->prev(cell);
+                //while (!prev) wait_cycles(1000000);
+                curr = prev;
             }
             TXP_INCREMENT(txp_mvcc_flat_versions);
             RecordAccessor::copy_cell(curr->split(), cell, &value, &curr->v_);

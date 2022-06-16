@@ -27,6 +27,14 @@ public:
         return fv;
     }
 
+    using supports_cellsplit = bool;  // For detection purposes
+    auto required_cells(int split) {
+        using nc = ycsb_value::NamedColumn;
+        nc col = (n % 2 ? nc::odd_columns : nc::even_columns);
+        col = col + (n / 2);
+        return CommAdapter::required_cells<ycsb_value>({col}, split);
+    }
+
     friend Commutator<ycsb_odd_half_value>;
     friend Commutator<ycsb_even_half_value>;
 
