@@ -10,5 +10,6 @@ python3 struct_generator.py benchmark/Dynamic_structs.ini -n :: -o benchmark/Dyn
 python3 struct_generator.py benchmark/TPCC_structs.ini -n :: -o benchmark/TPCC_structs_generated.hh
 python3 struct_generator.py benchmark/YCSB_structs.ini -n :: -o benchmark/YCSB_structs_generated.hh
 python3 struct_generator.py benchmark/Wikipedia_structs.ini -n :: -o benchmark/Wikipedia_structs_generated.hh
+python3 struct_generator.py benchmark/Rubis_structs.ini -n :: -o benchmark/Rubis_structs_generated.hh
 python3 struct_generator.py benchmark/DB_structs.ini -n :: -o benchmark/DB_structs_generated.hh
 sed -i 's/    uintptr_t dummy;/    static dummy_row row;\n\n\0/g' benchmark/DB_structs_generated.hh

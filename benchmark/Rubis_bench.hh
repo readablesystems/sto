@@ -18,13 +18,12 @@
 #include "DB_index.hh"
 #include "DB_params.hh"
 
-#if TABLE_FINE_GRAINED
 #include "rubis_split_params_ts.hh"
-#else
 #include "rubis_split_params_default.hh"
-#endif
 
 namespace rubis {
+
+using namespace db_params;
 
 struct constants {
     static constexpr size_t num_items = 500000;
@@ -39,10 +38,9 @@ template <typename DBParams>
 class rubis_db {
 public:
     template <typename K, typename V>
-    using OIndex = typename std::conditional<
-            DBParams::MVCC,
-            mvcc_ordered_index<K, V, DBParams>,
-            ordered_index<K, V, DBParams>>::type;
+    using OIndex = typename std::conditional<DBParams::MVCC && !DBParams::UseATS,
+          mvcc_ordered_index<K, V, DBParams>,
+          ordered_index<K, V, DBParams>>::type;
 
     typedef OIndex<item_key, item_row>     item_tbl_type;
     typedef OIndex<bid_key, bid_row>       bid_tbl_type;
@@ -180,6 +178,15 @@ template <typename DBParams>
 class rubis_runner {
 public:
     typedef rubis_db<DBParams> db_type;
+    template <typename T>
+    using Record = typename std::conditional_t<
+        DBParams::Split == db_split_type::Adaptive,
+        typename T::RecordAccessor,
+            std::conditional_t<
+            DBParams::MVCC,
+            bench::SplitRecordAccessor<T, (static_cast<int>(DBParams::Split) > 0)>,
+            bench::UniRecordAccessor<T, (static_cast<int>(DBParams::Split) > 0)>>>;
+
     static constexpr bool Commute = DBParams::Commute;
 
     explicit rubis_runner(int id, db_type& database, const run_params& p)

@@ -10,15 +10,27 @@ size_t rubis_runner<DBParams>::run_txn_placebid(uint64_t item_id, uint64_t user_
     typedef item_row::NamedColumn nc;
     size_t execs = 0;
 
+    bool abort, result;
+    uintptr_t row;
+
     RWTRANSACTION {
 
     ++execs;
 
     {
-    auto [abort, result, row, value] = db.tbl_items().select_split_row(item_key(item_id),
-        {{nc::max_bid,    Commute ? access_t::write : access_t::update},
-         {nc::nb_of_bids, Commute ? access_t::write : access_t::update}}
-    );
+    Record<item_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_items().select_row(item_key(item_id),
+            {{nc::max_bid,    Commute ? AccessType::write : AccessType::update},
+             {nc::nb_of_bids, Commute ? AccessType::write : AccessType::update}},
+            1
+        );
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_items().select_split_row(item_key(item_id),
+            {{nc::max_bid,    Commute ? access_t::write : access_t::update},
+             {nc::nb_of_bids, Commute ? access_t::write : access_t::update}}
+        );
+    }
     (void)result;
     TXN_DO(abort);
     assert(result);
@@ -46,7 +58,7 @@ size_t rubis_runner<DBParams>::run_txn_placebid(uint64_t item_id, uint64_t user_
     br->date = ig.generate_date();
 
     {
-    auto [abort, result] = db.tbl_bids().insert_row(bk, br);
+    std::tie(abort, result) = db.tbl_bids().insert_row(bk, br);
     (void)result;
     TXN_DO(abort);
     assert(!result);
@@ -62,6 +74,9 @@ size_t rubis_runner<DBParams>::run_txn_buynow(uint64_t item_id, uint64_t user_id
     typedef item_row::NamedColumn nc;
     size_t execs = 0;
 
+    bool abort, result;
+    uintptr_t row;
+
     RWTRANSACTION {
 
     ++execs;
@@ -69,10 +84,19 @@ size_t rubis_runner<DBParams>::run_txn_buynow(uint64_t item_id, uint64_t user_id
     auto curr_date = ig.generate_date();
 
     {
-    auto [abort, result, row, value] = db.tbl_items().select_split_row(item_key(item_id),
-        {{nc::quantity, Commute ? access_t::write : access_t::update},
-         {nc::end_date, Commute ? access_t::write : access_t::update}}
-    );
+    Record<item_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_items().select_row(item_key(item_id),
+            {{nc::quantity, Commute ? AccessType::write : AccessType::update},
+             {nc::end_date, Commute ? AccessType::write : AccessType::update}},
+            1
+        );
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_items().select_split_row(item_key(item_id),
+            {{nc::quantity, Commute ? access_t::write : access_t::update},
+             {nc::end_date, Commute ? access_t::write : access_t::update}}
+        );
+    }
     (void)result;
     TXN_DO(abort);
     assert(result);
@@ -98,7 +122,7 @@ size_t rubis_runner<DBParams>::run_txn_buynow(uint64_t item_id, uint64_t user_id
     bnr->date = curr_date;
 
     {
-    auto [abort, result] = db.tbl_buynow().insert_row(bnk, bnr);
+    std::tie(abort, result) = db.tbl_buynow().insert_row(bnk, bnr);
     (void)result;
     TXN_DO(abort);
     assert(!result);
@@ -114,15 +138,28 @@ size_t rubis_runner<DBParams>::run_txn_viewitem(uint64_t item_id) {
     typedef item_row::NamedColumn nc;
     size_t execs = 0;
 
+    bool abort, result;
+    uintptr_t row;
+
     TRANSACTION {
 
     ++execs;
 
-    auto [abort, result, row, value] = db.tbl_items().select_split_row(item_key(item_id),
-        {{nc::quantity, access_t::read},
-         {nc::nb_of_bids, access_t::read},
-         {nc::max_bid, access_t::read},
-         {nc::end_date, access_t::read}});
+    Record<item_row> value;
+    if constexpr (DBParams::Split == db_split_type::Adaptive) {
+        std::tie(abort, result, row, value) = db.tbl_items().select_row(item_key(item_id),
+            {{nc::quantity, AccessType::read},
+             {nc::nb_of_bids, AccessType::read},
+             {nc::max_bid, AccessType::read},
+             {nc::end_date, AccessType::read}},
+            1);
+    } else {
+        std::tie(abort, result, row, value) = db.tbl_items().select_split_row(item_key(item_id),
+            {{nc::quantity, access_t::read},
+             {nc::nb_of_bids, access_t::read},
+             {nc::max_bid, access_t::read},
+             {nc::end_date, access_t::read}});
+    }
     (void)result; (void)row; (void)value;
     TXN_DO(abort);
     assert(result);

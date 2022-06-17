@@ -53,6 +53,8 @@ namespace rubis {
 
 using namespace bench;
 
+#include "Rubis_structs_generated.hh"
+
 struct item_key_bare {
     uint64_t item_id;
 
@@ -82,6 +84,7 @@ struct item_row_frequpd {
     uint32_t end_date;
 };
 
+/*
 struct item_row {
     enum class NamedColumn : int {
         name = 0,
@@ -111,6 +114,7 @@ struct item_row {
     uint32_t max_bid;
     uint32_t end_date;
 };
+*/
 
 struct bid_key_bare {
     uint64_t item_id;
@@ -126,6 +130,7 @@ private:
 
 typedef masstree_key_adapter<bid_key_bare> bid_key;
 
+/*
 struct bid_row {
     enum class NamedColumn : int {
         quantity = 0,
@@ -139,6 +144,7 @@ struct bid_row {
     uint32_t max_bid;
     uint32_t date;
 };
+*/
 
 struct buynow_key_bare {
     uint64_t item_id;
@@ -154,6 +160,7 @@ private:
 
 typedef masstree_key_adapter<buynow_key_bare> buynow_key;
 
+/*
 struct buynow_row {
     enum class NamedColumn : int {
         quantity = 0,
@@ -163,5 +170,6 @@ struct buynow_row {
     uint32_t quantity;
     uint32_t date;
 };
+*/
 
 }

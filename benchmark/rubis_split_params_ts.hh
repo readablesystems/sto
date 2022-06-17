@@ -2,7 +2,7 @@ namespace bench {
 
 
 template <>
-struct SplitParams<rubis::item_row> {
+struct SplitParams<rubis::item_row, true> {
   using split_type_list = std::tuple<rubis::item_row_infreq, rubis::item_row_frequpd>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -57,7 +57,7 @@ struct SplitParams<rubis::item_row> {
 
 
 template <typename A>
-class RecordAccessor<A, rubis::item_row> {
+class RecordAccessor<A, rubis::item_row, true> {
  public:
   
   const var_string<100>& name() const {
@@ -131,8 +131,9 @@ class RecordAccessor<A, rubis::item_row> {
 };
 
 template <>
-class UniRecordAccessor<rubis::item_row> : public RecordAccessor<UniRecordAccessor<rubis::item_row>, rubis::item_row> {
+class UniRecordAccessor<rubis::item_row, true> : public RecordAccessor<UniRecordAccessor<rubis::item_row, true>, rubis::item_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const rubis::item_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -218,14 +219,15 @@ class UniRecordAccessor<rubis::item_row> : public RecordAccessor<UniRecordAccess
 
 
   const rubis::item_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<rubis::item_row>, rubis::item_row>;
+  friend RecordAccessor<UniRecordAccessor<rubis::item_row, true>, rubis::item_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<rubis::item_row> : public RecordAccessor<SplitRecordAccessor<rubis::item_row>, rubis::item_row> {
+class SplitRecordAccessor<rubis::item_row, true> : public RecordAccessor<SplitRecordAccessor<rubis::item_row, true>, rubis::item_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<rubis::item_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<rubis::item_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<rubis::item_row_infreq*>(vptrs[0])), vptr_1_(reinterpret_cast<rubis::item_row_frequpd*>(vptrs[1])) {}
 
@@ -319,12 +321,12 @@ class SplitRecordAccessor<rubis::item_row> : public RecordAccessor<SplitRecordAc
   const rubis::item_row_infreq* vptr_0_;
   const rubis::item_row_frequpd* vptr_1_;
 
-  friend RecordAccessor<SplitRecordAccessor<rubis::item_row>, rubis::item_row>;
+  friend RecordAccessor<SplitRecordAccessor<rubis::item_row, true>, rubis::item_row, true>;
 };
 
 
 template <>
-struct SplitParams<rubis::bid_row> {
+struct SplitParams<rubis::bid_row, true> {
   using split_type_list = std::tuple<rubis::bid_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -357,7 +359,7 @@ struct SplitParams<rubis::bid_row> {
 
 
 template <typename A>
-class RecordAccessor<A, rubis::bid_row> {
+class RecordAccessor<A, rubis::bid_row, true> {
  public:
   
   const uint32_t& quantity() const {
@@ -391,8 +393,9 @@ class RecordAccessor<A, rubis::bid_row> {
 };
 
 template <>
-class UniRecordAccessor<rubis::bid_row> : public RecordAccessor<UniRecordAccessor<rubis::bid_row>, rubis::bid_row> {
+class UniRecordAccessor<rubis::bid_row, true> : public RecordAccessor<UniRecordAccessor<rubis::bid_row, true>, rubis::bid_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const rubis::bid_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -430,14 +433,15 @@ class UniRecordAccessor<rubis::bid_row> : public RecordAccessor<UniRecordAccesso
 
 
   const rubis::bid_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<rubis::bid_row>, rubis::bid_row>;
+  friend RecordAccessor<UniRecordAccessor<rubis::bid_row, true>, rubis::bid_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<rubis::bid_row> : public RecordAccessor<SplitRecordAccessor<rubis::bid_row>, rubis::bid_row> {
+class SplitRecordAccessor<rubis::bid_row, true> : public RecordAccessor<SplitRecordAccessor<rubis::bid_row, true>, rubis::bid_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<rubis::bid_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<rubis::bid_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<rubis::bid_row*>(vptrs[0])) {}
 
@@ -478,12 +482,12 @@ class SplitRecordAccessor<rubis::bid_row> : public RecordAccessor<SplitRecordAcc
 
   const rubis::bid_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<rubis::bid_row>, rubis::bid_row>;
+  friend RecordAccessor<SplitRecordAccessor<rubis::bid_row, true>, rubis::bid_row, true>;
 };
 
 
 template <>
-struct SplitParams<rubis::buynow_row> {
+struct SplitParams<rubis::buynow_row, true> {
   using split_type_list = std::tuple<rubis::buynow_row>;
   using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
   static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -512,7 +516,7 @@ struct SplitParams<rubis::buynow_row> {
 
 
 template <typename A>
-class RecordAccessor<A, rubis::buynow_row> {
+class RecordAccessor<A, rubis::buynow_row, true> {
  public:
   
   const uint32_t& quantity() const {
@@ -536,8 +540,9 @@ class RecordAccessor<A, rubis::buynow_row> {
 };
 
 template <>
-class UniRecordAccessor<rubis::buynow_row> : public RecordAccessor<UniRecordAccessor<rubis::buynow_row>, rubis::buynow_row> {
+class UniRecordAccessor<rubis::buynow_row, true> : public RecordAccessor<UniRecordAccessor<rubis::buynow_row, true>, rubis::buynow_row, true> {
  public:
+  UniRecordAccessor() = default;
   UniRecordAccessor(const rubis::buynow_row* const vptr) : vptr_(vptr) {}
 
  private:
@@ -563,14 +568,15 @@ class UniRecordAccessor<rubis::buynow_row> : public RecordAccessor<UniRecordAcce
 
 
   const rubis::buynow_row* vptr_;
-  friend RecordAccessor<UniRecordAccessor<rubis::buynow_row>, rubis::buynow_row>;
+  friend RecordAccessor<UniRecordAccessor<rubis::buynow_row, true>, rubis::buynow_row, true>;
 };
 
 template <>
-class SplitRecordAccessor<rubis::buynow_row> : public RecordAccessor<SplitRecordAccessor<rubis::buynow_row>, rubis::buynow_row> {
+class SplitRecordAccessor<rubis::buynow_row, true> : public RecordAccessor<SplitRecordAccessor<rubis::buynow_row, true>, rubis::buynow_row, true> {
  public:
-   static constexpr size_t num_splits = SplitParams<rubis::buynow_row>::num_splits;
+   static constexpr size_t num_splits = SplitParams<rubis::buynow_row, true>::num_splits;
 
+   SplitRecordAccessor() = default;
    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
      : vptr_0_(reinterpret_cast<rubis::buynow_row*>(vptrs[0])) {}
 
@@ -599,7 +605,7 @@ class SplitRecordAccessor<rubis::buynow_row> : public RecordAccessor<SplitRecord
 
   const rubis::buynow_row* vptr_0_;
 
-  friend RecordAccessor<SplitRecordAccessor<rubis::buynow_row>, rubis::buynow_row>;
+  friend RecordAccessor<SplitRecordAccessor<rubis::buynow_row, true>, rubis::buynow_row, true>;
 };
 
 } // namespace bench
