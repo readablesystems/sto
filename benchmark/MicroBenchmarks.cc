@@ -5,7 +5,7 @@
 ubench::UBenchParams ubench::params;
 
 // global cpu frequency in GHz
-double db_params::constants::processor_tsc_frequency;
+
 
 enum {
     opt_ccid = 1,
@@ -224,7 +224,7 @@ int main(int argc, const char *argv[]) {
     auto freq = determine_cpu_freq();
     if (freq == 0.0)
         return 1;
-    db_params::constants::processor_tsc_frequency = freq;
+    db_params::constants::processor_tsc_frequency() = freq;
     params.proc_frequency_hz = (uint64_t)(freq * db_params::constants::billion);
 
     always_assert(params.datatype == ubench::DsType::masstree, "Only Masstree is currently supported");

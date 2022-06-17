@@ -117,7 +117,7 @@ public:
 
     static int execute(cmd_params p) {
         rubis::run_params rp{};
-        rp.time_limit = (size_t)(p.time * constants::processor_tsc_frequency * constants::billion);
+        rp.time_limit = (size_t)(p.time * constants::processor_tsc_frequency() * constants::billion);
         rp.num_items = p.num_items;
         rp.num_users = p.num_users;
         rp.item_sigma = p.item_sigma;
@@ -170,7 +170,7 @@ public:
     }
 };
 
-double constants::processor_tsc_frequency;
+
 
 int main(int argc, const char * const *argv) {
     cmd_params params;
@@ -239,7 +239,7 @@ int main(int argc, const char * const *argv) {
     if (cpu_freq == 0.0)
         return 1;
     else
-        constants::processor_tsc_frequency = cpu_freq;
+        constants::processor_tsc_frequency() = cpu_freq;
 
     switch (params.db_id) {
         case db_params_id::Default:

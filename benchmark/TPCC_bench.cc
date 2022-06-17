@@ -76,7 +76,7 @@ void print_usage(const char *argv_0) {
     std::cout << ss.str() << std::flush;
 }
 
-double constants::processor_tsc_frequency;
+
 bench::dummy_row bench::dummy_row::row;
 
 int main(int argc, const char *const *argv) {
@@ -85,7 +85,7 @@ int main(int argc, const char *const *argv) {
     if (cpu_freq == 0.0)
         return 1;
     else
-        constants::processor_tsc_frequency = cpu_freq;
+        constants::processor_tsc_frequency() = cpu_freq;
 
     db_params_id dbid = db_params_id::Default;
     db_split_type split_type = db_split_type::None;

@@ -224,7 +224,7 @@ public:
     garbage_runner(int nthreads, double time_limit, garbage_db<DBParams>& database)
         : num_runners(nthreads), tsc_elapse_limit(), db(database) {
         using db_params::constants;
-        tsc_elapse_limit = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
+        tsc_elapse_limit = (uint64_t)(time_limit * constants::processor_tsc_frequency() * constants::billion);
     }
 
 private:

@@ -715,7 +715,7 @@ public:
         set_affinity(runner_id);
         db.thread_init_all();
 
-        uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
+        uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency() * constants::billion);
         auto start_t = prof.start_timestamp();
 
         while (true) {

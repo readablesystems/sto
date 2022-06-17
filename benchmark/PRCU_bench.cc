@@ -535,7 +535,7 @@ public:
 using namespace prcubench;
 using namespace db_params;
 
-double constants::processor_tsc_frequency;
+
 
 int main(int argc, const char *const *argv) {
     db_params_id dbid = db_params_id::Default;
@@ -579,7 +579,7 @@ int main(int argc, const char *const *argv) {
     if (cpu_freq == 0.0)
         return 1;
     else
-        constants::processor_tsc_frequency = cpu_freq;
+        constants::processor_tsc_frequency() = cpu_freq;
 
     switch (dbid) {
     case db_params_id::Default:

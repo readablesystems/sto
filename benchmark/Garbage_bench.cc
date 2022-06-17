@@ -5,7 +5,7 @@
 #include "Garbage_bench.hh"
 #include "DB_params.hh"
 
-double db_params::constants::processor_tsc_frequency;
+
 
 enum { opt_dbid = 1, opt_nthrs, opt_time, opt_dbsz };
 
@@ -118,7 +118,7 @@ int main(int argc, const char * const *argv) {
     auto freq = determine_cpu_freq();
     if (freq ==  0.0)
         return -1;
-    db_params::constants::processor_tsc_frequency = freq;
+    db_params::constants::processor_tsc_frequency() = freq;
 
     switch (p.dbid) {
         case db_params::db_params_id::MVCC:

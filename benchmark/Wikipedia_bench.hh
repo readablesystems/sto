@@ -488,7 +488,7 @@ public:
           ig(runner_id, params.num_users, params.num_pages, params.workload_mix),
           tsc_elapse_limit(), stats_aborts_by_txn(workload_weightgram.size(), 0ul) {
         tsc_elapse_limit =
-                (uint64_t)(params.time_limit * db_params::constants::processor_tsc_frequency * db_params::constants::billion);
+                (uint64_t)(params.time_limit * db_params::constants::processor_tsc_frequency() * db_params::constants::billion);
     }
 
     size_t run_txn_addWatchList(int user_id, int name_space, const std::string& page_title);

@@ -4,7 +4,7 @@
 #include "PlatformFeatures.hh"
 #include "Predicate_bench.hh"
 
-double db_params::constants::processor_tsc_frequency;
+
 
 enum { opt_nthrs = 1, opt_time, opt_rw };
 
@@ -64,7 +64,7 @@ int main(int argc, const char * const *argv) {
     auto freq = determine_cpu_freq();
     if (freq ==  0.0)
         return -1;
-    db_params::constants::processor_tsc_frequency = freq;
+    db_params::constants::processor_tsc_frequency() = freq;
 
     db_type_wpred db_wpred;
     db_type_nopred db_nopred;

@@ -138,7 +138,7 @@ public:
         : id(rid), db(database), ig(rid+1040), tsc_elapse_limit(),
           stat_committed_txns() {
         tsc_elapse_limit = static_cast<uint64_t>(time_limit
-                                                 * db_params::constants::processor_tsc_frequency
+                                                 * db_params::constants::processor_tsc_frequency()
                                                  * db_params::constants::billion);
     }
 

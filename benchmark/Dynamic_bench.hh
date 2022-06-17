@@ -166,7 +166,7 @@ public:
     dynamic_runner(int id, dynamic_db<DBParams>& database, Params& params)
         : ig(id), count(0), db(database), mix(params.mix), params(params),
           threshold(params.threshold),
-          tsc_threshold(params.threshold * constants::processor_tsc_frequency * constants::million),
+          tsc_threshold(params.threshold * constants::processor_tsc_frequency() * constants::million),
           runner_id(id), prev_workload(0), switches(0) {}
 
     inline txn_type next_transaction(uint64_t tsc_elapsed) {
@@ -229,7 +229,7 @@ private:
     int prev_workload;
     int switches;
 
-    const uint64_t tsc_sec = constants::processor_tsc_frequency * constants::million;
+    const uint64_t tsc_sec = constants::processor_tsc_frequency() * constants::million;
 
     friend class dynamic_access<DBParams>;
 };
@@ -384,7 +384,7 @@ public:
         set_affinity(runner_id);
         db.thread_init_all();
 
-        uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
+        uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency() * constants::billion);
         auto start_t = prof.start_timestamp();
 
         while (true) {

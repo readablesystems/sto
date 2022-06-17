@@ -18,11 +18,11 @@ public:
               start_tsc_(), end_tsc_() {}
 
     static double ticks_to_secs(const uint64_t ticks) {
-        return (double)ticks / constants::billion / constants::processor_tsc_frequency;
+        return (double)ticks / constants::billion / constants::processor_tsc_frequency();
     }
 
     static uint64_t secs_to_ticks(const double secs) {
-        return (uint64_t)(secs * constants::billion * constants::processor_tsc_frequency);
+        return (uint64_t)(secs * constants::billion * constants::processor_tsc_frequency());
     }
 
     void start(Profiler::perf_mode mode) {
@@ -49,7 +49,7 @@ public:
         }
         // print elapsed time
         uint64_t elapsed_tsc = end_tsc_ - start_tsc_;
-        double elapsed_time = (double) elapsed_tsc / constants::million / constants::processor_tsc_frequency;
+        double elapsed_time = (double) elapsed_tsc / constants::million / constants::processor_tsc_frequency();
         std::cout << "Elapsed time: " << elapsed_tsc << " ticks" << std::endl;
         std::cout << "Real time: " << elapsed_time << " ms" << std::endl;
         std::cout << "Throughput: " << (double) num_txns / (elapsed_time / 1000.0) << " txns/sec" << std::endl;

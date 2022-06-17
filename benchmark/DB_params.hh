@@ -205,7 +205,10 @@ class constants {
 public:
     static constexpr double million = 1000000.0;
     static constexpr double billion = 1000.0 * million;
-    static double processor_tsc_frequency; // in GHz
+    static double& processor_tsc_frequency() { // in GHz
+        static double frequency = 0;
+        return frequency;
+    }
 };
 
 }; // namespace db_params
