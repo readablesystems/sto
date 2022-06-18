@@ -21,8 +21,8 @@ inline std::ostream &operator<<(std::ostream &os, const db_params_id &id) {
 inline db_params_id parse_dbid(const char *id_string) {
     if (id_string == nullptr || (*id_string) == '\0')
         return db_params_id::None;
-    for (size_t i = 0; i < sizeof(db_params_id_names); ++i) {
-        if (strcmp(id_string, db_params_id_names[i]) == 0) {
+    for (size_t i = 0; i < arraysize(db_params_id_names); ++i) {
+        if (!strncmp(id_string, db_params_id_names[i], strlen(db_params_id_names[i]) + 1)) {
             auto selected = static_cast<db_params_id>(i);
             std::cout << "Selected \"" << selected << "\" as DB concurrency control." << std::endl;
             return selected;
@@ -34,7 +34,7 @@ inline db_params_id parse_dbid(const char *id_string) {
 constexpr const char *db_split_names[] = {"none", "static", "adaptive"};
 
 enum class db_split_type : int {
-    None = 0, Static, Adaptive
+    Invalid = -1, None = 0, Static, Adaptive
 };
 
 inline std::ostream &operator<<(std::ostream &os, const db_split_type& split) {
@@ -44,15 +44,15 @@ inline std::ostream &operator<<(std::ostream &os, const db_split_type& split) {
 
 inline db_split_type parse_split_type(const char *id_string) {
     if (id_string == nullptr || (*id_string) == '\0')
-        return db_split_type::None;
-    for (size_t i = 0; i < sizeof(db_split_names); ++i) {
-        if (strcmp(id_string, db_split_names[i]) == 0) {
+        return db_split_type::Invalid;
+    for (size_t i = 0; i < arraysize(db_split_names); ++i) {
+        if (!strncmp(id_string, db_split_names[i], strlen(db_split_names[i]) + 1)) {
             auto selected = static_cast<db_split_type>(i);
             std::cout << "Timestamp splitting strategy: " << selected << std::endl;
             return selected;
         }
     }
-    return db_split_type::None;
+    return db_split_type::Invalid;
 }
 
 class db_default_params {
