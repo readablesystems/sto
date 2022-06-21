@@ -151,8 +151,7 @@ public:
     }
 
     void thread_init_all() override {
-        base_db::thread_init(tbl_page);
-        base_db::thread_init(tbl_like);
+        base_db::thread_init(tbl_page, tbl_like);
     }
 
     const CommandParams params;

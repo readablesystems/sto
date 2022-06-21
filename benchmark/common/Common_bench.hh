@@ -363,10 +363,10 @@ public:
     void thread_init(DB& db, DBs&... dbs) {
         // Thread initializations
         db.thread_init();
-        thread_init(std::forward<DBs>(dbs)...);
+        if constexpr (sizeof...(DBs)) {
+            thread_init(std::forward<DBs&>(dbs)...);
+        }
     }
-
-    void thread_init() {}
 
     std::vector<sampling::StoRandomDistribution<>::rng_type> rng;
 };
