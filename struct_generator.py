@@ -71,7 +71,10 @@ class Output:
 
     def convert_struct(self, struct, sdata, headers=False):
         '''Output a single struct's variants.'''
+        # Read in struct data (non-prefixed by @)
         self.sdata = dict(filter(lambda item: item[0][0] != '@', sdata.items()))
+
+        # Read in metadata (prefixed by @)
         self.mdata = dict(map(lambda item: (item[0][1:], item[1]),
             filter(lambda item: item[0][0] == '@', sdata.items())))
 
@@ -86,14 +89,11 @@ class Output:
                 'statstype': '::sto::adapter::Stats<{}>'.format(struct),
                 'colcount': self.colcount,
                 'infostruct': 'accessor_info',
-                'lbrace': '{',
                 'ns': '{}_datatypes'.format(struct),
-                'rbrace': '}',
-                'splitstruct': 'split_value',
-                'unifiedstruct': 'unified_value',
                 'qns': ''.join('::' + ns for ns in self._namespaces),  # Globally-qualified namespace
                 'struct': struct,
                 }
+        self._data['qns'] += '::' + self._data['ns']
 
         if headers:
             self.writelns('''\
@@ -705,6 +705,500 @@ inline {const}{vaccessor}<{infostruct}<NamedColumn::{member}>>& {struct}::get<Na
                             arrindex='' if count == 1 else realindex - index)
             index += count
 
+    ### Selector-based classes generation methods; hierarchical, not lexicographical
+
+    def generate_selectors(self, struct, sdata):
+        '''Output a single struct's Selector-based classes.'''
+        self.sdata = dict(filter(lambda item: item[0][0] != '@', sdata.items()))
+        self.mdata = dict(map(lambda item: (item[0][1:], item[1]),
+            filter(lambda item: item[0][0] == '@', sdata.items())))
+
+        self.colcount = Output.count_columns(self.sdata.keys())
+        self.mdata['splits'] = ((0,) * self.colcount,) \
+                + tuple(tuple(int(cell.strip()) for cell in split.split(','))
+                        for split in self.mdata.get('splits', '').split('\n')
+                        if split)
+        # Use the first custom split policy as the STS policy
+        self.mdata['sts'] = self.mdata['splits'][min(1, len(self.mdata['splits']) - 1)]
+        self._data = {
+                'splitparams': 'SplitParams',
+                'baccessor': 'RecordAccessor',
+                'uaccessor': 'UniRecordAccessor',
+                'saccessor': 'SplitRecordAccessor',
+                'value0': '{}_cell0'.format(struct),
+                'value1': '{}_cell1'.format(struct),
+                'ns': '{}_split'.format(struct),
+                'dns': '{}_datatypes'.format(struct),
+                'sns': '{}_split_structs'.format(struct),  # Namespace for structs
+                'qns': ''.join('::' + ns for ns in self._namespaces),  # Globally-qualified namespace
+                'struct': struct,
+                }
+        self._data['qns'] += '::' + self._data['ns']
+
+        for ns in self._namespaces:
+            self.writeln('namespace {nsname} {{\n', nsname=ns)
+
+        self.writeln('namespace {sns} {{')
+
+        self.generate_split_structs()
+
+        self.writelns('''
+}};  // namespace {sns}
+''')
+
+        for ns in self._namespaces:
+            self.writeln('}};  // namespace {nsname}\n', nsname=ns)
+
+        self.writeln('namespace bench {{')
+
+        for sts in (False, True):
+            self.generate_split_params(sts)
+            self.generate_base_record_accessor(sts)
+            self.generate_uni_record_accessor(sts)
+            self.generate_split_record_accessor(sts)
+
+        self.writelns('''\
+}};  // namespace bench
+''')
+
+    def generate_split_structs(self):
+        '''Generate the split-cell value structs.'''
+        sts = self.mdata['sts']
+        if not sts:
+            return
+
+        for cell in (0, 1):
+            value = self._data['value{}'.format(cell)]
+            self.writelns('''
+struct {value} {{
+{indent}using NamedColumn = typename {dns}::{struct}::NamedColumn;
+''', value=value)
+
+            self.indent()
+            index = 0
+            for member, ctype in self.sdata.items():
+                member, nesting, count = Output.extract_member_type(member)
+                array_policy = sts[index : index + count]
+                for assigned_cell in array_policy:
+                    if assigned_cell == cell:
+                        self.writeln('{ctype} {member};', member=member, ctype=nesting.format(ctype))
+                        break
+                index += count
+            self.unindent()
+
+            self.writeln('}};')
+
+    def generate_split_params(self, sts=False):
+        '''Generate the SplitParams structs.'''
+        import collections
+
+        policy = self.mdata['sts'] if sts else self.mdata['splits'][0]
+        cells = max(policy) + 1
+
+        self.writelns('''\
+template <>
+struct {splitparams}<{dns}::{struct}, {sts}> {{''', sts=str(sts).lower())
+
+        self.indent()
+        if cells > 1:
+            self.writelns('using split_type_list = std::tuple<{sns}::{value0}, {sns}::{value1}>;')
+        else:
+            self.writeln('using split_type_list = std::tuple<{dns}::{struct}>;')
+        self.writelns('''\
+using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
+static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
+
+static constexpr auto split_builder = std::make_tuple(''')
+        self.indent()
+        for cell in range(cells):
+            if cells > 1:
+                self.writelns('''\
+[] (const {dns}::{struct}& in) -> {sns}::{value} {{
+{indent}{sns}::{value} out;''', value=self._data['value{}'.format(cell)])
+            else:
+                self.writelns('''\
+[] (const {dns}::{struct}& in) -> {dns}::{struct} {{
+{indent}{dns}::{struct} out;''')
+
+            self.indent()
+            index = 0
+            for member, ctype in self.sdata.items():
+                member, _, count = Output.extract_member_type(member)
+                if count > 1:
+                    in_cell = 0
+                    array_policy = policy[index : index + count]
+                    for assigned_cell in array_policy:
+                        if assigned_cell == cell:
+                            in_cell += 1
+                    assert in_cell <= count
+                    if in_cell == count:
+                        self.writeln('out.{member} = in.{member};', member=member, ctype=ctype)
+                    else:
+                        for col, assigned_cell in enumerate(array_policy):
+                            if assigned_cell == cell:
+                                self.writeln('out.{member}[{index}] = in.{member}[{index}];', member=member, ctype=ctype, index=col)
+                else:
+                    assert count == 1
+                    if policy[index] == cell:
+                        self.writeln('out.{member} = in.{member};', member=member, ctype=ctype)
+                index += count
+            self.writeln('return out;')
+            self.unindent()
+
+            if cell + 1 < cells:
+                self.writeln('}},')
+            else:
+                self.writeln('}}')
+        self.unindent()
+
+        self.writelns('''\
+);
+
+static constexpr auto split_merger = std::make_tuple(''')
+        self.indent()
+        for cell in range(cells):
+            if cells > 1:
+                self.writeln(
+                        '[] ({dns}::{struct}* out, const {sns}::{value}& in) -> void {{',
+                        value=self._data['value{}'.format(cell)])
+            else:
+                self.writeln(
+                        '[] ({dns}::{struct}* out, const {dns}::{struct}& in) -> void {{')
+
+            self.indent()
+            index = 0
+            for member, ctype in self.sdata.items():
+                member, _, count = Output.extract_member_type(member)
+                if count > 1:
+                    in_cell = 0
+                    array_policy = policy[index : index + count]
+                    for assigned_cell in array_policy:
+                        if assigned_cell == cell:
+                            in_cell += 1
+                    assert in_cell <= count
+                    if in_cell == count:
+                        self.writeln('out->{member} = in.{member};', member=member, ctype=ctype)
+                    else:
+                        for col, assigned_cell in enumerate(array_policy):
+                            if assigned_cell == cell:
+                                self.writeln('out->{member}[{index}] = in.{member}[{index}];', member=member, ctype=ctype, index=col)
+                else:
+                    assert count == 1
+                    if policy[index] == cell:
+                        self.writeln('out->{member} = in.{member};', member=member, ctype=ctype)
+                index += count
+            self.unindent()
+
+            if cell + 1 < cells:
+                self.writeln('}},')
+            else:
+                self.writeln('}}')
+        self.unindent()
+
+        self.writelns('''\
+);
+''')
+        if cells > 1:
+            self.writeln('static constexpr auto map = [] (int col_n) -> int {{')
+        else:
+            self.writeln('static constexpr auto map = [] (int) -> int {{')
+        self.indent()
+        if cells > 1:
+            index_cells = collections.defaultdict(list)
+            for index, cell in enumerate(policy):
+                if cell:
+                    index_cells[cell].append(index)
+            self.writeln('switch (col_n) {{')
+            for cell, indices in index_cells.items():
+                self.writelns('''\
+{cases}
+{indent}return {cell};''',
+                    cases=''.join('case {index}: '.format(index=index) for index in indices),
+                    cell=cell)
+            self.writelns('''\
+default:
+{indent}break;
+}}''')
+        self.writeln('return 0;')
+        self.unindent()
+        self.writeln('}};')
+        self.unindent()
+
+        self.writeln('}};')
+        self.writeln()
+
+    def generate_base_record_accessor(self, sts=False):
+        '''Generate the BaseRecordAccessor structs.'''
+        policy = self.mdata['sts'] if sts else self.mdata['splits'][0]
+        cells = max(policy) + 1
+
+        self.writelns('''\
+template <typename Accessor>
+class {baccessor}<Accessor, {dns}::{struct}, {sts}> {{
+public:''', sts=str(sts).lower())
+
+        self.indent()
+        for member, ctype in self.sdata.items():
+            member, _, count = Output.extract_member_type(member)
+            self.writelns('''\
+const {ctype}& {member}({param}) const {{
+{indent}return impl().{member}_impl({arg});
+}}
+''', ctype=ctype, member=member, param='size_t index' if count > 1 else '',
+     arg='index' if count > 1 else '')
+        self.unindent()
+
+        self.writelns('''\
+{indent}void copy_into({dns}::{struct}* dst) const {{
+{indent}{indent}return impl().copy_into_impl(dst);
+{indent}}}
+
+private:
+{indent}const Accessor& impl() const {{
+{indent}{indent}return *static_cast<const Accessor*>(this);
+{indent}}}''')
+        self.unindent()
+
+        self.writeln('}};')
+        self.writeln()
+
+    def generate_uni_record_accessor(self, sts=False):
+        '''Generate the UniRecordAccessor structs.'''
+        policy = self.mdata['sts'] if sts else self.mdata['splits'][0]
+        cells = max(policy) + 1
+
+        self.writelns('''\
+template <>
+class {uaccessor}<{dns}::{struct}, {sts}> : public {baccessor}<{uaccessor}<{dns}::{struct}, {sts}>, {dns}::{struct}, {sts}> {{
+public:''', sts=str(sts).lower())
+
+        self.indent()
+        self.writelns('''\
+{uaccessor}() = default;
+{uaccessor}(const {dns}::{struct}* const vptr) : vptr_(vptr) {{}}
+
+operator bool() const {{
+{indent}return vptr_ != nullptr;
+}}
+''')
+        self.unindent()
+
+        self.writeln('private:')
+
+        self.indent()
+        for member, ctype in self.sdata.items():
+            member, _, count = Output.extract_member_type(member)
+            self.writelns('''\
+const {ctype}& {member}_impl({param}) const {{
+{indent}return vptr_->{member}{arg};
+}}
+''',
+        ctype=ctype, member=member, param='size_t index' if count > 1 else '',
+        arg='[index]' if count > 1 else '')
+
+        self.writeln('void copy_into_impl({dns}::{struct}* dst) const {{')
+        self.indent()
+        #if cells > 1:
+        for cell in range(cells):
+            self.writeln('if (vptr_) {{', cell=cell)
+
+            self.indent()
+            index = 0
+            for member, ctype in self.sdata.items():
+                member, _, count = Output.extract_member_type(member)
+                if count > 1:
+                    in_cell = 0
+                    array_policy = policy[index : index + count]
+                    for assigned_cell in array_policy:
+                        if assigned_cell == cell:
+                            in_cell += 1
+                    assert in_cell <= count
+                    if in_cell == count:
+                        self.writeln(
+                                'dst->{member} = vptr_->{member};',
+                                member=member, ctype=ctype, cell=cell)
+                    else:
+                        for col, assigned_cell in enumerate(array_policy):
+                            if assigned_cell == cell:
+                                self.writeln(
+                                        'dst->{member}[{index}] = vptr_->{member}[{index}];',
+                                        member=member, ctype=ctype, cell=cell, index=col)
+                else:
+                    assert count == 1
+                    if policy[index] == cell:
+                        self.writeln(
+                                'dst->{member} = vptr_->{member};',
+                                member=member, ctype=ctype, cell=cell)
+                index += count
+            self.unindent()
+            self.writeln('}}')
+#        else:
+#            self.writelns('''\
+#if (vptr_0_) {{
+#{indent}memcpy(dst, vptr_0_, sizeof *dst);
+#}}''')
+        self.unindent()
+        self.writeln('}}')
+        self.writeln()
+
+        self.writelns('''\
+/*
+void copy_into_impl({dns}::{struct}* dst) const {{
+{indent}if (vptr_) {{
+{indent}{indent}memcpy(dst, vptr_, sizeof *dst);
+{indent}}}
+}}
+*/
+
+const {dns}::{struct}* vptr_;
+friend {baccessor}<{uaccessor}<{dns}::{struct}, {sts}>, {dns}::{struct}, {sts}>;''',
+        sts=str(sts).lower())
+        self.unindent()
+
+        self.writeln('}};')
+        self.writeln()
+
+    def generate_split_record_accessor(self, sts=False):
+        '''Generate the SplitRecordAccessor structs.'''
+        import collections
+
+        policy = self.mdata['sts'] if sts else self.mdata['splits'][0]
+        cells = max(policy) + 1
+
+        self.writelns('''\
+template <>
+class {saccessor}<{dns}::{struct}, {sts}> : public {baccessor}<{saccessor}<{dns}::{struct}, {sts}>, {dns}::{struct}, {sts}> {{
+public:''', sts=str(sts).lower())
+
+        self.indent()
+        self.writelns('''\
+static constexpr auto num_splits = {splitparams}<{dns}::{struct}, {sts}>::num_splits;
+
+{saccessor}() = default;
+{saccessor}(const std::array<void*, num_splits>& vptrs) : {args} {{}}
+
+operator bool() const {{''',
+        args=', '.join('vptr_{cell}_(reinterpret_cast<{type}*>(vptrs[{cell}]))'.format(
+            cell=cell, type=(
+                (('{sns}::{value' + str(cell) + '}').format(**self._data) \
+                        if cells > 1 else '{dns}::{struct}'.format(**self._data)))) \
+                        for cell in range(cells)),
+        sts=str(sts).lower())
+
+        self.indent()
+        if cells > 1:
+            self.writeln('return vptr_0_ != nullptr && vptr_1_ != nullptr;')
+        else:
+            self.writeln('return vptr_0_ != nullptr;')
+        self.unindent()
+
+        self.writeln('}}')
+        self.unindent()
+
+        self.writeln('private:')
+
+        self.indent()
+        index = 0
+        for member, ctype in self.sdata.items():
+            member, _, count = Output.extract_member_type(member)
+            self.writeln('const {ctype}& {member}_impl({param}) const {{',
+                    ctype=ctype, member=member, param='size_t index' if count > 1 else '',
+                    arg='[index]' if count > 1 else '')
+            if count > 1:
+                in_cell = 0
+                array_policy = policy[index : index + count]
+                cell = array_policy[0]
+                for assigned_cell in array_policy:
+                    if assigned_cell == cell:
+                        in_cell += 1
+                assert in_cell <= count
+                if in_cell == count:
+                    self.writeln('return vptr_{cell}_->{member}[index];', cell=cell, member=member)
+                else:
+                    index_cells = collections.defaultdict(list)
+                    for colind, cell in enumerate(policy):
+                        if cell:
+                            index_cells[cell].append(colind)
+                    self.writeln('switch (index) {{')
+                    for cell, indices in index_cells.items():
+                        self.writelns('''\
+{cases}
+{indent}return vptr_{cell}_->{member}[index];''',
+                            cases=''.join('case {index}: '.format(index=colind) for colind in indices),
+                            cell=cell, member=member)
+                    self.writelns('''\
+default:
+{indent}break;
+}}''')
+                    self.writeln('return vptr_0_->{member}[index];', member=member)
+            else:
+                assert count == 1
+                self.writeln('return vptr_{cell}_->{member};', cell=policy[index], member=member)
+            self.writeln('}}')
+            self.writeln()
+            index += count
+
+        self.writeln('void copy_into_impl({dns}::{struct}* dst) const {{')
+        self.indent()
+        #if cells > 1:
+        for cell in range(cells):
+            self.writeln('if (vptr_{cell}_) {{', cell=cell)
+
+            self.indent()
+            index = 0
+            for member, ctype in self.sdata.items():
+                member, _, count = Output.extract_member_type(member)
+                if count > 1:
+                    in_cell = 0
+                    array_policy = policy[index : index + count]
+                    for assigned_cell in array_policy:
+                        if assigned_cell == cell:
+                            in_cell += 1
+                    assert in_cell <= count
+                    if in_cell == count:
+                        self.writeln(
+                                'dst->{member} = vptr_{cell}_->{member};',
+                                member=member, ctype=ctype, cell=cell)
+                    else:
+                        for col, assigned_cell in enumerate(array_policy):
+                            if assigned_cell == cell:
+                                self.writeln(
+                                        'dst->{member}[{index}] = vptr_{cell}_->{member}[{index}];',
+                                        member=member, ctype=ctype, cell=cell, index=col)
+                else:
+                    assert count == 1
+                    if policy[index] == cell:
+                        self.writeln(
+                                'dst->{member} = vptr_{cell}_->{member};',
+                                member=member, ctype=ctype, cell=cell)
+                index += count
+            self.unindent()
+            self.writeln('}}')
+#        else:
+#            self.writelns('''\
+#if (vptr_0_) {{
+#{indent}memcpy(dst, vptr_0_, sizeof *dst);
+#}}''')
+        self.unindent()
+        self.writeln('}}')
+        self.writeln()
+
+        if cells > 1:
+            for cell in range(cells):
+                self.writeln(
+                        'const {sns}::{value}* vptr_{cell}_;',
+                        value=self._data['value{}'.format(cell)], cell=cell)
+        else:
+            self.writeln('const {dns}::{struct}* vptr_0_;')
+        self.writeln(
+                'friend {baccessor}<{saccessor}<{dns}::{struct}, {sts}>, {dns}::{struct}, {sts}>;',
+                sts=str(sts).lower())
+        self.unindent()
+
+        self.writeln('}};')
+        self.writeln()
+
+
 if '__main__' == __name__:
     parser = argparse.ArgumentParser(description='STO struct generator')
     parser.add_argument(
@@ -717,6 +1211,10 @@ The fully-qualified namespace for the struct, e.g. ::benchmark::tpcc\
     parser.add_argument(
             '-o', '--out', default=None, type=str,
             help='Output file for generated structs, defaults to stdout')
+    parser.add_argument(
+            '-s', '--selectors', action='store_true', default=False,
+            help='Whether to also output the Selectors-style accessors \
+(this is typically true for new datatypes without SplitParams wrappers.)')
 
     args = parser.parse_args()
 
@@ -738,5 +1236,9 @@ The fully-qualified namespace for the struct, e.g. ::benchmark::tpcc\
     for struct in config.sections():
         Output(outfile, namespaces).convert_struct(struct, config[struct], headers=headers)
         headers = False
+
+    if args.selectors:
+        for struct in config.sections():
+            Output(outfile, namespaces).generate_selectors(struct, config[struct])
 
     outfile.close()
