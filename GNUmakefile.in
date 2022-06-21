@@ -12,7 +12,7 @@ endif
 AR = ar
 CC = @CC@
 CXX = @CXX@
-CPPFLAGS := -std=c++17
+CPPFLAGS := -std=c++17 -fdiagnostics-color=always
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a $(LIBMALLOC) -lpthread -lm -lnuma
@@ -237,6 +237,7 @@ PROGRAMS = \
 	wiki_bench \
 	voter_bench \
 	rubis_bench \
+	like_bench \
 	$(UNIT_PROGRAMS)
 
 all: check
@@ -272,6 +273,14 @@ $(OBJ)/%.o: test/%.cc config.h $(DEPSDIR)/stamp
 
 $(OBJ)/%.o: benchmark/%.cc config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
+.PHONY: %_structs
+%_structs: benchmark/%_structs.ini
+ifdef FULL
+	python3 struct_generator.py $< -n :: -o benchmark/$@_generated.hh -s
+else
+	python3 struct_generator.py $< -n :: -o benchmark/$@_generated.hh
+endif
 
 $(OBJ)/xxhash.o: third-party/xxHash/xxhash.c
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -c -o $@ $<
@@ -448,6 +457,9 @@ voter_bench: $(OBJ)/Voter_bench.o $(OBJ)/Voter_data.o $(INDEX_OBJS)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 rubis_bench: $(OBJ)/Rubis_bench.o $(INDEX_OBJS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+like_bench: $(OBJ)/LIKE_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
