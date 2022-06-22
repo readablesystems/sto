@@ -35,7 +35,7 @@ public:
 
     using supports_cellsplit = bool;  // For detection purposes
     auto required_cells(int split) {
-        using nc = example_bench::ordered_value::NamedColumn;
+        using nc = example_bench::unordered_value::NamedColumn;
         return CommAdapter::required_cells<example_bench::unordered_value>(
                 {nc::version, nc::version + 1}, split);
     }
@@ -174,7 +174,7 @@ public:
         base_db::thread_init(tbl_ordered, tbl_unordered);
     }
 
-    const CommandParams params;
+    const CommandParams& params;
     struct {
         int64_t count;
     } prepopulate_data;
@@ -208,7 +208,7 @@ public:
     Example_runner(Args&&... args)
         : base_runner(std::forward<Args>(args)...),
           txn_gen(db.rng[base_runner::id], 0, 99),
-          key_gen(db.rng[base_runner::id], 0, db::table_size - 1) {}
+          key_gen(db.rng[base_runner::id], 0, db.table_size - 1) {}
 
     // For convenience
     enum txn_type {
