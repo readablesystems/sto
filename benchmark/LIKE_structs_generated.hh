@@ -3,6 +3,8 @@
 #include <type_traits>
 //#include "AdapterStructs.hh"
 
+namespace like_bench {
+
 namespace page_value_datatypes {
 
 enum class NamedColumn;
@@ -313,6 +315,10 @@ public:
 
 using page_value = page_value_datatypes::page_value;
 
+};  // namespace like_bench
+
+namespace like_bench {
+
 namespace like_value_datatypes {
 
 enum class NamedColumn;
@@ -454,6 +460,33 @@ struct SplitPolicy<0> {
     }
 };
 
+template <>
+struct SplitPolicy<1> {
+    static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
+    static constexpr int policy[ColCount] = { 1, 0 };
+    inline static constexpr int column_to_cell(NamedColumn column) {
+        return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
+    }
+    inline static constexpr size_t cell_col_count(int cell) {
+        if (cell == 1) {
+            return 1;
+        }
+        if (cell == 0) {
+            return 1;
+        }
+        return 0;
+    }
+    template <int Cell>
+    inline static constexpr void copy_cell(like_value* dest, like_value* src) {
+        if constexpr(Cell == 1) {
+            dest->user_id = src->user_id;
+        }
+        if constexpr(Cell == 0) {
+            dest->page_id = src->page_id;
+        }
+    }
+};
+
 class RecordAccessor {
 public:
     using NamedColumn = like_value_datatypes::NamedColumn;
@@ -466,7 +499,7 @@ public:
     static constexpr auto DEFAULT_SPLIT = 0;
     static constexpr auto MAX_SPLITS = 2;
     static constexpr auto MAX_POINTERS = MAX_SPLITS;
-    static constexpr auto POLICIES = 1;
+    static constexpr auto POLICIES = 2;
 
     RecordAccessor() = default;
     template <typename... T>
@@ -491,12 +524,18 @@ public:
         if constexpr (Index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
         }
+        if constexpr (Index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
+        }
         return 0;
     }
 
     inline static constexpr const auto split_of(int index, NamedColumn column) {
         if (index == 0) {
             return SplitPolicy<0>::column_to_cell(column);
+        }
+        if (index == 1) {
+            return SplitPolicy<1>::column_to_cell(column);
         }
         return 0;
     }
@@ -512,6 +551,10 @@ public:
                 SplitPolicy<Index>::template copy_cell<0>(dest, src);
                 return;
             }
+            if (cell == 1) {
+                SplitPolicy<Index>::template copy_cell<1>(dest, src);
+                return;
+            }
         } else {
             (void) dest;
             (void) src;
@@ -523,17 +566,25 @@ public:
             copy_cell<0>(cell, dest, src);
             return;
         }
+        if (index == 1) {
+            copy_cell<1>(cell, dest, src);
+            return;
+        }
     }
 
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
         }
+        if (index == 1) {
+            return SplitPolicy<1>::cell_col_count(cell);
+        }
         return 0;
     }
 
     void copy_into(like_value* vptr, int index=0) {
         copy_cell(index, 0, vptr, vptrs_[0]);
+        copy_cell(index, 1, vptr, vptrs_[1]);
     }
 
     inline typename accessor_info<NamedColumn::user_id>::value_type& user_id() {
@@ -578,32 +629,41 @@ public:
 
 using like_value = like_value_datatypes::like_value;
 
+};  // namespace like_bench
+
+namespace like_bench {
+
 namespace page_value_split_structs {
 
 struct page_value_cell0 {
-    using NamedColumn = typename page_value_datatypes::page_value::NamedColumn;
+    using NamedColumn = typename ::like_bench::page_value::NamedColumn;
 
     int32_t likes;
 };
 
 struct page_value_cell1 {
-    using NamedColumn = typename page_value_datatypes::page_value::NamedColumn;
+    using NamedColumn = typename ::like_bench::page_value::NamedColumn;
 
     int32_t page_id;
 };
 
 };  // namespace page_value_split_structs
 
+using page_value_cell0 = page_value_split_structs::page_value_cell0;
+using page_value_cell1 = page_value_split_structs::page_value_cell1;
+
+};  // namespace like_bench
+
 namespace bench {
 template <>
-struct SplitParams<page_value_datatypes::page_value, false> {
-    using split_type_list = std::tuple<page_value_datatypes::page_value>;
+struct SplitParams<::like_bench::page_value, false> {
+    using split_type_list = std::tuple<::like_bench::page_value>;
     using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
     static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
     static constexpr auto split_builder = std::make_tuple(
-        [](const page_value_datatypes::page_value& in) -> page_value_datatypes::page_value {
-            page_value_datatypes::page_value out;
+        [] (const ::like_bench::page_value& in) -> ::like_bench::page_value {
+            ::like_bench::page_value out;
             out.page_id = in.page_id;
             out.likes = in.likes;
             return out;
@@ -611,19 +671,19 @@ struct SplitParams<page_value_datatypes::page_value, false> {
     );
 
     static constexpr auto split_merger = std::make_tuple(
-        [](page_value_datatypes::page_value* out, const page_value_datatypes::page_value& in) -> void {
+        [] (::like_bench::page_value* out, const ::like_bench::page_value& in) -> void {
             out->page_id = in.page_id;
             out->likes = in.likes;
         }
     );
 
-    static constexpr auto map = [](int) -> int {
+    static constexpr auto map = [] (int) -> int {
         return 0;
     };
 };
 
 template <typename Accessor>
-class RecordAccessor<Accessor, page_value_datatypes::page_value, false> {
+class RecordAccessor<Accessor, ::like_bench::page_value, false> {
 public:
     const int32_t& page_id() const {
         return impl().page_id_impl();
@@ -633,7 +693,7 @@ public:
         return impl().likes_impl();
     }
 
-    void copy_into(page_value_datatypes::page_value* dst) const {
+    void copy_into(::like_bench::page_value* dst) const {
         return impl().copy_into_impl(dst);
     }
 
@@ -644,10 +704,10 @@ private:
 };
 
 template <>
-class UniRecordAccessor<page_value_datatypes::page_value, false> : public RecordAccessor<UniRecordAccessor<page_value_datatypes::page_value, false>, page_value_datatypes::page_value, false> {
+class UniRecordAccessor<::like_bench::page_value, false> : public RecordAccessor<UniRecordAccessor<::like_bench::page_value, false>, ::like_bench::page_value, false> {
 public:
     UniRecordAccessor() = default;
-    UniRecordAccessor(const page_value_datatypes::page_value* const vptr) : vptr_(vptr) {}
+    UniRecordAccessor(const ::like_bench::page_value* const vptr) : vptr_(vptr) {}
 
     operator bool() const {
         return vptr_ != nullptr;
@@ -662,32 +722,24 @@ private:
         return vptr_->likes;
     }
 
-    void copy_into_impl(page_value_datatypes::page_value* dst) const {
+    void copy_into_impl(::like_bench::page_value* dst) const {
         if (vptr_) {
             dst->page_id = vptr_->page_id;
             dst->likes = vptr_->likes;
         }
     }
 
-    /*
-    void copy_into_impl(page_value_datatypes::page_value* dst) const {
-        if (vptr_) {
-            memcpy(dst, vptr_, sizeof *dst);
-        }
-    }
-    */
-
-    const page_value_datatypes::page_value* vptr_;
-    friend RecordAccessor<UniRecordAccessor<page_value_datatypes::page_value, false>, page_value_datatypes::page_value, false>;
+    const ::like_bench::page_value* vptr_;
+    friend RecordAccessor<UniRecordAccessor<::like_bench::page_value, false>, ::like_bench::page_value, false>;
 };
 
 template <>
-class SplitRecordAccessor<page_value_datatypes::page_value, false> : public RecordAccessor<SplitRecordAccessor<page_value_datatypes::page_value, false>, page_value_datatypes::page_value, false> {
+class SplitRecordAccessor<::like_bench::page_value, false> : public RecordAccessor<SplitRecordAccessor<::like_bench::page_value, false>, ::like_bench::page_value, false> {
 public:
-    static constexpr auto num_splits = SplitParams<page_value_datatypes::page_value, false>::num_splits;
+    static constexpr auto num_splits = SplitParams<::like_bench::page_value, false>::num_splits;
 
     SplitRecordAccessor() = default;
-    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs) : vptr_0_(reinterpret_cast<page_value_datatypes::page_value*>(vptrs[0])) {}
+    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs) : vptr_0_(reinterpret_cast<::like_bench::page_value*>(vptrs[0])) {}
 
     operator bool() const {
         return vptr_0_ != nullptr;
@@ -701,46 +753,46 @@ private:
     return vptr_0_->likes;
     }
 
-    void copy_into_impl(page_value_datatypes::page_value* dst) const {
+    void copy_into_impl(::like_bench::page_value* dst) const {
         if (vptr_0_) {
             dst->page_id = vptr_0_->page_id;
             dst->likes = vptr_0_->likes;
         }
     }
 
-    const page_value_datatypes::page_value* vptr_0_;
-    friend RecordAccessor<SplitRecordAccessor<page_value_datatypes::page_value, false>, page_value_datatypes::page_value, false>;
+    const ::like_bench::page_value* vptr_0_;
+    friend RecordAccessor<SplitRecordAccessor<::like_bench::page_value, false>, ::like_bench::page_value, false>;
 };
 
 template <>
-struct SplitParams<page_value_datatypes::page_value, true> {
-    using split_type_list = std::tuple<page_value_split_structs::page_value_cell0, page_value_split_structs::page_value_cell1>;
+struct SplitParams<::like_bench::page_value, true> {
+    using split_type_list = std::tuple<::like_bench::page_value_cell0, ::like_bench::page_value_cell1>;
     using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
     static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
     static constexpr auto split_builder = std::make_tuple(
-        [](const page_value_datatypes::page_value& in) -> page_value_split_structs::page_value_cell0 {
-            page_value_split_structs::page_value_cell0 out;
+        [] (const ::like_bench::page_value& in) -> ::like_bench::page_value_cell0 {
+            ::like_bench::page_value_cell0 out;
             out.likes = in.likes;
             return out;
         },
-        [](const page_value_datatypes::page_value& in) -> page_value_split_structs::page_value_cell1 {
-            page_value_split_structs::page_value_cell1 out;
+        [] (const ::like_bench::page_value& in) -> ::like_bench::page_value_cell1 {
+            ::like_bench::page_value_cell1 out;
             out.page_id = in.page_id;
             return out;
         }
     );
 
     static constexpr auto split_merger = std::make_tuple(
-        [](page_value_datatypes::page_value* out, const page_value_split_structs::page_value_cell0& in) -> void {
+        [] (::like_bench::page_value* out, const ::like_bench::page_value_cell0& in) -> void {
             out->likes = in.likes;
         },
-        [](page_value_datatypes::page_value* out, const page_value_split_structs::page_value_cell1& in) -> void {
+        [] (::like_bench::page_value* out, const ::like_bench::page_value_cell1& in) -> void {
             out->page_id = in.page_id;
         }
     );
 
-    static constexpr auto map = [](int col_n) -> int {
+    static constexpr auto map = [] (int col_n) -> int {
         switch (col_n) {
         case 0: 
             return 1;
@@ -752,7 +804,7 @@ struct SplitParams<page_value_datatypes::page_value, true> {
 };
 
 template <typename Accessor>
-class RecordAccessor<Accessor, page_value_datatypes::page_value, true> {
+class RecordAccessor<Accessor, ::like_bench::page_value, true> {
 public:
     const int32_t& page_id() const {
         return impl().page_id_impl();
@@ -762,7 +814,7 @@ public:
         return impl().likes_impl();
     }
 
-    void copy_into(page_value_datatypes::page_value* dst) const {
+    void copy_into(::like_bench::page_value* dst) const {
         return impl().copy_into_impl(dst);
     }
 
@@ -773,10 +825,10 @@ private:
 };
 
 template <>
-class UniRecordAccessor<page_value_datatypes::page_value, true> : public RecordAccessor<UniRecordAccessor<page_value_datatypes::page_value, true>, page_value_datatypes::page_value, true> {
+class UniRecordAccessor<::like_bench::page_value, true> : public RecordAccessor<UniRecordAccessor<::like_bench::page_value, true>, ::like_bench::page_value, true> {
 public:
     UniRecordAccessor() = default;
-    UniRecordAccessor(const page_value_datatypes::page_value* const vptr) : vptr_(vptr) {}
+    UniRecordAccessor(const ::like_bench::page_value* const vptr) : vptr_(vptr) {}
 
     operator bool() const {
         return vptr_ != nullptr;
@@ -791,7 +843,7 @@ private:
         return vptr_->likes;
     }
 
-    void copy_into_impl(page_value_datatypes::page_value* dst) const {
+    void copy_into_impl(::like_bench::page_value* dst) const {
         if (vptr_) {
             dst->likes = vptr_->likes;
         }
@@ -800,25 +852,17 @@ private:
         }
     }
 
-    /*
-    void copy_into_impl(page_value_datatypes::page_value* dst) const {
-        if (vptr_) {
-            memcpy(dst, vptr_, sizeof *dst);
-        }
-    }
-    */
-
-    const page_value_datatypes::page_value* vptr_;
-    friend RecordAccessor<UniRecordAccessor<page_value_datatypes::page_value, true>, page_value_datatypes::page_value, true>;
+    const ::like_bench::page_value* vptr_;
+    friend RecordAccessor<UniRecordAccessor<::like_bench::page_value, true>, ::like_bench::page_value, true>;
 };
 
 template <>
-class SplitRecordAccessor<page_value_datatypes::page_value, true> : public RecordAccessor<SplitRecordAccessor<page_value_datatypes::page_value, true>, page_value_datatypes::page_value, true> {
+class SplitRecordAccessor<::like_bench::page_value, true> : public RecordAccessor<SplitRecordAccessor<::like_bench::page_value, true>, ::like_bench::page_value, true> {
 public:
-    static constexpr auto num_splits = SplitParams<page_value_datatypes::page_value, true>::num_splits;
+    static constexpr auto num_splits = SplitParams<::like_bench::page_value, true>::num_splits;
 
     SplitRecordAccessor() = default;
-    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs) : vptr_0_(reinterpret_cast<page_value_split_structs::page_value_cell0*>(vptrs[0])), vptr_1_(reinterpret_cast<page_value_split_structs::page_value_cell1*>(vptrs[1])) {}
+    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs) : vptr_0_(reinterpret_cast<::like_bench::page_value_cell0*>(vptrs[0])), vptr_1_(reinterpret_cast<::like_bench::page_value_cell1*>(vptrs[1])) {}
 
     operator bool() const {
         return vptr_0_ != nullptr && vptr_1_ != nullptr;
@@ -832,7 +876,7 @@ private:
     return vptr_0_->likes;
     }
 
-    void copy_into_impl(page_value_datatypes::page_value* dst) const {
+    void copy_into_impl(::like_bench::page_value* dst) const {
         if (vptr_0_) {
             dst->likes = vptr_0_->likes;
         }
@@ -841,39 +885,46 @@ private:
         }
     }
 
-    const page_value_split_structs::page_value_cell0* vptr_0_;
-    const page_value_split_structs::page_value_cell1* vptr_1_;
-    friend RecordAccessor<SplitRecordAccessor<page_value_datatypes::page_value, true>, page_value_datatypes::page_value, true>;
+    const ::like_bench::page_value_cell0* vptr_0_;
+    const ::like_bench::page_value_cell1* vptr_1_;
+    friend RecordAccessor<SplitRecordAccessor<::like_bench::page_value, true>, ::like_bench::page_value, true>;
 };
 
 };  // namespace bench
 
+namespace like_bench {
+
 namespace like_value_split_structs {
 
 struct like_value_cell0 {
-    using NamedColumn = typename like_value_datatypes::like_value::NamedColumn;
+    using NamedColumn = typename ::like_bench::like_value::NamedColumn;
 
-    int32_t user_id;
     int32_t page_id;
 };
 
 struct like_value_cell1 {
-    using NamedColumn = typename like_value_datatypes::like_value::NamedColumn;
+    using NamedColumn = typename ::like_bench::like_value::NamedColumn;
 
+    int32_t user_id;
 };
 
 };  // namespace like_value_split_structs
 
+using like_value_cell0 = like_value_split_structs::like_value_cell0;
+using like_value_cell1 = like_value_split_structs::like_value_cell1;
+
+};  // namespace like_bench
+
 namespace bench {
 template <>
-struct SplitParams<like_value_datatypes::like_value, false> {
-    using split_type_list = std::tuple<like_value_datatypes::like_value>;
+struct SplitParams<::like_bench::like_value, false> {
+    using split_type_list = std::tuple<::like_bench::like_value>;
     using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
     static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
     static constexpr auto split_builder = std::make_tuple(
-        [](const like_value_datatypes::like_value& in) -> like_value_datatypes::like_value {
-            like_value_datatypes::like_value out;
+        [] (const ::like_bench::like_value& in) -> ::like_bench::like_value {
+            ::like_bench::like_value out;
             out.user_id = in.user_id;
             out.page_id = in.page_id;
             return out;
@@ -881,19 +932,19 @@ struct SplitParams<like_value_datatypes::like_value, false> {
     );
 
     static constexpr auto split_merger = std::make_tuple(
-        [](like_value_datatypes::like_value* out, const like_value_datatypes::like_value& in) -> void {
+        [] (::like_bench::like_value* out, const ::like_bench::like_value& in) -> void {
             out->user_id = in.user_id;
             out->page_id = in.page_id;
         }
     );
 
-    static constexpr auto map = [](int) -> int {
+    static constexpr auto map = [] (int) -> int {
         return 0;
     };
 };
 
 template <typename Accessor>
-class RecordAccessor<Accessor, like_value_datatypes::like_value, false> {
+class RecordAccessor<Accessor, ::like_bench::like_value, false> {
 public:
     const int32_t& user_id() const {
         return impl().user_id_impl();
@@ -903,7 +954,7 @@ public:
         return impl().page_id_impl();
     }
 
-    void copy_into(like_value_datatypes::like_value* dst) const {
+    void copy_into(::like_bench::like_value* dst) const {
         return impl().copy_into_impl(dst);
     }
 
@@ -914,10 +965,10 @@ private:
 };
 
 template <>
-class UniRecordAccessor<like_value_datatypes::like_value, false> : public RecordAccessor<UniRecordAccessor<like_value_datatypes::like_value, false>, like_value_datatypes::like_value, false> {
+class UniRecordAccessor<::like_bench::like_value, false> : public RecordAccessor<UniRecordAccessor<::like_bench::like_value, false>, ::like_bench::like_value, false> {
 public:
     UniRecordAccessor() = default;
-    UniRecordAccessor(const like_value_datatypes::like_value* const vptr) : vptr_(vptr) {}
+    UniRecordAccessor(const ::like_bench::like_value* const vptr) : vptr_(vptr) {}
 
     operator bool() const {
         return vptr_ != nullptr;
@@ -932,32 +983,24 @@ private:
         return vptr_->page_id;
     }
 
-    void copy_into_impl(like_value_datatypes::like_value* dst) const {
+    void copy_into_impl(::like_bench::like_value* dst) const {
         if (vptr_) {
             dst->user_id = vptr_->user_id;
             dst->page_id = vptr_->page_id;
         }
     }
 
-    /*
-    void copy_into_impl(like_value_datatypes::like_value* dst) const {
-        if (vptr_) {
-            memcpy(dst, vptr_, sizeof *dst);
-        }
-    }
-    */
-
-    const like_value_datatypes::like_value* vptr_;
-    friend RecordAccessor<UniRecordAccessor<like_value_datatypes::like_value, false>, like_value_datatypes::like_value, false>;
+    const ::like_bench::like_value* vptr_;
+    friend RecordAccessor<UniRecordAccessor<::like_bench::like_value, false>, ::like_bench::like_value, false>;
 };
 
 template <>
-class SplitRecordAccessor<like_value_datatypes::like_value, false> : public RecordAccessor<SplitRecordAccessor<like_value_datatypes::like_value, false>, like_value_datatypes::like_value, false> {
+class SplitRecordAccessor<::like_bench::like_value, false> : public RecordAccessor<SplitRecordAccessor<::like_bench::like_value, false>, ::like_bench::like_value, false> {
 public:
-    static constexpr auto num_splits = SplitParams<like_value_datatypes::like_value, false>::num_splits;
+    static constexpr auto num_splits = SplitParams<::like_bench::like_value, false>::num_splits;
 
     SplitRecordAccessor() = default;
-    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs) : vptr_0_(reinterpret_cast<like_value_datatypes::like_value*>(vptrs[0])) {}
+    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs) : vptr_0_(reinterpret_cast<::like_bench::like_value*>(vptrs[0])) {}
 
     operator bool() const {
         return vptr_0_ != nullptr;
@@ -971,46 +1014,58 @@ private:
     return vptr_0_->page_id;
     }
 
-    void copy_into_impl(like_value_datatypes::like_value* dst) const {
+    void copy_into_impl(::like_bench::like_value* dst) const {
         if (vptr_0_) {
             dst->user_id = vptr_0_->user_id;
             dst->page_id = vptr_0_->page_id;
         }
     }
 
-    const like_value_datatypes::like_value* vptr_0_;
-    friend RecordAccessor<SplitRecordAccessor<like_value_datatypes::like_value, false>, like_value_datatypes::like_value, false>;
+    const ::like_bench::like_value* vptr_0_;
+    friend RecordAccessor<SplitRecordAccessor<::like_bench::like_value, false>, ::like_bench::like_value, false>;
 };
 
 template <>
-struct SplitParams<like_value_datatypes::like_value, true> {
-    using split_type_list = std::tuple<like_value_datatypes::like_value>;
+struct SplitParams<::like_bench::like_value, true> {
+    using split_type_list = std::tuple<::like_bench::like_value_cell0, ::like_bench::like_value_cell1>;
     using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
     static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
 
     static constexpr auto split_builder = std::make_tuple(
-        [](const like_value_datatypes::like_value& in) -> like_value_datatypes::like_value {
-            like_value_datatypes::like_value out;
-            out.user_id = in.user_id;
+        [] (const ::like_bench::like_value& in) -> ::like_bench::like_value_cell0 {
+            ::like_bench::like_value_cell0 out;
             out.page_id = in.page_id;
+            return out;
+        },
+        [] (const ::like_bench::like_value& in) -> ::like_bench::like_value_cell1 {
+            ::like_bench::like_value_cell1 out;
+            out.user_id = in.user_id;
             return out;
         }
     );
 
     static constexpr auto split_merger = std::make_tuple(
-        [](like_value_datatypes::like_value* out, const like_value_datatypes::like_value& in) -> void {
-            out->user_id = in.user_id;
+        [] (::like_bench::like_value* out, const ::like_bench::like_value_cell0& in) -> void {
             out->page_id = in.page_id;
+        },
+        [] (::like_bench::like_value* out, const ::like_bench::like_value_cell1& in) -> void {
+            out->user_id = in.user_id;
         }
     );
 
-    static constexpr auto map = [](int) -> int {
+    static constexpr auto map = [] (int col_n) -> int {
+        switch (col_n) {
+        case 0: 
+            return 1;
+        default:
+            break;
+        }
         return 0;
     };
 };
 
 template <typename Accessor>
-class RecordAccessor<Accessor, like_value_datatypes::like_value, true> {
+class RecordAccessor<Accessor, ::like_bench::like_value, true> {
 public:
     const int32_t& user_id() const {
         return impl().user_id_impl();
@@ -1020,7 +1075,7 @@ public:
         return impl().page_id_impl();
     }
 
-    void copy_into(like_value_datatypes::like_value* dst) const {
+    void copy_into(::like_bench::like_value* dst) const {
         return impl().copy_into_impl(dst);
     }
 
@@ -1031,10 +1086,10 @@ private:
 };
 
 template <>
-class UniRecordAccessor<like_value_datatypes::like_value, true> : public RecordAccessor<UniRecordAccessor<like_value_datatypes::like_value, true>, like_value_datatypes::like_value, true> {
+class UniRecordAccessor<::like_bench::like_value, true> : public RecordAccessor<UniRecordAccessor<::like_bench::like_value, true>, ::like_bench::like_value, true> {
 public:
     UniRecordAccessor() = default;
-    UniRecordAccessor(const like_value_datatypes::like_value* const vptr) : vptr_(vptr) {}
+    UniRecordAccessor(const ::like_bench::like_value* const vptr) : vptr_(vptr) {}
 
     operator bool() const {
         return vptr_ != nullptr;
@@ -1049,54 +1104,51 @@ private:
         return vptr_->page_id;
     }
 
-    void copy_into_impl(like_value_datatypes::like_value* dst) const {
+    void copy_into_impl(::like_bench::like_value* dst) const {
         if (vptr_) {
-            dst->user_id = vptr_->user_id;
             dst->page_id = vptr_->page_id;
         }
-    }
-
-    /*
-    void copy_into_impl(like_value_datatypes::like_value* dst) const {
         if (vptr_) {
-            memcpy(dst, vptr_, sizeof *dst);
+            dst->user_id = vptr_->user_id;
         }
     }
-    */
 
-    const like_value_datatypes::like_value* vptr_;
-    friend RecordAccessor<UniRecordAccessor<like_value_datatypes::like_value, true>, like_value_datatypes::like_value, true>;
+    const ::like_bench::like_value* vptr_;
+    friend RecordAccessor<UniRecordAccessor<::like_bench::like_value, true>, ::like_bench::like_value, true>;
 };
 
 template <>
-class SplitRecordAccessor<like_value_datatypes::like_value, true> : public RecordAccessor<SplitRecordAccessor<like_value_datatypes::like_value, true>, like_value_datatypes::like_value, true> {
+class SplitRecordAccessor<::like_bench::like_value, true> : public RecordAccessor<SplitRecordAccessor<::like_bench::like_value, true>, ::like_bench::like_value, true> {
 public:
-    static constexpr auto num_splits = SplitParams<like_value_datatypes::like_value, true>::num_splits;
+    static constexpr auto num_splits = SplitParams<::like_bench::like_value, true>::num_splits;
 
     SplitRecordAccessor() = default;
-    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs) : vptr_0_(reinterpret_cast<like_value_datatypes::like_value*>(vptrs[0])) {}
+    SplitRecordAccessor(const std::array<void*, num_splits>& vptrs) : vptr_0_(reinterpret_cast<::like_bench::like_value_cell0*>(vptrs[0])), vptr_1_(reinterpret_cast<::like_bench::like_value_cell1*>(vptrs[1])) {}
 
     operator bool() const {
-        return vptr_0_ != nullptr;
+        return vptr_0_ != nullptr && vptr_1_ != nullptr;
     }
 private:
     const int32_t& user_id_impl() const {
-    return vptr_0_->user_id;
+    return vptr_1_->user_id;
     }
 
     const int32_t& page_id_impl() const {
     return vptr_0_->page_id;
     }
 
-    void copy_into_impl(like_value_datatypes::like_value* dst) const {
+    void copy_into_impl(::like_bench::like_value* dst) const {
         if (vptr_0_) {
-            dst->user_id = vptr_0_->user_id;
             dst->page_id = vptr_0_->page_id;
+        }
+        if (vptr_1_) {
+            dst->user_id = vptr_1_->user_id;
         }
     }
 
-    const like_value_datatypes::like_value* vptr_0_;
-    friend RecordAccessor<SplitRecordAccessor<like_value_datatypes::like_value, true>, like_value_datatypes::like_value, true>;
+    const ::like_bench::like_value_cell0* vptr_0_;
+    const ::like_bench::like_value_cell1* vptr_1_;
+    friend RecordAccessor<SplitRecordAccessor<::like_bench::like_value, true>, ::like_bench::like_value, true>;
 };
 
 };  // namespace bench

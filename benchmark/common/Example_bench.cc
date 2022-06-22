@@ -10,14 +10,75 @@
 // Common headers
 #include "common/Common_bench.hh"
 
+//
+// Data structures
+//
+
 // Data structures headers, as needed
 #include "Example_structs_generated.hh"
+
+// Deferred update implementations
+namespace commutators {
+
+template <>
+class Commutator<example_bench::unordered_value> {
+public:
+    Commutator() = default;
+
+    void operate(example_bench::unordered_value& value) const {
+        ++value.version[1];
+        while (value.version[1] >= 100) {
+            ++value.version[0];
+            value.version[1] -= 100;
+        }
+    }
+
+    using supports_cellsplit = bool;  // For detection purposes
+    auto required_cells(int split) {
+        using nc = example_bench::ordered_value::NamedColumn;
+        return CommAdapter::required_cells<example_bench::unordered_value>(
+                {nc::version, nc::version + 1}, split);
+    }
+
+    char _ = 0;  // Needed to prove non-zero size
+
+private:
+    friend Commutator<example_bench::unordered_value_cell0>;
+    friend Commutator<example_bench::unordered_value_cell1>;
+};
+
+// And these are the implementations for STS
+template <>
+class Commutator<example_bench::unordered_value_cell0> : public Commutator<example_bench::unordered_value> {
+public:
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<example_bench::unordered_value>(std::forward<Args>(args)...) {}
+
+    void operate(example_bench::unordered_value_cell0& value) const {}
+};
+
+template <>
+class Commutator<example_bench::unordered_value_cell1> : public Commutator<example_bench::unordered_value> {
+public:
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<example_bench::unordered_value>(std::forward<Args>(args)...) {}
+
+    void operate(example_bench::unordered_value_cell1& value) const {
+        ++value.version[1];
+        while (value.version[1] >= 100) {
+            ++value.version[0];
+            value.version[1] -= 100;
+        }
+    }
+};
+
+};
 
 // Declare a namespace -- it's good practice for code isolation!
 namespace example_bench {
 
 //
-// Data structures
+// Data structures (cont.)
 //
 
 //using ordered_key = db_common::keys::single_key<int64_t>;
@@ -88,9 +149,17 @@ public:
             // Prepopulate with data
             for (int32_t id = start_id; id <= end_id; ++id) {
                 int32_t payload = dist.sample_idx();
-                data_value value = { .payload = payload, .version = 0 };
-                tbl_ordered.nontrans_put(ordered_key(id, id), value);
-                tbl_unordered.nontrans_put(ordered_key(id), value);
+                {
+                    ordered_value value = { .payload = payload, .version = 0 };
+                    tbl_ordered.nontrans_put(ordered_key(id, id), value);
+                }
+                {
+                    std::array<int32_t, 2> uo_payload = {payload, payload};
+                    unordered_value value = {
+                        .payload = uo_payload, .version = {0, 0}
+                        };
+                    tbl_unordered.nontrans_put(ordered_key(id), value);
+                }
                 prepop_count[thread_id] += payload;
             }
         });
@@ -138,7 +207,8 @@ public:
     template <typename... Args>
     Example_runner(Args&&... args)
         : base_runner(std::forward<Args>(args)...),
-          txn_gen(db.rng[0], 0, 99) {}
+          txn_gen(db.rng[base_runner::id], 0, 99),
+          key_gen(db.rng[base_runner::id], 0, db::table_size - 1) {}
 
     // For convenience
     enum txn_type {
@@ -155,7 +225,8 @@ public:
         switch (generate_transaction()) {
         case read:
         {
-            return 1;
+            int64_t key = key_gen.sample_idx();
+            return txn_read(key);
         }
         default:
         {
@@ -166,8 +237,51 @@ public:
     }
 
     // Transaction implementations
+    void txn_read(int64_t key) {
+        bool success, result;
+        uintptr_t row;
+        TXN {
+            {
+                Record<unordered_value> value;
+                if constexpr (DBParams::Split == db_params::db_split_type::Adaptive) {
+                    std::tie(success, result, row, value) = db.tbl_unordered.select_row(
+                        unordered_key(key),
+                        {{unordered_value::NamedColumn::payload, AccessType::read},
+                         {unordered_value::NamedColumn::version, DBParams::Commute ? AccessType::write : AccessType::update},
+                         // version + 1 is the column to the second part of the version!
+                         {unordered_value::NamedColumn::version + 1, DBParams::Commute ? AccessType::write : AccessType::update}},
+                        1);
+                } else {
+                    std::tie(success, result, row, value) = db.tbl_unordered.select_split_row(
+                        unordered_key(key),
+                        {{like_value::NamedColumn::payload, bench::access_t::read},
+                         {like_value::NamedColumn::version, DBParams::Commute ? bench::access_t::write : bench::access_t::update},
+                         {like_value::NamedColumn::version + 1, DBParams::Commute ? bench::access_t::write : bench::access_t::update}});
+                }
+                CHK(success);  // success = true: continue; false: abort transaction
+                assert(result);  // result = true: value found; false: value absent
+                (void)result;  // Needed if using asserts above for optimized compilations
+                (void)value.payload();
+                if constexpr (DBParams::Commute) {
+                    commutators::Commutator<unordered_value> comm;  // Can be initialized with a value!
+                    db.tbl_unordered.update_row(row, comm);
+                } else {
+                    unordered_value* new_value = Sto::tx_alloc<unordered_value>();
+                    value.copy_into(new_value);
+                    ++new_value->version[1];  // Increment a minor version
+                    while (new_value->version[1] >= 100) {
+                        ++new_value->version[0];
+                        new_value->version[1] -= 100;
+                    }
+                    db.tbl_unordered.update_row(row, new_value);
+                }
+            }
+
+        return 1;
+    }
 
     sampling::StoUniformDistribution<> txn_gen;
+    sampling::StoUniformDistribution<> key_gen;
 };
 // This is an alias for the runner type. Or we could've just called it
 // runner_type to begin with.

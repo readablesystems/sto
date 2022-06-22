@@ -277,7 +277,7 @@ $(OBJ)/%.o: benchmark/%.cc config.h $(DEPSDIR)/stamp
 .PHONY: %_structs
 %_structs: benchmark/%_structs.ini
 ifdef FULL
-	python3 struct_generator.py $< -n :: -o benchmark/$@_generated.hh -s
+	python3 struct_generator.py $< -n ::$$(echo "$*_bench" | tr '[:upper:]' '[:lower:]') -o benchmark/$@_generated.hh -s
 else
 	python3 struct_generator.py $< -n :: -o benchmark/$@_generated.hh
 endif

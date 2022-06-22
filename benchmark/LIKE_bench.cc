@@ -10,14 +10,66 @@
 // Common headers
 #include "common/Common_bench.hh"
 
+//
+// Data structures
+//
+
 // Data structures headers, as needed
 #include "LIKE_structs_generated.hh"
+
+// Deferred update implementations
+namespace commutators {
+
+template <>
+class Commutator<like_bench::page_value> {
+public:
+    Commutator() = default;
+
+    void operate(like_bench::page_value &value) const {
+        ++value.likes;
+    }
+
+    using supports_cellsplit = bool;  // For detection purposes
+    auto required_cells(int split) {
+        using nc = like_bench::page_value::NamedColumn;
+        return CommAdapter::required_cells<like_bench::page_value>({nc::likes}, split);
+    }
+
+    char _ = 0;  // Needed to prove non-zero size
+
+private:
+    friend Commutator<like_bench::page_value_cell0>;
+    friend Commutator<like_bench::page_value_cell1>;
+};
+
+// And these are the implementations for STS
+template <>
+class Commutator<like_bench::page_value_cell0> : public Commutator<like_bench::page_value> {
+public:
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<like_bench::page_value>(std::forward<Args>(args)...) {}
+
+    void operate(like_bench::page_value_cell0& value) const {
+        ++value.likes;
+    }
+};
+
+template <>
+class Commutator<like_bench::page_value_cell1> : public Commutator<like_bench::page_value> {
+public:
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<like_bench::page_value>(std::forward<Args>(args)...) {}
+
+    void operate(like_bench::page_value_cell1&) const {}
+};
+
+};
 
 // Declare a namespace -- it's good practice for code isolation!
 namespace like_bench {
 
 //
-// Data structures
+// Data structures (cont.)
 //
 
 using page_key = db_common::keys::single_key<int64_t>;
@@ -187,10 +239,10 @@ public:
     template <typename... Args>
     LIKE_runner(Args&&... args)
         : base_runner(std::forward<Args>(args)...),
-          txn_gen(db.rng[0], 0, 99),
-          user_gen(db.rng[0], 0, db.params.user_count - 1),
-          default_page_gen(db.rng[0], 0, db.params.page_count() - 1),
-          zipf_page_gen(db.rng[0], 0, db.params.page_count() - 1, db.params.skew) {}
+          txn_gen(db.rng[base_runner::id], 0, 99),
+          user_gen(db.rng[base_runner::id], 0, db.params.user_count - 1),
+          default_page_gen(db.rng[base_runner::id], 0, db.params.page_count() - 1),
+          zipf_page_gen(db.rng[base_runner::id], 0, db.params.page_count() - 1, db.params.skew) {}
 
     // For convenience
     enum txn_type {
@@ -332,21 +384,26 @@ public:
                     std::tie(success, result, row, value) = db.tbl_page.select_row(
                         page_key(page_id),
                         {{page_value::NamedColumn::page_id, AccessType::read},
-                         {page_value::NamedColumn::likes, AccessType::update}},
+                         {page_value::NamedColumn::likes, DBParams::Commute ? AccessType::write : AccessType::update}},
                         1);
                 } else {
                     std::tie(success, result, row, value) = db.tbl_page.select_split_row(
                         page_key(page_id),
                         {{page_value::NamedColumn::page_id, bench::access_t::read},
-                         {page_value::NamedColumn::likes, bench::access_t::update}});
+                         {page_value::NamedColumn::likes, DBParams::Commute ? bench::access_t::write : bench::access_t::update}});
                 }
                 CHK(success);
                 assert(result);
                 (void)result;
-                page_value* new_value = Sto::tx_alloc<page_value>();
-                value.copy_into(new_value);
-                ++new_value->likes;
-                db.tbl_page.update_row(row, new_value);
+                if constexpr (DBParams::Commute) {
+                    commutators::Commutator<page_value> comm;  // Can be initialized with parameters!
+                    db.tbl_page.update_row(row, comm);
+                } else {
+                    page_value* new_value = Sto::tx_alloc<page_value>();
+                    value.copy_into(new_value);
+                    ++new_value->likes;
+                    db.tbl_page.update_row(row, new_value);
+                }
             }
         } TEND(true);
         return 1;

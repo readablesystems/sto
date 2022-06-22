@@ -93,7 +93,6 @@ class Output:
                 'qns': ''.join('::' + ns for ns in self._namespaces),  # Globally-qualified namespace
                 'struct': struct,
                 }
-        self._data['qns'] += '::' + self._data['ns']
 
         if headers:
             self.writelns('''\
@@ -733,7 +732,6 @@ inline {const}{vaccessor}<{infostruct}<NamedColumn::{member}>>& {struct}::get<Na
                 'qns': ''.join('::' + ns for ns in self._namespaces),  # Globally-qualified namespace
                 'struct': struct,
                 }
-        self._data['qns'] += '::' + self._data['ns']
 
         for ns in self._namespaces:
             self.writeln('namespace {nsname} {{\n', nsname=ns)
@@ -745,6 +743,8 @@ inline {const}{vaccessor}<{infostruct}<NamedColumn::{member}>>& {struct}::get<Na
         self.writelns('''
 }};  // namespace {sns}
 ''')
+
+        self.generate_split_struct_aliases()
 
         for ns in self._namespaces:
             self.writeln('}};  // namespace {nsname}\n', nsname=ns)
@@ -771,7 +771,7 @@ inline {const}{vaccessor}<{infostruct}<NamedColumn::{member}>>& {struct}::get<Na
             value = self._data['value{}'.format(cell)]
             self.writelns('''
 struct {value} {{
-{indent}using NamedColumn = typename {dns}::{struct}::NamedColumn;
+{indent}using NamedColumn = typename {qns}::{struct}::NamedColumn;
 ''', value=value)
 
             self.indent()
@@ -788,6 +788,18 @@ struct {value} {{
 
             self.writeln('}};')
 
+    def generate_split_struct_aliases(self):
+        '''Generate the split-cell value struct aliases.'''
+        sts = self.mdata['sts']
+        if not sts:
+            return
+
+        for cell in (0, 1):
+            value = self._data['value{}'.format(cell)]
+            self.writeln('using {value} = {sns}::{value};', value=value);
+
+        self.writeln()
+
     def generate_split_params(self, sts=False):
         '''Generate the SplitParams structs.'''
         import collections
@@ -797,13 +809,13 @@ struct {value} {{
 
         self.writelns('''\
 template <>
-struct {splitparams}<{dns}::{struct}, {sts}> {{''', sts=str(sts).lower())
+struct {splitparams}<{qns}::{struct}, {sts}> {{''', sts=str(sts).lower())
 
         self.indent()
         if cells > 1:
-            self.writelns('using split_type_list = std::tuple<{sns}::{value0}, {sns}::{value1}>;')
+            self.writelns('using split_type_list = std::tuple<{qns}::{value0}, {qns}::{value1}>;')
         else:
-            self.writeln('using split_type_list = std::tuple<{dns}::{struct}>;')
+            self.writeln('using split_type_list = std::tuple<{qns}::{struct}>;')
         self.writelns('''\
 using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
 static constexpr size_t num_splits = std::tuple_size<split_type_list>::value;
@@ -813,12 +825,12 @@ static constexpr auto split_builder = std::make_tuple(''')
         for cell in range(cells):
             if cells > 1:
                 self.writelns('''\
-[] (const {dns}::{struct}& in) -> {sns}::{value} {{
-{indent}{sns}::{value} out;''', value=self._data['value{}'.format(cell)])
+[] (const {qns}::{struct}& in) -> {qns}::{value} {{
+{indent}{qns}::{value} out;''', value=self._data['value{}'.format(cell)])
             else:
                 self.writelns('''\
-[] (const {dns}::{struct}& in) -> {dns}::{struct} {{
-{indent}{dns}::{struct} out;''')
+[] (const {qns}::{struct}& in) -> {qns}::{struct} {{
+{indent}{qns}::{struct} out;''')
 
             self.indent()
             index = 0
@@ -859,11 +871,11 @@ static constexpr auto split_merger = std::make_tuple(''')
         for cell in range(cells):
             if cells > 1:
                 self.writeln(
-                        '[] ({dns}::{struct}* out, const {sns}::{value}& in) -> void {{',
+                        '[] ({qns}::{struct}* out, const {qns}::{value}& in) -> void {{',
                         value=self._data['value{}'.format(cell)])
             else:
                 self.writeln(
-                        '[] ({dns}::{struct}* out, const {dns}::{struct}& in) -> void {{')
+                        '[] ({qns}::{struct}* out, const {qns}::{struct}& in) -> void {{')
 
             self.indent()
             index = 0
@@ -934,7 +946,7 @@ default:
 
         self.writelns('''\
 template <typename Accessor>
-class {baccessor}<Accessor, {dns}::{struct}, {sts}> {{
+class {baccessor}<Accessor, {qns}::{struct}, {sts}> {{
 public:''', sts=str(sts).lower())
 
         self.indent()
@@ -949,7 +961,7 @@ const {ctype}& {member}({param}) const {{
         self.unindent()
 
         self.writelns('''\
-{indent}void copy_into({dns}::{struct}* dst) const {{
+{indent}void copy_into({qns}::{struct}* dst) const {{
 {indent}{indent}return impl().copy_into_impl(dst);
 {indent}}}
 
@@ -969,13 +981,13 @@ private:
 
         self.writelns('''\
 template <>
-class {uaccessor}<{dns}::{struct}, {sts}> : public {baccessor}<{uaccessor}<{dns}::{struct}, {sts}>, {dns}::{struct}, {sts}> {{
+class {uaccessor}<{qns}::{struct}, {sts}> : public {baccessor}<{uaccessor}<{qns}::{struct}, {sts}>, {qns}::{struct}, {sts}> {{
 public:''', sts=str(sts).lower())
 
         self.indent()
         self.writelns('''\
 {uaccessor}() = default;
-{uaccessor}(const {dns}::{struct}* const vptr) : vptr_(vptr) {{}}
+{uaccessor}(const {qns}::{struct}* const vptr) : vptr_(vptr) {{}}
 
 operator bool() const {{
 {indent}return vptr_ != nullptr;
@@ -996,7 +1008,7 @@ const {ctype}& {member}_impl({param}) const {{
         ctype=ctype, member=member, param='size_t index' if count > 1 else '',
         arg='[index]' if count > 1 else '')
 
-        self.writeln('void copy_into_impl({dns}::{struct}* dst) const {{')
+        self.writeln('void copy_into_impl({qns}::{struct}* dst) const {{')
         self.indent()
         #if cells > 1:
         for cell in range(cells):
@@ -1042,16 +1054,8 @@ const {ctype}& {member}_impl({param}) const {{
         self.writeln()
 
         self.writelns('''\
-/*
-void copy_into_impl({dns}::{struct}* dst) const {{
-{indent}if (vptr_) {{
-{indent}{indent}memcpy(dst, vptr_, sizeof *dst);
-{indent}}}
-}}
-*/
-
-const {dns}::{struct}* vptr_;
-friend {baccessor}<{uaccessor}<{dns}::{struct}, {sts}>, {dns}::{struct}, {sts}>;''',
+const {qns}::{struct}* vptr_;
+friend {baccessor}<{uaccessor}<{qns}::{struct}, {sts}>, {qns}::{struct}, {sts}>;''',
         sts=str(sts).lower())
         self.unindent()
 
@@ -1067,12 +1071,12 @@ friend {baccessor}<{uaccessor}<{dns}::{struct}, {sts}>, {dns}::{struct}, {sts}>;
 
         self.writelns('''\
 template <>
-class {saccessor}<{dns}::{struct}, {sts}> : public {baccessor}<{saccessor}<{dns}::{struct}, {sts}>, {dns}::{struct}, {sts}> {{
+class {saccessor}<{qns}::{struct}, {sts}> : public {baccessor}<{saccessor}<{qns}::{struct}, {sts}>, {qns}::{struct}, {sts}> {{
 public:''', sts=str(sts).lower())
 
         self.indent()
         self.writelns('''\
-static constexpr auto num_splits = {splitparams}<{dns}::{struct}, {sts}>::num_splits;
+static constexpr auto num_splits = {splitparams}<{qns}::{struct}, {sts}>::num_splits;
 
 {saccessor}() = default;
 {saccessor}(const std::array<void*, num_splits>& vptrs) : {args} {{}}
@@ -1080,8 +1084,8 @@ static constexpr auto num_splits = {splitparams}<{dns}::{struct}, {sts}>::num_sp
 operator bool() const {{''',
         args=', '.join('vptr_{cell}_(reinterpret_cast<{type}*>(vptrs[{cell}]))'.format(
             cell=cell, type=(
-                (('{sns}::{value' + str(cell) + '}').format(**self._data) \
-                        if cells > 1 else '{dns}::{struct}'.format(**self._data)))) \
+                (('{qns}::{value' + str(cell) + '}').format(**self._data) \
+                        if cells > 1 else '{qns}::{struct}'.format(**self._data)))) \
                         for cell in range(cells)),
         sts=str(sts).lower())
 
@@ -1138,7 +1142,7 @@ default:
             self.writeln()
             index += count
 
-        self.writeln('void copy_into_impl({dns}::{struct}* dst) const {{')
+        self.writeln('void copy_into_impl({qns}::{struct}* dst) const {{')
         self.indent()
         #if cells > 1:
         for cell in range(cells):
@@ -1186,12 +1190,12 @@ default:
         if cells > 1:
             for cell in range(cells):
                 self.writeln(
-                        'const {sns}::{value}* vptr_{cell}_;',
+                        'const {qns}::{value}* vptr_{cell}_;',
                         value=self._data['value{}'.format(cell)], cell=cell)
         else:
-            self.writeln('const {dns}::{struct}* vptr_0_;')
+            self.writeln('const {qns}::{struct}* vptr_0_;')
         self.writeln(
-                'friend {baccessor}<{saccessor}<{dns}::{struct}, {sts}>, {dns}::{struct}, {sts}>;',
+                'friend {baccessor}<{saccessor}<{qns}::{struct}, {sts}>, {qns}::{struct}, {sts}>;',
                 sts=str(sts).lower())
         self.unindent()
 
