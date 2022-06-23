@@ -153,6 +153,9 @@ public:
                 case Clp_ValInt:
                     type_string = "=<INT>";
                     break;
+                case Clp_ValLong:
+                    type_string = "=<LONG>";
+                    break;
                 case Clp_ValString:
                     type_string = "=<STRING>";
                     break;
@@ -249,6 +252,9 @@ public:
                             break;
                         case Clp_ValInt:
                             ret_code = !resolvers[opt_index](params, std::make_any<int>(clp->val.i));
+                            break;
+                        case Clp_ValLong:
+                            ret_code = !resolvers[opt_index](params, std::make_any<long>(clp->val.i));
                             break;
                         case Clp_ValString:
                             ret_code = !resolvers[opt_index](params, std::make_any<const char*>(clp->val.s));
