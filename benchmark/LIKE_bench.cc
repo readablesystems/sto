@@ -206,7 +206,7 @@ public:
         base_db::thread_init(tbl_page, tbl_like);
     }
 
-    const CommandParams params;
+    const CommandParams& params;
     struct {
         int64_t page_likes;
     } prepopulate_data;
