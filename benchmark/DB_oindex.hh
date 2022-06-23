@@ -1296,7 +1296,6 @@ public:
             internal_elem *e = key.internal_elem_ptr();
             auto preferred_split = item.preferred_split();
             if (preferred_split >= 0) {
-                e->row_container.set_split(preferred_split);
                 if constexpr (DBParams::MVCC) {
                     e->row_container.finalize_split(preferred_split);
                 } else {
