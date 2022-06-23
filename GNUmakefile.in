@@ -238,6 +238,7 @@ PROGRAMS = \
 	voter_bench \
 	rubis_bench \
 	like_bench \
+	adapting_bench \
 	$(UNIT_PROGRAMS)
 
 all: check
@@ -460,6 +461,9 @@ rubis_bench: $(OBJ)/Rubis_bench.o $(INDEX_OBJS)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 like_bench: $(OBJ)/LIKE_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+adapting_bench: $(OBJ)/Adapting_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;

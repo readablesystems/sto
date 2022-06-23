@@ -57,6 +57,7 @@
 /rubis_bench
 /gc_bench
 /like_bench
+/adapting_bench
 /unit-dboindex
 /unit-swisstarray
 /unit-swisstgeneric
