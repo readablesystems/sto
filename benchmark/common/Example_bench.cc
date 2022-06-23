@@ -276,6 +276,7 @@ public:
                     db.tbl_unordered.update_row(row, new_value);
                 }
             }
+        } TEND(true);  // true: retry on abort; false: don't retry on abort
 
         return 1;
     }
