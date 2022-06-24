@@ -173,27 +173,27 @@ setup_rubis() {
   ITERS=10
 
   RUBIS_OCC=(
-    "OCC"               "-idefault -s1.0 -g -snone"
-    "OCC + CU"          "-idefault -s1.0 -g -x -snone"
-    "OCC + STS"         "-idefault -s1.0 -g -sstatic"
-    "OCC + STS + CU"    "-idefault -s1.0 -g -x -sstatic"
-    "OCC + ATS"         "-idefault -s1.0 -g -sadaptive"
-    "OCC + ATS + CU"    "-idefault -s1.0 -g -x -sadaptive"
-    "TicToc"            "-itictoc -s1.0 -g -snone"
-    "TicToc + CU"       "-itictoc -s1.0 -g -x -snone"
-    "TicToc + STS"      "-itictoc -s1.0 -g -sstatic"
-    "TicToc + STS + CU" "-itictoc -s1.0 -g -x -sstatic"
-    "TicToc + ATS"      "-itictoc -s1.0 -g -sadaptive"
-    "TicToc + ATS + CU" "-itictoc -s1.0 -g -x -sadaptive"
+    "OCC"               "-idefault -s1.0 -g -Snone"
+    "OCC + CU"          "-idefault -s1.0 -g -x -Snone"
+    "OCC + STS"         "-idefault -s1.0 -g -Sstatic"
+    "OCC + STS + CU"    "-idefault -s1.0 -g -x -Sstatic"
+    "OCC + ATS"         "-idefault -s1.0 -g -Sadaptive"
+    "OCC + ATS + CU"    "-idefault -s1.0 -g -x -Sadaptive"
+    "TicToc"            "-itictoc -s1.0 -g -Snone"
+    "TicToc + CU"       "-itictoc -s1.0 -g -x -Snone"
+    "TicToc + STS"      "-itictoc -s1.0 -g -Sstatic"
+    "TicToc + STS + CU" "-itictoc -s1.0 -g -x -Sstatic"
+    "TicToc + ATS"      "-itictoc -s1.0 -g -Sadaptive"
+    "TicToc + ATS + CU" "-itictoc -s1.0 -g -x -Sadaptive"
   )
 
   RUBIS_MVCC=(
-    "MVCC"              "-imvcc -s1.0 -g -snone"
-    "MVCC + CU"         "-imvcc -s1.0 -g -x -snone"
-    "MVCC + STS"        "-imvcc -s1.0 -g -sstatic"
-    "MVCC + STS + CU"   "-imvcc -s1.0 -g -x -sstatic"
-    "MVCC + ATS"        "-imvcc -s1.0 -g -sadaptive"
-    "MVCC + ATS + CU"   "-imvcc -s1.0 -g -x -sadaptive"
+    "MVCC"              "-imvcc -s1.0 -g -Snone"
+    "MVCC + CU"         "-imvcc -s1.0 -g -x -Snone"
+    "MVCC + STS"        "-imvcc -s1.0 -g -Sstatic"
+    "MVCC + STS + CU"   "-imvcc -s1.0 -g -x -Sstatic"
+    "MVCC + ATS"        "-imvcc -s1.0 -g -Sadaptive"
+    "MVCC + ATS + CU"   "-imvcc -s1.0 -g -x -Sadaptive"
   )
 
   OCC_LABELS=("${RUBIS_OCC[@]}")
@@ -215,12 +215,12 @@ setup_rubis_occ() {
   ITERS=10
 
   RUBIS_OCC=(
-    "OCC"               "-idefault -s1.0 -g -snone"
-    "OCC + CU"          "-idefault -s1.0 -g -x -snone"
-    "OCC + STS"         "-idefault -s1.0 -g -sstatic"
-    "OCC + STS + CU"    "-idefault -s1.0 -g -x -sstatic"
-    "OCC + ATS"         "-idefault -s1.0 -g -sadaptive"
-    "OCC + ATS + CU"    "-idefault -s1.0 -g -x -sadaptive"
+    "OCC"               "-idefault -s1.0 -g -Snone"
+    "OCC + CU"          "-idefault -s1.0 -g -x -Snone"
+    "OCC + STS"         "-idefault -s1.0 -g -Sstatic"
+    "OCC + STS + CU"    "-idefault -s1.0 -g -x -Sstatic"
+    "OCC + ATS"         "-idefault -s1.0 -g -Sadaptive"
+    "OCC + ATS + CU"    "-idefault -s1.0 -g -x -Sadaptive"
   )
 
   RUBIS_MVCC=(
@@ -248,12 +248,12 @@ setup_rubis_mvcc() {
   )
 
   RUBIS_MVCC=(
-    "MVCC"              "-imvcc -s1.0 -g -snone"
-    "MVCC + CU"         "-imvcc -s1.0 -g -x -snone"
-    "MVCC + STS"        "-imvcc -s1.0 -g -sstatic"
-    "MVCC + STS + CU"   "-imvcc -s1.0 -g -x -sstatic"
-    "MVCC + ATS"        "-imvcc -s1.0 -g -sadaptive"
-    "MVCC + ATS + CU"   "-imvcc -s1.0 -g -x -sadaptive"
+    "MVCC"              "-imvcc -s1.0 -g -Snone"
+    "MVCC + CU"         "-imvcc -s1.0 -g -x -Snone"
+    "MVCC + STS"        "-imvcc -s1.0 -g -Sstatic"
+    "MVCC + STS + CU"   "-imvcc -s1.0 -g -x -Sstatic"
+    "MVCC + ATS"        "-imvcc -s1.0 -g -Sadaptive"
+    "MVCC + ATS + CU"   "-imvcc -s1.0 -g -x -Sadaptive"
   )
 
   OCC_LABELS=("${RUBIS_OCC[@]}")
@@ -275,12 +275,12 @@ setup_rubis_tictoc() {
   ITERS=10
 
   RUBIS_OCC=(
-    "TicToc"            "-itictoc -s1.0 -g -snone"
-    "TicToc + CU"       "-itictoc -s1.0 -g -x -snone"
-    "TicToc + STS"      "-itictoc -s1.0 -g -sstatic"
-    "TicToc + STS + CU" "-itictoc -s1.0 -g -x -sstatic"
-    "TicToc + ATS"      "-itictoc -s1.0 -g -sadaptive"
-    "TicToc + ATS + CU" "-itictoc -s1.0 -g -x -sadaptive"
+    "TicToc"            "-itictoc -s1.0 -g -Snone"
+    "TicToc + CU"       "-itictoc -s1.0 -g -x -Snone"
+    "TicToc + STS"      "-itictoc -s1.0 -g -Sstatic"
+    "TicToc + STS + CU" "-itictoc -s1.0 -g -x -Sstatic"
+    "TicToc + ATS"      "-itictoc -s1.0 -g -Sadaptive"
+    "TicToc + ATS + CU" "-itictoc -s1.0 -g -x -Sadaptive"
   )
 
   RUBIS_MVCC=(
