@@ -154,7 +154,7 @@ using adapting_key = db_common::keys::single_key<int64_t>;
 struct CommandParams : db_common::ClpCommandParams {
     explicit CommandParams()
         : db_common::ClpCommandParams(),
-          ops_per_txn(100), table_size(1000000), variants(4) {}
+          ops_per_txn(1000), table_size(1000000), variants(4) {}
 
     void print() override {
         db_common::ClpCommandParams::print();
@@ -254,6 +254,8 @@ public:
     using base_runner = db_common::common_runner<db_type<DBParams>>;
 
     using base_runner::db;
+    using typename base_runner::Access;
+
     template <typename T>
     using Record = typename base_runner::template Record<T>;
 
@@ -262,11 +264,13 @@ public:
         : base_runner(std::forward<Args>(args)...),
           key_gen(db.rng[base_runner::id], 0, db.params.table_size - 1) {
         ops.resize(db.params.ops_per_txn);
+        auto& stats = get_stats(base_runner::id);
+        memset(&stats, 0, sizeof stats);
     }
 
     // For convenience
     enum txn_type {
-        read_only = 0, write_heavy, write_some, write_less
+        read_only = 0, write_less, write_some, write_heavy
     };
 
     struct txn_params {
@@ -274,6 +278,29 @@ public:
 
         adapting_key key;
         txn_type txn;
+    };
+
+    // Needs to be aligned to avoid shared cache lines; we use this instead of
+    // __thread storage to allow for accumulation on one thread at the end.
+    struct __attribute__((aligned(128))) stats_type {
+        int64_t txns_started;
+        int64_t txns_committed;
+
+        stats_type& operator +=(const stats_type& other) {
+            txns_started += other.txns_started;
+            txns_committed += other.txns_committed;
+            return *this;
+        }
+
+        void report() {
+            double abort_rate = (1.0 * txns_started - txns_committed) / txns_started * 100.0;
+            char abort_rate_str[8];
+            snprintf(abort_rate_str, 7, "%.2f%%", abort_rate);
+            std::cout << "Transactions committed : " << txns_committed << std::endl
+                      << "Total transactions     : " << txns_started << std::endl
+                      << "Abort rate             : " << abort_rate_str << std::endl
+                      ;
+        }
     };
 
     // Generate a single transaction to run
@@ -301,126 +328,132 @@ public:
         generate_transaction();
 
         TXN {
+            ++get_stats(base_runner::id).txns_started;
             Record<adapting_value> value;
             for (auto itr = ops.begin(); itr != ops.end(); ++itr) {
                 const auto key = itr->key;
                 const auto txn = itr->txn;
+
                 switch (txn) {
                 case write_heavy:
                 {
-                    if constexpr (DBParams::Split == db_params::db_split_type::Adaptive) {
-                        std::tie(success, result, row, value) = db.tbl_adapting.select_row(
-                            key,
-                            {{nc::read_only, AccessType::read},
-                             {nc::write_some, AccessType::read},
-                             {nc::write_much, DBParams::Commute ? AccessType::write : AccessType::update},
-                             {nc::write_most, DBParams::Commute ? AccessType::write : AccessType::update}},
-                            3);
-                    } else {
-                        std::tie(success, result, row, value) = db.tbl_adapting.select_split_row(
-                            key,
-                            {{nc::read_only, bench::access_t::read},
-                             {nc::write_some, DBParams::Commute ? bench::access_t::write : bench::access_t::update},
-                             {nc::write_much, DBParams::Commute ? bench::access_t::write : bench::access_t::update},
-                             {nc::write_most, DBParams::Commute ? bench::access_t::write : bench::access_t::update}});
-                    }
+                    std::tie(success, result, row, value) = base_runner::select(
+                        db.tbl_adapting, key,
+                        {{nc::read_only, Access::read},
+                         {nc::write_some, DBParams::Commute ? Access::write : Access::update},
+                         {nc::write_much, DBParams::Commute ? Access::write : Access::update},
+                         {nc::write_most, DBParams::Commute ? Access::write : Access::update}},
+                        3);
                     CHK(success);
                     assert(result);
 
-                    auto* new_value = Sto::tx_alloc<adapting_value>();
-                    value.copy_into(new_value);
-                    ++new_value->write_some;
-                    ++new_value->write_much;
-                    ++new_value->write_most;
+                    if constexpr (DBParams::Commute) {
+                        commutators::Commutator<adapting_value> comm(txn);
+                        db.tbl_adapting.update_row(row, comm);
+                    } else {
+                        auto* new_value = Sto::tx_alloc<adapting_value>();
+                        value.copy_into(new_value);
+                        ++new_value->write_some;
+                        ++new_value->write_much;
+                        ++new_value->write_most;
 
-                    db.tbl_adapting.update_row(row, new_value);
+                        db.tbl_adapting.update_row(row, new_value);
+                    }
                     break;
                 }
                 case write_some:
                 {
-                    if constexpr (DBParams::Split == db_params::db_split_type::Adaptive) {
-                        std::tie(success, result, row, value) = db.tbl_adapting.select_row(
-                            key,
-                            {{nc::read_only, AccessType::read},
-                             {nc::write_some, AccessType::read},
-                             {nc::write_much, DBParams::Commute ? AccessType::write : AccessType::update},
-                             {nc::write_most, DBParams::Commute ? AccessType::write : AccessType::update}},
-                            2);
-                    } else {
-                        std::tie(success, result, row, value) = db.tbl_adapting.select_split_row(
-                            key,
-                            {{nc::read_only, bench::access_t::read},
-                             {nc::write_some, bench::access_t::read},
-                             {nc::write_much, DBParams::Commute ? bench::access_t::write : bench::access_t::update},
-                             {nc::write_most, DBParams::Commute ? bench::access_t::write : bench::access_t::update}});
-                    }
+                    std::tie(success, result, row, value) = base_runner::select(
+                        db.tbl_adapting, key,
+                        {{nc::read_only, Access::read},
+                         {nc::write_some, Access::read},
+                         {nc::write_much, DBParams::Commute ? Access::write : Access::update},
+                         {nc::write_most, DBParams::Commute ? Access::write : Access::update}},
+                        2);
                     CHK(success);
                     assert(result);
 
-                    auto* new_value = Sto::tx_alloc<adapting_value>();
-                    value.copy_into(new_value);
-                    ++new_value->write_much;
-                    ++new_value->write_most;
+                    if constexpr (DBParams::Commute) {
+                        commutators::Commutator<adapting_value> comm(txn);
+                        db.tbl_adapting.update_row(row, comm);
+                    } else {
+                        auto* new_value = Sto::tx_alloc<adapting_value>();
+                        value.copy_into(new_value);
+                        ++new_value->write_much;
+                        ++new_value->write_most;
 
-                    db.tbl_adapting.update_row(row, new_value);
+                        db.tbl_adapting.update_row(row, new_value);
+                    }
                     break;
                 }
                 case write_less:
                 {
-                    if constexpr (DBParams::Split == db_params::db_split_type::Adaptive) {
-                        std::tie(success, result, row, value) = db.tbl_adapting.select_row(
-                            key,
-                            {{nc::read_only, AccessType::read},
-                             {nc::write_some, AccessType::read},
-                             {nc::write_much, AccessType::read},
-                             {nc::write_most, DBParams::Commute ? AccessType::write : AccessType::update}},
-                            1);
-                    } else {
-                        std::tie(success, result, row, value) = db.tbl_adapting.select_split_row(
-                            key,
-                            {{nc::read_only, bench::access_t::read},
-                             {nc::write_some, bench::access_t::read},
-                             {nc::write_much, bench::access_t::read},
-                             {nc::write_most, DBParams::Commute ? bench::access_t::write : bench::access_t::update}});
-                    }
+                    std::tie(success, result, row, value) = base_runner::select(
+                        db.tbl_adapting, key,
+                        {{nc::read_only, Access::read},
+                         {nc::write_some, Access::read},
+                         {nc::write_much, Access::read},
+                         {nc::write_most, DBParams::Commute ? Access::write : Access::update}},
+                        1);
                     CHK(success);
                     assert(result);
 
-                    auto* new_value = Sto::tx_alloc<adapting_value>();
-                    value.copy_into(new_value);
-                    ++new_value->write_most;
+                    if constexpr (DBParams::Commute) {
+                        commutators::Commutator<adapting_value> comm(txn);
+                        db.tbl_adapting.update_row(row, comm);
+                    } else {
+                        auto* new_value = Sto::tx_alloc<adapting_value>();
+                        value.copy_into(new_value);
+                        ++new_value->write_most;
 
-                    db.tbl_adapting.update_row(row, new_value);
+                        db.tbl_adapting.update_row(row, new_value);
+                    }
                     break;
                 }
                 case read_only:
                 {
-                    if constexpr (DBParams::Split == db_params::db_split_type::Adaptive) {
-                        std::tie(success, result, row, value) = db.tbl_adapting.select_row(
-                            key,
-                            {{nc::read_only, AccessType::read},
-                             {nc::write_some, AccessType::read},
-                             {nc::write_much, AccessType::read},
-                             {nc::write_most, AccessType::read}},
+                    std::tie(success, result, row, value) = base_runner::select(
+                        db.tbl_adapting, key,
+                            {{nc::read_only, Access::read},
+                             {nc::write_some, Access::read},
+                             {nc::write_much, Access::read},
+                             {nc::write_most, Access::read}},
                             0);
-                    } else {
-                        std::tie(success, result, row, value) = db.tbl_adapting.select_split_row(
-                            key,
-                            {{nc::read_only, bench::access_t::read},
-                             {nc::write_some, bench::access_t::read},
-                             {nc::write_much, bench::access_t::read},
-                             {nc::write_most, bench::access_t::read}});
-                    }
                     CHK(success);
                     assert(result);
-                    (void)value.read_only();
                     break;
                 }
                 }
             }
             CHK(true);
         } TEND(true);  // Retry on abort
+
+        ++get_stats(base_runner::id).txns_committed;
         return 1;
+    }
+
+    // Get the stats object for a given thread id; creates the object if it
+    // doesn't already exist.
+    static stats_type& get_stats(size_t thread_id) {
+        static std::vector<stats_type> stats;
+        if (thread_id >= stats.size()) {
+            stats.resize(thread_id + 1);
+        }
+        return stats[thread_id];
+    }
+
+    // Runs after the experiment's default reporting has completed, but before
+    // global garbage collection.
+    void epilogue(bool is_first_thread, bool is_last_thread) override {
+        static stats_type accumulator;
+        if (is_first_thread) {
+            memset(&accumulator, 0, sizeof accumulator);
+        }
+        auto& stats = get_stats(base_runner::id);
+        accumulator += stats;
+        if (is_last_thread) {
+            accumulator.report();
+        }
     }
 
     sampling::StoUniformDistribution<> key_gen;
@@ -468,7 +501,7 @@ int run(int argc, const char * const *argv) {
                 // Return true if the value is acceptable; false otherwise.
                 return params.ops_per_txn > 0;
             },
-            "Number of operations per transaction (default 100).");
+            "Number of operations per transaction (default 1000).");
 
     parser.AddOption(
             "table-size", 'z', Clp_ValLong, Clp_Optional,
