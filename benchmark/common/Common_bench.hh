@@ -400,6 +400,23 @@ public:
                 (uint64_t)(params.time_limit * db_params::constants::processor_tsc_frequency() * db_params::constants::billion);
     }
 
+    // For convenience
+    using Access = std::conditional_t<
+        DBParams::Split == db_params::db_split_type::Adaptive,
+        AccessType, bench::access_t>;
+
+    template <bool B=DBParams::Split == db_params::db_split_type::Adaptive, typename Table, typename ...Args>
+    std::enable_if_t<B, typename Table::sel_return_type>
+    inline select(Table& table, const typename Table::key_type& key, std::initializer_list<typename Table::ColumnAccess> accesses, int preferred_split) {
+        return table.select_row(key, accesses, preferred_split);
+    }
+
+    template <bool B=DBParams::Split == db_params::db_split_type::Adaptive, typename Table, typename ...Args>
+    std::enable_if_t<!B, typename Table::sel_split_return_type>
+    inline select(Table& table, const typename Table::key_type& key, std::initializer_list<typename Table::column_access_t> accesses, int) {
+        return table.select_split_row(key, accesses);
+    }
+
     void run();  // Infrastructure and framework for timing a workload
     virtual size_t run_txn() = 0;  // Makes one transaction call
 

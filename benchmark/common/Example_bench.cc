@@ -201,6 +201,8 @@ public:
     using base_runner = db_common::common_runner<db_type<DBParams>>;
 
     using base_runner::db;
+    using typename base_runner::Access;
+
     template <typename T>
     using Record = typename base_runner::template Record<T>;
 
@@ -241,40 +243,30 @@ public:
         bool success, result;
         uintptr_t row;
         TXN {
-            {
-                Record<unordered_value> value;
-                if constexpr (DBParams::Split == db_params::db_split_type::Adaptive) {
-                    std::tie(success, result, row, value) = db.tbl_unordered.select_row(
-                        unordered_key(key),
-                        {{unordered_value::NamedColumn::payload, AccessType::read},
-                         {unordered_value::NamedColumn::version, DBParams::Commute ? AccessType::write : AccessType::update},
-                         // version + 1 is the column to the second part of the version!
-                         {unordered_value::NamedColumn::version + 1, DBParams::Commute ? AccessType::write : AccessType::update}},
-                        1);
-                } else {
-                    std::tie(success, result, row, value) = db.tbl_unordered.select_split_row(
-                        unordered_key(key),
-                        {{like_value::NamedColumn::payload, bench::access_t::read},
-                         {like_value::NamedColumn::version, DBParams::Commute ? bench::access_t::write : bench::access_t::update},
-                         {like_value::NamedColumn::version + 1, DBParams::Commute ? bench::access_t::write : bench::access_t::update}});
+            Record<unordered_value> value;
+            std::tie(success, result, row, value) = base_runner::select(
+                db.tbl_unordered, unordered_key(key),
+                {{unordered_value::NamedColumn::payload, Access::read},
+                 {unordered_value::NamedColumn::version, DBParams::Commute ? Access::write : Access::update},
+                 // version + 1 is the column to the second part of the version!
+                 {unordered_value::NamedColumn::version + 1, DBParams::Commute ? Access::write : Access::update}},
+                1);
+            CHK(success);  // success = true: continue; false: abort transaction
+            assert(result);  // result = true: value found; false: value absent
+            (void)result;  // Needed if using asserts above for optimized compilations
+            (void)value.payload();
+            if constexpr (DBParams::Commute) {
+                commutators::Commutator<unordered_value> comm;  // Can be initialized with a value!
+                db.tbl_unordered.update_row(row, comm);
+            } else {
+                unordered_value* new_value = Sto::tx_alloc<unordered_value>();
+                value.copy_into(new_value);
+                ++new_value->version[1];  // Increment a minor version
+                while (new_value->version[1] >= 100) {
+                    ++new_value->version[0];
+                    new_value->version[1] -= 100;
                 }
-                CHK(success);  // success = true: continue; false: abort transaction
-                assert(result);  // result = true: value found; false: value absent
-                (void)result;  // Needed if using asserts above for optimized compilations
-                (void)value.payload();
-                if constexpr (DBParams::Commute) {
-                    commutators::Commutator<unordered_value> comm;  // Can be initialized with a value!
-                    db.tbl_unordered.update_row(row, comm);
-                } else {
-                    unordered_value* new_value = Sto::tx_alloc<unordered_value>();
-                    value.copy_into(new_value);
-                    ++new_value->version[1];  // Increment a minor version
-                    while (new_value->version[1] >= 100) {
-                        ++new_value->version[0];
-                        new_value->version[1] -= 100;
-                    }
-                    db.tbl_unordered.update_row(row, new_value);
-                }
+                db.tbl_unordered.update_row(row, new_value);
             }
         } TEND(true);  // true: retry on abort; false: don't retry on abort
 
