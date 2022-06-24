@@ -69,7 +69,9 @@ public:
             return CommAdapter::required_cells<adapting_bench::adapting_value>(
                     {nc::write_most}, split);
         }
-        assert(false);
+        always_assert(false);
+        return CommAdapter::required_cells<adapting_bench::adapting_value>(
+                {}, split);
     }
 
     op_type operation;
