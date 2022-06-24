@@ -174,26 +174,26 @@ setup_rubis() {
 
   RUBIS_OCC=(
     "OCC"               "-idefault -s1.0 -g -Snone"
-    "OCC + CU"          "-idefault -s1.0 -g -x -Snone"
+    "OCC + DU"          "-idefault -s1.0 -g -x -Snone"
     "OCC + STS"         "-idefault -s1.0 -g -Sstatic"
-    "OCC + STS + CU"    "-idefault -s1.0 -g -x -Sstatic"
+    "OCC + STS + DU"    "-idefault -s1.0 -g -x -Sstatic"
     "OCC + ATS"         "-idefault -s1.0 -g -Sadaptive"
-    "OCC + ATS + CU"    "-idefault -s1.0 -g -x -Sadaptive"
+    "OCC + ATS + DU"    "-idefault -s1.0 -g -x -Sadaptive"
     "TicToc"            "-itictoc -s1.0 -g -Snone"
-    "TicToc + CU"       "-itictoc -s1.0 -g -x -Snone"
+    "TicToc + DU"       "-itictoc -s1.0 -g -x -Snone"
     "TicToc + STS"      "-itictoc -s1.0 -g -Sstatic"
-    "TicToc + STS + CU" "-itictoc -s1.0 -g -x -Sstatic"
+    "TicToc + STS + DU" "-itictoc -s1.0 -g -x -Sstatic"
     "TicToc + ATS"      "-itictoc -s1.0 -g -Sadaptive"
-    "TicToc + ATS + CU" "-itictoc -s1.0 -g -x -Sadaptive"
+    "TicToc + ATS + DU" "-itictoc -s1.0 -g -x -Sadaptive"
   )
 
   RUBIS_MVCC=(
     "MVCC"              "-imvcc -s1.0 -g -Snone"
-    "MVCC + CU"         "-imvcc -s1.0 -g -x -Snone"
+    "MVCC + DU"         "-imvcc -s1.0 -g -x -Snone"
     "MVCC + STS"        "-imvcc -s1.0 -g -Sstatic"
-    "MVCC + STS + CU"   "-imvcc -s1.0 -g -x -Sstatic"
+    "MVCC + STS + DU"   "-imvcc -s1.0 -g -x -Sstatic"
     "MVCC + ATS"        "-imvcc -s1.0 -g -Sadaptive"
-    "MVCC + ATS + CU"   "-imvcc -s1.0 -g -x -Sadaptive"
+    "MVCC + ATS + DU"   "-imvcc -s1.0 -g -x -Sadaptive"
   )
 
   OCC_LABELS=("${RUBIS_OCC[@]}")
@@ -216,11 +216,11 @@ setup_rubis_occ() {
 
   RUBIS_OCC=(
     "OCC"               "-idefault -s1.0 -g -Snone"
-    "OCC + CU"          "-idefault -s1.0 -g -x -Snone"
+    "OCC + DU"          "-idefault -s1.0 -g -x -Snone"
     "OCC + STS"         "-idefault -s1.0 -g -Sstatic"
-    "OCC + STS + CU"    "-idefault -s1.0 -g -x -Sstatic"
+    "OCC + STS + DU"    "-idefault -s1.0 -g -x -Sstatic"
     "OCC + ATS"         "-idefault -s1.0 -g -Sadaptive"
-    "OCC + ATS + CU"    "-idefault -s1.0 -g -x -Sadaptive"
+    "OCC + ATS + DU"    "-idefault -s1.0 -g -x -Sadaptive"
   )
 
   RUBIS_MVCC=(
@@ -249,11 +249,11 @@ setup_rubis_mvcc() {
 
   RUBIS_MVCC=(
     "MVCC"              "-imvcc -s1.0 -g -Snone"
-    "MVCC + CU"         "-imvcc -s1.0 -g -x -Snone"
+    "MVCC + DU"         "-imvcc -s1.0 -g -x -Snone"
     "MVCC + STS"        "-imvcc -s1.0 -g -Sstatic"
-    "MVCC + STS + CU"   "-imvcc -s1.0 -g -x -Sstatic"
+    "MVCC + STS + DU"   "-imvcc -s1.0 -g -x -Sstatic"
     "MVCC + ATS"        "-imvcc -s1.0 -g -Sadaptive"
-    "MVCC + ATS + CU"   "-imvcc -s1.0 -g -x -Sadaptive"
+    "MVCC + ATS + DU"   "-imvcc -s1.0 -g -x -Sadaptive"
   )
 
   OCC_LABELS=("${RUBIS_OCC[@]}")
@@ -276,11 +276,11 @@ setup_rubis_tictoc() {
 
   RUBIS_OCC=(
     "TicToc"            "-itictoc -s1.0 -g -Snone"
-    "TicToc + CU"       "-itictoc -s1.0 -g -x -Snone"
+    "TicToc + DU"       "-itictoc -s1.0 -g -x -Snone"
     "TicToc + STS"      "-itictoc -s1.0 -g -Sstatic"
-    "TicToc + STS + CU" "-itictoc -s1.0 -g -x -Sstatic"
+    "TicToc + STS + DU" "-itictoc -s1.0 -g -x -Sstatic"
     "TicToc + ATS"      "-itictoc -s1.0 -g -Sadaptive"
-    "TicToc + ATS + CU" "-itictoc -s1.0 -g -x -Sadaptive"
+    "TicToc + ATS + DU" "-itictoc -s1.0 -g -x -Sadaptive"
   )
 
   RUBIS_MVCC=(
@@ -305,62 +305,62 @@ setup_tpcc() {
 
   TPCC_OCC=(
     "OCC (W1)"         "-idefault -g -w1 -snone"
-    "OCC + CU (W1)"    "-idefault -g -x -w1 -snone"
+    "OCC + DU (W1)"    "-idefault -g -x -w1 -snone"
     "OCC (W4)"         "-idefault -g -w4 -snone"
-    "OCC + CU (W4)"    "-idefault -g -x -w4 -snone"
+    "OCC + DU (W4)"    "-idefault -g -x -w4 -snone"
     "OCC (W0)"         "-idefault -g -snone"
-    "OCC + CU (W0)"    "-idefault -g -x -snone"
+    "OCC + DU (W0)"    "-idefault -g -x -snone"
     "OCC + STS (W1)"         "-idefault -g -w1 -sstatic"
-    "OCC + STS + CU (W1)"    "-idefault -g -x -w1 -sstatic"
+    "OCC + STS + DU (W1)"    "-idefault -g -x -w1 -sstatic"
     "OCC + STS (W4)"         "-idefault -g -w4 -sstatic"
-    "OCC + STS + CU (W4)"    "-idefault -g -x -w4 -sstatic"
+    "OCC + STS + DU (W4)"    "-idefault -g -x -w4 -sstatic"
     "OCC + STS (W0)"         "-idefault -g -sstatic"
-    "OCC + STS + CU (W0)"    "-idefault -g -x -sstatic"
+    "OCC + STS + DU (W0)"    "-idefault -g -x -sstatic"
     "OCC + ATS (W1)"         "-idefault -g -w1 -sadaptive"
-    "OCC + ATS + CU (W1)"    "-idefault -g -x -w1 -sadaptive"
+    "OCC + ATS + DU (W1)"    "-idefault -g -x -w1 -sadaptive"
     "OCC + ATS (W4)"         "-idefault -g -w4 -sadaptive"
-    "OCC + ATS + CU (W4)"    "-idefault -g -x -w4 -sadaptive"
+    "OCC + ATS + DU (W4)"    "-idefault -g -x -w4 -sadaptive"
     "OCC + ATS (W0)"         "-idefault -g -sadaptive"
-    "OCC + ATS + CU (W0)"    "-idefault -g -x -sadaptive"
+    "OCC + ATS + DU (W0)"    "-idefault -g -x -sadaptive"
     "TicToc (W1)"         "-itictoc -g -w1 -snone"
-    "TicToc + CU (W1)"    "-itictoc -g -x -w1 -snone"
+    "TicToc + DU (W1)"    "-itictoc -g -x -w1 -snone"
     "TicToc (W4)"         "-itictoc -g -w4 -snone"
-    "TicToc + CU (W4)"    "-itictoc -g -x -w4 -snone"
+    "TicToc + DU (W4)"    "-itictoc -g -x -w4 -snone"
     "TicToc (W0)"         "-itictoc -g -snone"
-    "TicToc + CU (W0)"    "-itictoc -g -x -snone"
+    "TicToc + DU (W0)"    "-itictoc -g -x -snone"
     "TicToc + STS (W1)"         "-itictoc -g -w1 -sstatic"
-    "TicToc + STS + CU (W1)"    "-itictoc -g -x -w1 -sstatic"
+    "TicToc + STS + DU (W1)"    "-itictoc -g -x -w1 -sstatic"
     "TicToc + STS (W4)"         "-itictoc -g -w4 -sstatic"
-    "TicToc + STS + CU (W4)"    "-itictoc -g -x -w4 -sstatic"
+    "TicToc + STS + DU (W4)"    "-itictoc -g -x -w4 -sstatic"
     "TicToc + STS (W0)"         "-itictoc -g -sstatic"
-    "TicToc + STS + CU (W0)"    "-itictoc -g -x -sstatic"
+    "TicToc + STS + DU (W0)"    "-itictoc -g -x -sstatic"
     "TicToc + ATS (W1)"         "-itictoc -g -w1 -sadaptive"
-    "TicToc + ATS + CU (W1)"    "-itictoc -g -x -w1 -sadaptive"
+    "TicToc + ATS + DU (W1)"    "-itictoc -g -x -w1 -sadaptive"
     "TicToc + ATS (W4)"         "-itictoc -g -w4 -sadaptive"
-    "TicToc + ATS + CU (W4)"    "-itictoc -g -x -w4 -sadaptive"
+    "TicToc + ATS + DU (W4)"    "-itictoc -g -x -w4 -sadaptive"
     "TicToc + ATS (W0)"         "-itictoc -g -sadaptive"
-    "TicToc + ATS + CU (W0)"    "-itictoc -g -x -sadaptive"
+    "TicToc + ATS + DU (W0)"    "-itictoc -g -x -sadaptive"
   )
 
   TPCC_MVCC=(
     "MVCC (W1)"         "-imvcc -g -w1 -snone"
-    "MVCC + CU (W1)"    "-imvcc -g -x -w1 -snone"
+    "MVCC + DU (W1)"    "-imvcc -g -x -w1 -snone"
     "MVCC (W4)"         "-imvcc -g -w4 -snone"
-    "MVCC + CU (W4)"    "-imvcc -g -x -w4 -snone"
+    "MVCC + DU (W4)"    "-imvcc -g -x -w4 -snone"
     "MVCC (W0)"         "-imvcc -g -snone"
-    "MVCC + CU (W0)"    "-imvcc -g -x -snone"
+    "MVCC + DU (W0)"    "-imvcc -g -x -snone"
     "MVCC + STS (W1)"         "-imvcc -g -w1 -sstatic"
-    "MVCC + STS + CU (W1)"    "-imvcc -g -x -w1 -sstatic"
+    "MVCC + STS + DU (W1)"    "-imvcc -g -x -w1 -sstatic"
     "MVCC + STS (W4)"         "-imvcc -g -w4 -sstatic"
-    "MVCC + STS + CU (W4)"    "-imvcc -g -x -w4 -sstatic"
+    "MVCC + STS + DU (W4)"    "-imvcc -g -x -w4 -sstatic"
     "MVCC + STS (W0)"         "-imvcc -g -sstatic"
-    "MVCC + STS + CU (W0)"    "-imvcc -g -x -sstatic"
+    "MVCC + STS + DU (W0)"    "-imvcc -g -x -sstatic"
     "MVCC + ATS (W1)"         "-imvcc -g -w1 -sadaptive"
-    "MVCC + ATS + CU (W1)"    "-imvcc -g -x -w1 -sadaptive"
+    "MVCC + ATS + DU (W1)"    "-imvcc -g -x -w1 -sadaptive"
     "MVCC + ATS (W4)"         "-imvcc -g -w4 -sadaptive"
-    "MVCC + ATS + CU (W4)"    "-imvcc -g -x -w4 -sadaptive"
+    "MVCC + ATS + DU (W4)"    "-imvcc -g -x -w4 -sadaptive"
     "MVCC + ATS (W0)"         "-imvcc -g -sadaptive"
-    "MVCC + ATS + CU (W0)"    "-imvcc -g -x -sadaptive"
+    "MVCC + ATS + DU (W0)"    "-imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${TPCC_OCC[@]}")
@@ -428,23 +428,23 @@ setup_tpcc_mvcc() {
 
   TPCC_MVCC=(
     "MVCC (W1)"         "-imvcc -g -w1 -snone"
-    "MVCC + CU (W1)"    "-imvcc -g -x -w1 -snone"
+    "MVCC + DU (W1)"    "-imvcc -g -x -w1 -snone"
     "MVCC (W4)"         "-imvcc -g -w4 -snone"
-    "MVCC + CU (W4)"    "-imvcc -g -x -w4 -snone"
+    "MVCC + DU (W4)"    "-imvcc -g -x -w4 -snone"
     "MVCC (W0)"         "-imvcc -g -snone"
-    "MVCC + CU (W0)"    "-imvcc -g -x -snone"
+    "MVCC + DU (W0)"    "-imvcc -g -x -snone"
     "MVCC + STS (W1)"         "-imvcc -g -w1 -sstatic"
-    "MVCC + STS + CU (W1)"    "-imvcc -g -x -w1 -sstatic"
+    "MVCC + STS + DU (W1)"    "-imvcc -g -x -w1 -sstatic"
     "MVCC + STS (W4)"         "-imvcc -g -w4 -sstatic"
-    "MVCC + STS + CU (W4)"    "-imvcc -g -x -w4 -sstatic"
+    "MVCC + STS + DU (W4)"    "-imvcc -g -x -w4 -sstatic"
     "MVCC + STS (W0)"         "-imvcc -g -sstatic"
-    "MVCC + STS + CU (W0)"    "-imvcc -g -x -sstatic"
+    "MVCC + STS + DU (W0)"    "-imvcc -g -x -sstatic"
     "MVCC + ATS (W1)"         "-imvcc -g -w1 -sadaptive"
-    "MVCC + ATS + CU (W1)"    "-imvcc -g -x -w1 -sadaptive"
+    "MVCC + ATS + DU (W1)"    "-imvcc -g -x -w1 -sadaptive"
     "MVCC + ATS (W4)"         "-imvcc -g -w4 -sadaptive"
-    "MVCC + ATS + CU (W4)"    "-imvcc -g -x -w4 -sadaptive"
+    "MVCC + ATS + DU (W4)"    "-imvcc -g -x -w4 -sadaptive"
     "MVCC + ATS (W0)"         "-imvcc -g -sadaptive"
-    "MVCC + ATS + CU (W0)"    "-imvcc -g -x -sadaptive"
+    "MVCC + ATS + DU (W0)"    "-imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${TPCC_OCC[@]}")
@@ -472,11 +472,11 @@ setup_tpcc_mvcc_1gc() {
 
   TPCC_MVCC=(
     "MVCC (W1)"        "-imvcc -g -w1 -r1000"
-    "MVCC + CU (W1)"   "-imvcc -g -x -w1 -r1000"
+    "MVCC + DU (W1)"   "-imvcc -g -x -w1 -r1000"
     "MVCC (W4)"        "-imvcc -g -w4 -r1000"
-    "MVCC + CU (W4)"   "-imvcc -g -x -w4 -r1000"
+    "MVCC + DU (W4)"   "-imvcc -g -x -w4 -r1000"
     "MVCC (W0)"        "-imvcc -g -r1000"
-    "MVCC + CU (W0)"   "-imvcc -g -x -r1000"
+    "MVCC + DU (W0)"   "-imvcc -g -x -r1000"
   )
 
   TPCC_OCC_BINARIES=(
@@ -513,11 +513,11 @@ setup_tpcc_mvcc_vp_1gc() {
 
   TPCC_MVCC=(
     "MVCC (W1)"        "-imvcc -g -w1 -r1000"
-    "MVCC + CU (W1)"   "-imvcc -g -x -w1 -r1000"
+    "MVCC + DU (W1)"   "-imvcc -g -x -w1 -r1000"
     "MVCC (W4)"        "-imvcc -g -w4 -r1000"
-    "MVCC + CU (W4)"   "-imvcc -g -x -w4 -r1000"
+    "MVCC + DU (W4)"   "-imvcc -g -x -w4 -r1000"
     "MVCC (W0)"        "-imvcc -g -r1000"
-    "MVCC + CU (W0)"   "-imvcc -g -x -r1000"
+    "MVCC + DU (W0)"   "-imvcc -g -x -r1000"
   )
 
   TPCC_OCC_BINARIES=(
@@ -554,11 +554,11 @@ setup_tpcc_mvcc_nots_1gc() {
 
   TPCC_MVCC=(
     "MVCC (W1)"        "-imvcc -g -w1 -r1000"
-    "MVCC + CU (W1)"   "-imvcc -g -x -w1 -r1000"
+    "MVCC + DU (W1)"   "-imvcc -g -x -w1 -r1000"
     "MVCC (W4)"        "-imvcc -g -w4 -r1000"
-    "MVCC + CU (W4)"   "-imvcc -g -x -w4 -r1000"
+    "MVCC + DU (W4)"   "-imvcc -g -x -w4 -r1000"
     "MVCC (W0)"        "-imvcc -g -r1000"
-    "MVCC + CU (W0)"   "-imvcc -g -x -r1000"
+    "MVCC + DU (W0)"   "-imvcc -g -x -r1000"
   )
 
   TPCC_OCC_BINARIES=(
@@ -594,11 +594,11 @@ setup_tpcc_mvcc_ts_1gc() {
 
   TPCC_MVCC=(
     "MVCC (W1)"        "-imvcc -g -w1 -r1000"
-    "MVCC + CU (W1)"   "-imvcc -g -x -w1 -r1000"
+    "MVCC + DU (W1)"   "-imvcc -g -x -w1 -r1000"
     "MVCC (W4)"        "-imvcc -g -w4 -r1000"
-    "MVCC + CU (W4)"   "-imvcc -g -x -w4 -r1000"
+    "MVCC + DU (W4)"   "-imvcc -g -x -w4 -r1000"
     "MVCC (W0)"        "-imvcc -g -r1000"
-    "MVCC + CU (W0)"   "-imvcc -g -x -r1000"
+    "MVCC + DU (W0)"   "-imvcc -g -x -r1000"
   )
 
   TPCC_OCC_BINARIES=(
@@ -631,62 +631,62 @@ setup_tpcc_occ() {
 
   TPCC_OCC=(
     "OCC (W1)"         "-idefault -g -w1 -snone"
-    "OCC + CU (W1)"    "-idefault -g -x -w1 -snone"
+    "OCC + DU (W1)"    "-idefault -g -x -w1 -snone"
     "OCC (W4)"         "-idefault -g -w4 -snone"
-    "OCC + CU (W4)"    "-idefault -g -x -w4 -snone"
+    "OCC + DU (W4)"    "-idefault -g -x -w4 -snone"
     "OCC (W0)"         "-idefault -g -snone"
-    "OCC + CU (W0)"    "-idefault -g -x -snone"
+    "OCC + DU (W0)"    "-idefault -g -x -snone"
     "OCC + STS (W1)"         "-idefault -g -w1 -sstatic"
-    "OCC + STS + CU (W1)"    "-idefault -g -x -w1 -sstatic"
+    "OCC + STS + DU (W1)"    "-idefault -g -x -w1 -sstatic"
     "OCC + STS (W4)"         "-idefault -g -w4 -sstatic"
-    "OCC + STS + CU (W4)"    "-idefault -g -x -w4 -sstatic"
+    "OCC + STS + DU (W4)"    "-idefault -g -x -w4 -sstatic"
     "OCC + STS (W0)"         "-idefault -g -sstatic"
-    "OCC + STS + CU (W0)"    "-idefault -g -x -sstatic"
+    "OCC + STS + DU (W0)"    "-idefault -g -x -sstatic"
     "OCC + ATS (W1)"         "-idefault -g -w1 -sadaptive"
-    "OCC + ATS + CU (W1)"    "-idefault -g -x -w1 -sadaptive"
+    "OCC + ATS + DU (W1)"    "-idefault -g -x -w1 -sadaptive"
     "OCC + ATS (W4)"         "-idefault -g -w4 -sadaptive"
-    "OCC + ATS + CU (W4)"    "-idefault -g -x -w4 -sadaptive"
+    "OCC + ATS + DU (W4)"    "-idefault -g -x -w4 -sadaptive"
     "OCC + ATS (W0)"         "-idefault -g -sadaptive"
-    "OCC + ATS + CU (W0)"    "-idefault -g -x -sadaptive"
+    "OCC + ATS + DU (W0)"    "-idefault -g -x -sadaptive"
     "TicToc (W1)"         "-itictoc -g -w1 -snone"
-    "TicToc + CU (W1)"    "-itictoc -g -x -w1 -snone"
+    "TicToc + DU (W1)"    "-itictoc -g -x -w1 -snone"
     "TicToc (W4)"         "-itictoc -g -w4 -snone"
-    "TicToc + CU (W4)"    "-itictoc -g -x -w4 -snone"
+    "TicToc + DU (W4)"    "-itictoc -g -x -w4 -snone"
     "TicToc (W0)"         "-itictoc -g -snone"
-    "TicToc + CU (W0)"    "-itictoc -g -x -snone"
+    "TicToc + DU (W0)"    "-itictoc -g -x -snone"
     "TicToc + STS (W1)"         "-itictoc -g -w1 -sstatic"
-    "TicToc + STS + CU (W1)"    "-itictoc -g -x -w1 -sstatic"
+    "TicToc + STS + DU (W1)"    "-itictoc -g -x -w1 -sstatic"
     "TicToc + STS (W4)"         "-itictoc -g -w4 -sstatic"
-    "TicToc + STS + CU (W4)"    "-itictoc -g -x -w4 -sstatic"
+    "TicToc + STS + DU (W4)"    "-itictoc -g -x -w4 -sstatic"
     "TicToc + STS (W0)"         "-itictoc -g -sstatic"
-    "TicToc + STS + CU (W0)"    "-itictoc -g -x -sstatic"
+    "TicToc + STS + DU (W0)"    "-itictoc -g -x -sstatic"
     "TicToc + ATS (W1)"         "-itictoc -g -w1 -sadaptive"
-    "TicToc + ATS + CU (W1)"    "-itictoc -g -x -w1 -sadaptive"
+    "TicToc + ATS + DU (W1)"    "-itictoc -g -x -w1 -sadaptive"
     "TicToc + ATS (W4)"         "-itictoc -g -w4 -sadaptive"
-    "TicToc + ATS + CU (W4)"    "-itictoc -g -x -w4 -sadaptive"
+    "TicToc + ATS + DU (W4)"    "-itictoc -g -x -w4 -sadaptive"
     "TicToc + ATS (W0)"         "-itictoc -g -sadaptive"
-    "TicToc + ATS + CU (W0)"    "-itictoc -g -x -sadaptive"
+    "TicToc + ATS + DU (W0)"    "-itictoc -g -x -sadaptive"
   )
 
   TPCC_MVCC=(
     "MVCC (W1)"         "-imvcc -g -w1 -snone"
-    "MVCC + CU (W1)"    "-imvcc -g -x -w1 -snone"
+    "MVCC + DU (W1)"    "-imvcc -g -x -w1 -snone"
     "MVCC (W4)"         "-imvcc -g -w4 -snone"
-    "MVCC + CU (W4)"    "-imvcc -g -x -w4 -snone"
+    "MVCC + DU (W4)"    "-imvcc -g -x -w4 -snone"
     "MVCC (W0)"         "-imvcc -g -snone"
-    "MVCC + CU (W0)"    "-imvcc -g -x -snone"
+    "MVCC + DU (W0)"    "-imvcc -g -x -snone"
     "MVCC + STS (W1)"         "-imvcc -g -w1 -sstatic"
-    "MVCC + STS + CU (W1)"    "-imvcc -g -x -w1 -sstatic"
+    "MVCC + STS + DU (W1)"    "-imvcc -g -x -w1 -sstatic"
     "MVCC + STS (W4)"         "-imvcc -g -w4 -sstatic"
-    "MVCC + STS + CU (W4)"    "-imvcc -g -x -w4 -sstatic"
+    "MVCC + STS + DU (W4)"    "-imvcc -g -x -w4 -sstatic"
     "MVCC + STS (W0)"         "-imvcc -g -sstatic"
-    "MVCC + STS + CU (W0)"    "-imvcc -g -x -sstatic"
+    "MVCC + STS + DU (W0)"    "-imvcc -g -x -sstatic"
     "MVCC + ATS (W1)"         "-imvcc -g -w1 -sadaptive"
-    "MVCC + ATS + CU (W1)"    "-imvcc -g -x -w1 -sadaptive"
+    "MVCC + ATS + DU (W1)"    "-imvcc -g -x -w1 -sadaptive"
     "MVCC + ATS (W4)"         "-imvcc -g -w4 -sadaptive"
-    "MVCC + ATS + CU (W4)"    "-imvcc -g -x -w4 -sadaptive"
+    "MVCC + ATS + DU (W4)"    "-imvcc -g -x -w4 -sadaptive"
     "MVCC + ATS (W0)"         "-imvcc -g -sadaptive"
-    "MVCC + ATS + CU (W0)"    "-imvcc -g -x -sadaptive"
+    "MVCC + ATS + DU (W0)"    "-imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${TPCC_OCC[@]}")
@@ -711,11 +711,11 @@ setup_tpcc_opacity() {
 
   TPCC_OCC=(
     "OPQ (W1)"         "-iopaque -g -w1"
-    "OPQ + CU (W1)"    "-iopaque -g -w1 -x"
+    "OPQ + DU (W1)"    "-iopaque -g -w1 -x"
     "OPQ (W4)"         "-iopaque -g -w4"
-    "OPQ + CU (W4)"    "-iopaque -g -x -w4"
+    "OPQ + DU (W4)"    "-iopaque -g -x -w4"
     "OPQ (W0)"         "-iopaque -g"
-    "OPQ + CU (W0)"    "-iopaque -g -x"
+    "OPQ + DU (W0)"    "-iopaque -g -x"
   )
 
   TPCC_MVCC=(
@@ -755,11 +755,11 @@ setup_tpcc_safe_flatten() {
 
   TPCC_MVCC=(
     "MVCC (W1)"         "-imvcc -g -w1"
-    "MVCC + CU (W1)"    "-imvcc -g -w1 -x"
+    "MVCC + DU (W1)"    "-imvcc -g -w1 -x"
     "MVCC (W4)"         "-imvcc -g -w4"
-    "MVCC + CU (W4)"    "-imvcc -g -x -w4"
+    "MVCC + DU (W4)"    "-imvcc -g -x -w4"
     "MVCC (W0)"         "-imvcc -g"
-    "MVCC + CU (W0)"    "-imvcc -g -x"
+    "MVCC + DU (W0)"    "-imvcc -g -x"
   )
 
   TPCC_OCC_BINARIES=(
@@ -793,7 +793,7 @@ setup_tpcc_scaled() {
 
   TPCC_OCC=(
     "OCC (W0)"         "-idefault -g"
-    "OCC + CU (W0)"    "-idefault -g -x"
+    "OCC + DU (W0)"    "-idefault -g -x"
     "OPQ (W0)"         "-iopaque -g"
     "OPQ +CU (W0)"     "-iopaque -g -x"
   )
@@ -832,9 +832,9 @@ setup_tpcc_history_key() {
 
   TPCC_OCC=(
     "OCC (W1)"         "-idefault -g -w1 -r1000"
-    "OCC + CU (W1)"    "-idefault -g -w1 -x -r1000"
+    "OCC + DU (W1)"    "-idefault -g -w1 -x -r1000"
     "TicToc (W1)"      "-itictoc -n -g -w1 -r1000"
-    "TicToc + CU (W1)" "-itictoc -n -g -w1 -x -r1000"
+    "TicToc + DU (W1)" "-itictoc -n -g -w1 -x -r1000"
   )
 
   TPCC_MVCC=(
@@ -871,23 +871,23 @@ setup_tpcc_tictoc_full() {
 
   TPCC_OCC=(
     "TicToc (W1)"         "-itictoc -g -n -w1 -snone"
-    "TicToc + CU (W1)"    "-itictoc -g -n -x -w1 -snone"
+    "TicToc + DU (W1)"    "-itictoc -g -n -x -w1 -snone"
     "TicToc (W4)"         "-itictoc -g -n -w4 -snone"
-    "TicToc + CU (W4)"    "-itictoc -g -n -x -w4 -snone"
+    "TicToc + DU (W4)"    "-itictoc -g -n -x -w4 -snone"
     "TicToc (W0)"         "-itictoc -g -n -snone"
-    "TicToc + CU (W0)"    "-itictoc -g -n -x -snone"
+    "TicToc + DU (W0)"    "-itictoc -g -n -x -snone"
     "TicToc + STS (W1)"         "-itictoc -g -n -w1 -sstatic"
-    "TicToc + STS + CU (W1)"    "-itictoc -g -n -x -w1 -sstatic"
+    "TicToc + STS + DU (W1)"    "-itictoc -g -n -x -w1 -sstatic"
     "TicToc + STS (W4)"         "-itictoc -g -n -w4 -sstatic"
-    "TicToc + STS + CU (W4)"    "-itictoc -g -n -x -w4 -sstatic"
+    "TicToc + STS + DU (W4)"    "-itictoc -g -n -x -w4 -sstatic"
     "TicToc + STS (W0)"         "-itictoc -g -n -sstatic"
-    "TicToc + STS + CU (W0)"    "-itictoc -g -n -x -sstatic"
+    "TicToc + STS + DU (W0)"    "-itictoc -g -n -x -sstatic"
     "TicToc + ATS (W1)"         "-itictoc -g -n -w1 -sadaptive"
-    "TicToc + ATS + CU (W1)"    "-itictoc -g -n -x -w1 -sadaptive"
+    "TicToc + ATS + DU (W1)"    "-itictoc -g -n -x -w1 -sadaptive"
     "TicToc + ATS (W4)"         "-itictoc -g -n -w4 -sadaptive"
-    "TicToc + ATS + CU (W4)"    "-itictoc -g -n -x -w4 -sadaptive"
+    "TicToc + ATS + DU (W4)"    "-itictoc -g -n -x -w4 -sadaptive"
     "TicToc + ATS (W0)"         "-itictoc -g -n -sadaptive"
-    "TicToc + ATS + CU (W0)"    "-itictoc -g -n -x -sadaptive"
+    "TicToc + ATS + DU (W0)"    "-itictoc -g -n -x -sadaptive"
   )
 
   TPCC_MVCC=(
@@ -918,11 +918,11 @@ setup_tpcc_tictoc_incorrect() {
 
   TPCC_OCC=(
     "TicToc (W1)"      "-itictoc -g -w1 -r1000"
-    "TicToc + CU (W1)" "-itictoc -g -w1 -x -r1000"
+    "TicToc + DU (W1)" "-itictoc -g -w1 -x -r1000"
     "TicToc (W4)"      "-itictoc -g -w4 -r1000"
-    "TicToc + CU (W4)" "-itictoc -g -w4 -x -r1000"
+    "TicToc + DU (W4)" "-itictoc -g -w4 -x -r1000"
     "TicToc (W0)"      "-itictoc -g -r1000"
-    "TicToc + CU (W0)" "-itictoc -g -x -r1000"
+    "TicToc + DU (W0)" "-itictoc -g -x -r1000"
   )
 
   TPCC_MVCC=(
@@ -1374,26 +1374,26 @@ setup_wiki() {
 
   WIKI_OCC=(
     "OCC"         "-idefault -b -snone"
-    "OCC + CU"    "-idefault -b -x -snone"
+    "OCC + DU"    "-idefault -b -x -snone"
     "OCC + STS"         "-idefault -b -sstatic"
-    "OCC + STS + CU"    "-idefault -b -x -sstatic"
+    "OCC + STS + DU"    "-idefault -b -x -sstatic"
     "OCC + ATS"         "-idefault -b -sadaptive"
-    "OCC + ATS + CU"    "-idefault -b -x -sadaptive"
+    "OCC + ATS + DU"    "-idefault -b -x -sadaptive"
     "TicToc"         "-itictoc -b -snone"
-    "TicToc + CU"    "-itictoc -b -x -snone"
+    "TicToc + DU"    "-itictoc -b -x -snone"
     "TicToc + STS"         "-itictoc -b -sstatic"
-    "TicToc + STS + CU"    "-itictoc -b -x -sstatic"
+    "TicToc + STS + DU"    "-itictoc -b -x -sstatic"
     "TicToc + ATS"         "-itictoc -b -sadaptive"
-    "TicToc + ATS + CU"    "-itictoc -b -x -sadaptive"
+    "TicToc + ATS + DU"    "-itictoc -b -x -sadaptive"
   )
 
   WIKI_MVCC=(
     "MVCC"         "-imvcc -b -snone"
-    "MVCC + CU"    "-imvcc -b -x -snone"
+    "MVCC + DU"    "-imvcc -b -x -snone"
     "MVCC + STS"         "-imvcc -b -sstatic"
-    "MVCC + STS + CU"    "-imvcc -b -x -sstatic"
+    "MVCC + STS + DU"    "-imvcc -b -x -sstatic"
     "MVCC + ATS"         "-imvcc -b -sadaptive"
-    "MVCC + ATS + CU"    "-imvcc -b -x -sadaptive"
+    "MVCC + ATS + DU"    "-imvcc -b -x -sadaptive"
   )
 
   OCC_LABELS=("${WIKI_OCC[@]}")
@@ -1415,11 +1415,11 @@ setup_wiki_occ() {
 
   WIKI_OCC=(
     "OCC"         "-idefault -b -snone"
-    "OCC + CU"    "-idefault -b -x -snone"
+    "OCC + DU"    "-idefault -b -x -snone"
     "OCC + STS"         "-idefault -b -sstatic"
-    "OCC + STS + CU"    "-idefault -b -x -sstatic"
+    "OCC + STS + DU"    "-idefault -b -x -sstatic"
     "OCC + ATS"         "-idefault -b -sadaptive"
-    "OCC + ATS + CU"    "-idefault -b -x -sadaptive"
+    "OCC + ATS + DU"    "-idefault -b -x -sadaptive"
   )
 
   WIKI_MVCC=(
@@ -1447,11 +1447,11 @@ setup_wiki_mvcc() {
 
   WIKI_MVCC=(
     "MVCC"         "-imvcc -b -snone"
-    "MVCC + CU"    "-imvcc -b -x -snone"
+    "MVCC + DU"    "-imvcc -b -x -snone"
     "MVCC + STS"         "-imvcc -b -sstatic"
-    "MVCC + STS + CU"    "-imvcc -b -x -sstatic"
+    "MVCC + STS + DU"    "-imvcc -b -x -sstatic"
     "MVCC + ATS"         "-imvcc -b -sadaptive"
-    "MVCC + ATS + CU"    "-imvcc -b -x -sadaptive"
+    "MVCC + ATS + DU"    "-imvcc -b -x -sadaptive"
   )
 
   OCC_LABELS=("${WIKI_OCC[@]}")
@@ -1473,11 +1473,11 @@ setup_wiki_tictoc() {
 
   WIKI_OCC=(
     "TicToc"         "-itictoc -b -snone"
-    "TicToc + CU"    "-itictoc -b -x -snone"
+    "TicToc + DU"    "-itictoc -b -x -snone"
     "TicToc + STS"         "-itictoc -b -sstatic"
-    "TicToc + STS + CU"    "-itictoc -b -x -sstatic"
+    "TicToc + STS + DU"    "-itictoc -b -x -sstatic"
     "TicToc + ATS"         "-itictoc -b -sadaptive"
-    "TicToc + ATS + CU"    "-itictoc -b -x -sadaptive"
+    "TicToc + ATS + DU"    "-itictoc -b -x -sadaptive"
   )
 
   WIKI_MVCC=(
@@ -1503,26 +1503,26 @@ setup_ycsba() {
 
   YCSB_OCC=(
     "OCC (A)"         "-mA -idefault -g -snone"
-    "OCC (A) + CU"    "-mA -idefault -g -x -snone"
+    "OCC (A) + DU"    "-mA -idefault -g -x -snone"
     "OCC (A) + STS"         "-mA -idefault -g -sstatic"
-    "OCC (A) + STS + CU"    "-mA -idefault -g -x -sstatic"
+    "OCC (A) + STS + DU"    "-mA -idefault -g -x -sstatic"
     "OCC (A) + ATS"         "-mA -idefault -g -sadaptive"
-    "OCC (A) + ATS + CU"    "-mA -idefault -g -x -sadaptive"
+    "OCC (A) + ATS + DU"    "-mA -idefault -g -x -sadaptive"
     "TicToc (A)"         "-mA -itictoc -g -snone"
-    "TicToc (A) + CU"    "-mA -itictoc -g -x -snone"
+    "TicToc (A) + DU"    "-mA -itictoc -g -x -snone"
     "TicToc (A) + STS"         "-mA -itictoc -g -sstatic"
-    "TicToc (A) + STS + CU"    "-mA -itictoc -g -x -sstatic"
+    "TicToc (A) + STS + DU"    "-mA -itictoc -g -x -sstatic"
     "TicToc (A) + ATS"         "-mA -itictoc -g -sadaptive"
-    "TicToc (A) + ATS + CU"    "-mA -itictoc -g -x -sadaptive"
+    "TicToc (A) + ATS + DU"    "-mA -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
     "MVCC (A)"         "-mA -imvcc -g -snone"
-    "MVCC (A) + CU"    "-mA -imvcc -g -x -snone"
+    "MVCC (A) + DU"    "-mA -imvcc -g -x -snone"
     "MVCC (A) + STS"         "-mA -imvcc -g -sstatic"
-    "MVCC (A) + STS + CU"    "-mA -imvcc -g -x -sstatic"
+    "MVCC (A) + STS + DU"    "-mA -imvcc -g -x -sstatic"
     "MVCC (A) + ATS"         "-mA -imvcc -g -sadaptive"
-    "MVCC (A) + ATS + CU"    "-mA -imvcc -g -x -sadaptive"
+    "MVCC (A) + ATS + DU"    "-mA -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1545,11 +1545,11 @@ setup_ycsba_occ() {
 
   YCSB_OCC=(
     "OCC (A)"         "-mA -idefault -g -snone"
-    "OCC + CU (A)"    "-mA -idefault -g -x -snone"
+    "OCC + DU (A)"    "-mA -idefault -g -x -snone"
     "OCC + STS (A)"         "-mA -idefault -g -sstatic"
-    "OCC + STS + CU (A)"    "-mA -idefault -g -x -sstatic"
+    "OCC + STS + DU (A)"    "-mA -idefault -g -x -sstatic"
     "OCC + ATS (A)"         "-mA -idefault -g -sadaptive"
-    "OCC + ATS + CU (A)"    "-mA -idefault -g -x -sadaptive"
+    "OCC + ATS + DU (A)"    "-mA -idefault -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
@@ -1610,26 +1610,26 @@ setup_ycsba_semopts() {
 
   YCSB_OCC=(
     "OCC (A)"         "-mA -idefault -g -snone"
-    "OCC + CU (A)"    "-mA -idefault -g -x -snone"
+    "OCC + DU (A)"    "-mA -idefault -g -x -snone"
     "OCC + STS (A)"         "-mA -idefault -g -sstatic"
-    "OCC + STS + CU (A)"    "-mA -idefault -g -x -sstatic"
+    "OCC + STS + DU (A)"    "-mA -idefault -g -x -sstatic"
     "OCC + ATS (A)"         "-mA -idefault -g -sadaptive"
-    "OCC + ATS + CU (A)"    "-mA -idefault -g -x -sadaptive"
+    "OCC + ATS + DU (A)"    "-mA -idefault -g -x -sadaptive"
     "TicToc (A)"         "-mA -itictoc -g -snone"
-    "TicToc + CU (A)"    "-mA -itictoc -g -x -snone"
+    "TicToc + DU (A)"    "-mA -itictoc -g -x -snone"
     "TicToc + STS (A)"         "-mA -itictoc -g -sstatic"
-    "TicToc + STS + CU (A)"    "-mA -itictoc -g -x -sstatic"
+    "TicToc + STS + DU (A)"    "-mA -itictoc -g -x -sstatic"
     "TicToc + ATS (A)"         "-mA -itictoc -g -sadaptive"
-    "TicToc + ATS + CU (A)"    "-mA -itictoc -g -x -sadaptive"
+    "TicToc + ATS + DU (A)"    "-mA -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
     "MVCC (A)"         "-mA -imvcc -g -snone"
-    "MVCC + CU (A)"    "-mA -imvcc -g -x -snone"
+    "MVCC + DU (A)"    "-mA -imvcc -g -x -snone"
     "MVCC + STS (A)"         "-mA -imvcc -g -sstatic"
-    "MVCC + STS + CU (A)"    "-mA -imvcc -g -x -sstatic"
+    "MVCC + STS + DU (A)"    "-mA -imvcc -g -x -sstatic"
     "MVCC + ATS (A)"         "-mA -imvcc -g -sadaptive"
-    "MVCC + ATS + CU (A)"    "-mA -imvcc -g -x -sadaptive"
+    "MVCC + ATS + DU (A)"    "-mA -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1687,11 +1687,11 @@ setup_ycsba_tictoc() {
 
   YCSB_OCC=(
     "TicToc (A)"         "-mA -itictoc -g -snone"
-    "TicToc + CU (A)"    "-mA -itictoc -g -x -snone"
+    "TicToc + DU (A)"    "-mA -itictoc -g -x -snone"
     "TicToc + STS (A)"         "-mA -itictoc -g -sstatic"
-    "TicToc + STS + CU (A)"    "-mA -itictoc -g -x -sstatic"
+    "TicToc + STS + DU (A)"    "-mA -itictoc -g -x -sstatic"
     "TicToc + ATS (A)"         "-mA -itictoc -g -sadaptive"
-    "TicToc + ATS + CU (A)"    "-mA -itictoc -g -x -sadaptive"
+    "TicToc + ATS + DU (A)"    "-mA -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
@@ -1720,11 +1720,11 @@ setup_ycsba_mvcc() {
 
   YCSB_MVCC=(
     "MVCC (A)"         "-mA -imvcc -g -snone"
-    "MVCC + CU (A)"    "-mA -imvcc -g -x -snone"
+    "MVCC + DU (A)"    "-mA -imvcc -g -x -snone"
     "MVCC + STS (A)"         "-mA -imvcc -g -sstatic"
-    "MVCC + STS + CU (A)"    "-mA -imvcc -g -x -sstatic"
+    "MVCC + STS + DU (A)"    "-mA -imvcc -g -x -sstatic"
     "MVCC + ATS (A)"         "-mA -imvcc -g -sadaptive"
-    "MVCC + ATS + CU (A)"    "-mA -imvcc -g -x -sadaptive"
+    "MVCC + ATS + DU (A)"    "-mA -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1747,26 +1747,26 @@ setup_ycsbb() {
 
   YCSB_OCC=(
     "OCC (B)"         "-mB -idefault -g -snone"
-    "OCC + CU (B)"    "-mB -idefault -g -x -snone"
+    "OCC + DU (B)"    "-mB -idefault -g -x -snone"
     "OCC + STS (B)"         "-mB -idefault -g -sstatic"
-    "OCC + STS + CU (B)"    "-mB -idefault -g -x -sstatic"
+    "OCC + STS + DU (B)"    "-mB -idefault -g -x -sstatic"
     "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
-    "OCC + ATS + CU (B)"    "-mB -idefault -g -x -sadaptive"
+    "OCC + ATS + DU (B)"    "-mB -idefault -g -x -sadaptive"
     "TicToc (B)"         "-mB -itictoc -g -snone"
-    "TicToc + CU (B)"    "-mB -itictoc -g -x -snone"
+    "TicToc + DU (B)"    "-mB -itictoc -g -x -snone"
     "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
-    "TicToc + STS + CU (B)"    "-mB -itictoc -g -x -sstatic"
+    "TicToc + STS + DU (B)"    "-mB -itictoc -g -x -sstatic"
     "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
-    "TicToc + ATS + CU (B)"    "-mB -itictoc -g -x -sadaptive"
+    "TicToc + ATS + DU (B)"    "-mB -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
     "MVCC (B)"         "-mB -imvcc -g -snone"
-    "MVCC + CU (B)"    "-mB -imvcc -g -x -snone"
+    "MVCC + DU (B)"    "-mB -imvcc -g -x -snone"
     "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
-    "MVCC + STS + CU (B)"    "-mB -imvcc -g -x -sstatic"
+    "MVCC + STS + DU (B)"    "-mB -imvcc -g -x -sstatic"
     "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
-    "MVCC + ATS + CU (B)"    "-mB -imvcc -g -x -sadaptive"
+    "MVCC + ATS + DU (B)"    "-mB -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1789,11 +1789,11 @@ setup_ycsbb_occ() {
 
   YCSB_OCC=(
     "OCC (B)"         "-mB -idefault -g -snone"
-    "OCC + CU (B)"    "-mB -idefault -g -x -snone"
+    "OCC + DU (B)"    "-mB -idefault -g -x -snone"
     "OCC + STS (B)"         "-mB -idefault -g -sstatic"
-    "OCC + STS + CU (B)"    "-mB -idefault -g -x -sstatic"
+    "OCC + STS + DU (B)"    "-mB -idefault -g -x -sstatic"
     "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
-    "OCC + ATS + CU (B)"    "-mB -idefault -g -x -sadaptive"
+    "OCC + ATS + DU (B)"    "-mB -idefault -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
@@ -1819,26 +1819,26 @@ setup_ycsbb_semopts() {
 
   YCSB_OCC=(
     "OCC (B)"         "-mB -idefault -g -snone"
-    "OCC + CU (B)"    "-mB -idefault -g -x -snone"
+    "OCC + DU (B)"    "-mB -idefault -g -x -snone"
     "OCC + STS (B)"         "-mB -idefault -g -sstatic"
-    "OCC + STS + CU (B)"    "-mB -idefault -g -x -sstatic"
+    "OCC + STS + DU (B)"    "-mB -idefault -g -x -sstatic"
     "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
-    "OCC + ATS + CU (B)"    "-mB -idefault -g -x -sadaptive"
+    "OCC + ATS + DU (B)"    "-mB -idefault -g -x -sadaptive"
     "TicToc (B)"         "-mB -itictoc -g -snone"
-    "TicToc + CU (B)"    "-mB -itictoc -g -x -snone"
+    "TicToc + DU (B)"    "-mB -itictoc -g -x -snone"
     "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
-    "TicToc + STS + CU (B)"    "-mB -itictoc -g -x -sstatic"
+    "TicToc + STS + DU (B)"    "-mB -itictoc -g -x -sstatic"
     "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
-    "TicToc + ATS + CU (B)"    "-mB -itictoc -g -x -sadaptive"
+    "TicToc + ATS + DU (B)"    "-mB -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
     "MVCC (B)"         "-mB -imvcc -g -snone"
-    "MVCC + CU (B)"    "-mB -imvcc -g -x -snone"
+    "MVCC + DU (B)"    "-mB -imvcc -g -x -snone"
     "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
-    "MVCC + STS + CU (B)"    "-mB -imvcc -g -x -sstatic"
+    "MVCC + STS + DU (B)"    "-mB -imvcc -g -x -sstatic"
     "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
-    "MVCC + ATS + CU (B)"    "-mB -imvcc -g -x -sadaptive"
+    "MVCC + ATS + DU (B)"    "-mB -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1861,11 +1861,11 @@ setup_ycsbb_tictoc() {
 
   YCSB_OCC=(
     "TicToc (B)"         "-mB -itictoc -g -snone"
-    "TicToc + CU (B)"    "-mB -itictoc -g -x -snone"
+    "TicToc + DU (B)"    "-mB -itictoc -g -x -snone"
     "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
-    "TicToc + STS + CU (B)"    "-mB -itictoc -g -x -sstatic"
+    "TicToc + STS + DU (B)"    "-mB -itictoc -g -x -sstatic"
     "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
-    "TicToc + ATS + CU (B)"    "-mB -itictoc -g -x -sadaptive"
+    "TicToc + ATS + DU (B)"    "-mB -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
@@ -1894,11 +1894,11 @@ setup_ycsbb_mvcc() {
 
   YCSB_MVCC=(
     "MVCC (B)"         "-mB -imvcc -g -snone"
-    "MVCC + CU (B)"    "-mB -imvcc -g -x -snone"
+    "MVCC + DU (B)"    "-mB -imvcc -g -x -snone"
     "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
-    "MVCC + STS + CU (B)"    "-mB -imvcc -g -x -sstatic"
+    "MVCC + STS + DU (B)"    "-mB -imvcc -g -x -sstatic"
     "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
-    "MVCC + ATS + CU (B)"    "-mB -imvcc -g -x -sadaptive"
+    "MVCC + ATS + DU (B)"    "-mB -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1921,12 +1921,12 @@ setup_ycsbc() {
 
   YCSB_OCC=(
     "OCC (C)"         "-mC -idefault -g"
-    "OCC (C) + CU"    "-mC -idefault -g -x"
+    "OCC (C) + DU"    "-mC -idefault -g -x"
   )
 
   YCSB_MVCC=(
     "MVCC (C)"        "-mC -imvcc -g"
-    "MVCC (C) + CU"   "-mC -imvcc -g -x"
+    "MVCC (C) + DU"   "-mC -imvcc -g -x"
   )
 
   YCSB_OCC_BINARIES=(
@@ -1959,26 +1959,26 @@ setup_ycsbc_semopts() {
 
   YCSB_OCC=(
     "OCC (C)"         "-mC -idefault -g -snone"
-    "OCC + CU (C)"    "-mC -idefault -g -x -snone"
+    "OCC + DU (C)"    "-mC -idefault -g -x -snone"
     "OCC + STS (C)"         "-mC -idefault -g -sstatic"
-    "OCC + STS + CU (C)"    "-mC -idefault -g -x -sstatic"
+    "OCC + STS + DU (C)"    "-mC -idefault -g -x -sstatic"
     "OCC + ATS (C)"         "-mC -idefault -g -sadaptive"
-    "OCC + ATS + CU (C)"    "-mC -idefault -g -x -sadaptive"
+    "OCC + ATS + DU (C)"    "-mC -idefault -g -x -sadaptive"
     "TicToc (C)"         "-mC -itictoc -g -snone"
-    "TicToc + CU (C)"    "-mC -itictoc -g -x -snone"
+    "TicToc + DU (C)"    "-mC -itictoc -g -x -snone"
     "TicToc + STS (C)"         "-mC -itictoc -g -sstatic"
-    "TicToc + STS + CU (C)"    "-mC -itictoc -g -x -sstatic"
+    "TicToc + STS + DU (C)"    "-mC -itictoc -g -x -sstatic"
     "TicToc + ATS (C)"         "-mC -itictoc -g -sadaptive"
-    "TicToc + ATS + CU (C)"    "-mC -itictoc -g -x -sadaptive"
+    "TicToc + ATS + DU (C)"    "-mC -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
     "MVCC (C)"         "-mC -imvcc -g -snone"
-    "MVCC + CU (C)"    "-mC -imvcc -g -x -snone"
+    "MVCC + DU (C)"    "-mC -imvcc -g -x -snone"
     "MVCC + STS (C)"         "-mC -imvcc -g -sstatic"
-    "MVCC + STS + CU (C)"    "-mC -imvcc -g -x -sstatic"
+    "MVCC + STS + DU (C)"    "-mC -imvcc -g -x -sstatic"
     "MVCC + ATS (C)"         "-mC -imvcc -g -sadaptive"
-    "MVCC + ATS + CU (C)"    "-mC -imvcc -g -x -sadaptive"
+    "MVCC + ATS + DU (C)"    "-mC -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -2000,14 +2000,14 @@ setup_ycsbx_semopts() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + CU (X)"    "-mX -idefault -g -x"
-    "TicToc + CU (X)" "-mX -itictoc -g -x"
+    "OCC + DU (X)"    "-mX -idefault -g -x"
+    "TicToc + DU (X)" "-mX -itictoc -g -x"
     "OCC (X)"         "-mX -idefault -g"
     "TicToc (X)"      "-mX -itictoc -g"
   )
 
   YCSB_MVCC=(
-    "MVCC + CU (X)" "-mX -imvcc -g -x"
+    "MVCC + DU (X)" "-mX -imvcc -g -x"
     "MVCC (X)"      "-mX -imvcc -g"
   )
 
@@ -2040,14 +2040,14 @@ setup_ycsby_semopts() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + CU (Y)"    "-mY -idefault -g -x"
-    "TicToc + CU (Y)" "-mY -itictoc -g -x"
+    "OCC + DU (Y)"    "-mY -idefault -g -x"
+    "TicToc + DU (Y)" "-mY -itictoc -g -x"
     "OCC (Y)"         "-mY -idefault -g"
     "TicToc (Y)"      "-mY -itictoc -g"
   )
 
   YCSB_MVCC=(
-    "MVCC + CU (Y)" "-mY -imvcc -g -x"
+    "MVCC + DU (Y)" "-mY -imvcc -g -x"
     "MVCC (Y)"      "-mY -imvcc -g"
   )
 
@@ -2080,14 +2080,14 @@ setup_ycsbz_semopts() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + CU (Z)"    "-mZ -idefault -g -x"
-    "TicToc + CU (Z)" "-mZ -itictoc -g -x"
+    "OCC + DU (Z)"    "-mZ -idefault -g -x"
+    "TicToc + DU (Z)" "-mZ -itictoc -g -x"
     "OCC (Z)"         "-mZ -idefault -g"
     "TicToc (Z)"      "-mZ -itictoc -g"
   )
 
   YCSB_MVCC=(
-    "MVCC + CU (Z)" "-mZ -imvcc -g -x"
+    "MVCC + DU (Z)" "-mZ -imvcc -g -x"
     "MVCC (Z)"      "-mZ -imvcc -g"
   )
 
