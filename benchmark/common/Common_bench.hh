@@ -425,6 +425,9 @@ public:
         return stats_total_commits;
     }
 
+    // For any wrapping-up that needs to be done
+    virtual void epilogue(bool /*is_first_thread*/, bool /*is_last_thread*/) {}
+
 protected:
     int id;
     db_type& db;
@@ -503,6 +506,10 @@ public:
             total_commit_txns += c;
         }
         profiler.finish(total_commit_txns);
+
+        for (auto itr = runners.begin(); itr != runners.end(); ++itr) {
+            itr->epilogue(itr == runners.begin(), itr + 1 == runners.end());
+        }
 
         Transaction::rcu_release_all(advancer, params.num_threads);
 

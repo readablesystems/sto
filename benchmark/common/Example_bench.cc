@@ -217,6 +217,29 @@ public:
         read = 0
     };
 
+    // Needs to be aligned to avoid shared cache lines; we use this instead of
+    // __thread storage to allow for accumulation on one thread at the end.
+    struct __attribute__((aligned(128))) stats_type {
+        int64_t txns_started;
+        int64_t txns_committed;
+
+        stats_type& operator +=(const stats_type& other) {
+            txns_started += other.txns_started;
+            txns_committed += other.txns_committed;
+            return *this;
+        }
+
+        void report() {
+            double abort_rate = (1.0 * txns_started - txns_committed) / txns_started * 100.0;
+            char abort_rate_str[8];
+            snprintf(abort_rate_str, 7, "%.2f%%", abort_rate);
+            std::cout << "Transactions committed : " << txns_committed << std::endl
+                      << "Total transactions     : " << txns_started << std::endl
+                      << "Abort rate             : " << abort_rate_str << std::endl
+                      ;
+        }
+    };
+
     // Generate a single transaction to run
     inline txn_type generate_transaction() {
         return read;
@@ -243,6 +266,7 @@ public:
         bool success, result;
         uintptr_t row;
         TXN {
+            ++get_stats(base_runner::id).txns_started;
             Record<unordered_value> value;
             std::tie(success, result, row, value) = base_runner::select(
                 db.tbl_unordered, unordered_key(key),
@@ -270,7 +294,32 @@ public:
             }
         } TEND(true);  // true: retry on abort; false: don't retry on abort
 
+        ++get_stats(base_runner::id).txns_committed;
         return 1;
+    }
+
+    // Get the stats object for a given thread id; creates the object if it
+    // doesn't already exist.
+    static stats_type& get_stats(size_t thread_id) {
+        static std::vector<stats_type> stats;
+        if (thread_id >= stats.size()) {
+            stats.resize(thread_id + 1);
+        }
+        return stats[thread_id];
+    }
+
+    // Runs after the experiment's default reporting has completed, but before
+    // global garbage collection.
+    void epilogue(bool is_first_thread, bool is_last_thread) override {
+        static stats_type accumulator;
+        if (is_first_thread) {
+            memset(&accumulator, 0, sizeof accumulator);
+        }
+        auto& stats = get_stats(base_runner::id);
+        accumulator += stats;
+        if (is_last_thread) {
+            accumulator.report();
+        }
     }
 
     sampling::StoUniformDistribution<> txn_gen;
