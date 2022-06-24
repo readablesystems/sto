@@ -1484,7 +1484,7 @@ public:
         }
     }
 
-    void nontrans_put(const key_type& k, const value_type& v) {
+    void nontrans_put(const key_type& k, const value_type& v, int=-1) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
         buck.version.lock_exclusive();
         KVNode* n = find_in_bucket(buck, k);

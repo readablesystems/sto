@@ -2096,7 +2096,7 @@ public:
         }
     }
 
-    void nontrans_put(const key_type& k, const value_type& v) {
+    void nontrans_put(const key_type& k, const value_type& v, int=-1) {
         cursor_type lp(table_, k);
         bool found = lp.find_insert(*ti);
         if (found) {
