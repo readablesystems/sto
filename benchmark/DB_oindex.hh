@@ -717,6 +717,7 @@ public:
 
                 auto [ancestor, split, _] =
                     e->row_container.mvcc_split_accesses(Sto::read_tid(), {});
+                (void)_;
 
                 std::array<value_type*, value_container_type::NUM_VERSIONS> values { nullptr };
                 std::fill(values.begin(), values.end(), nullptr);
