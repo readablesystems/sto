@@ -132,7 +132,29 @@ public:
     static constexpr bool TicToc = true;
 };
 
+class db_tictoc_sts_params : public db_default_sts_params {
+public:
+    static constexpr db_params_id Id = db_params_id::TicToc;
+    static constexpr bool TicToc = true;
+};
+
+class db_tictoc_ats_params : public db_default_ats_params {
+public:
+    static constexpr db_params_id Id = db_params_id::TicToc;
+    static constexpr bool TicToc = true;
+};
+
 class db_tictoc_commute_params : public db_tictoc_params {
+public:
+    static constexpr bool Commute = true;
+};
+
+class db_tictoc_sts_commute_params : public db_tictoc_params {
+public:
+    static constexpr bool Commute = true;
+};
+
+class db_tictoc_ats_commute_params : public db_tictoc_params {
 public:
     static constexpr bool Commute = true;
 };
@@ -142,7 +164,27 @@ public:
     static constexpr bool NodeTrack = true;
 };
 
+class db_tictoc_sts_node_params : public db_tictoc_sts_params {
+public:
+    static constexpr bool NodeTrack = true;
+};
+
+class db_tictoc_ats_node_params : public db_tictoc_ats_params {
+public:
+    static constexpr bool NodeTrack = true;
+};
+
 class db_tictoc_commute_node_params : public db_tictoc_commute_params {
+public:
+    static constexpr bool NodeTrack = true;
+};
+
+class db_tictoc_sts_commute_node_params : public db_tictoc_commute_params {
+public:
+    static constexpr bool NodeTrack = true;
+};
+
+class db_tictoc_ats_commute_node_params : public db_tictoc_commute_params {
 public:
     static constexpr bool NodeTrack = true;
 };

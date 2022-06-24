@@ -173,29 +173,33 @@ setup_rubis() {
   ITERS=10
 
   RUBIS_OCC=(
-    "OCC"         "-idefault -s1.0 -g"
-    "OCC + CU"    "-idefault -s1.0 -g -x"
+    "OCC"               "-idefault -s1.0 -g -snone"
+    "OCC + CU"          "-idefault -s1.0 -g -x -snone"
+    "OCC + STS"         "-idefault -s1.0 -g -sstatic"
+    "OCC + STS + CU"    "-idefault -s1.0 -g -x -sstatic"
+    "OCC + ATS"         "-idefault -s1.0 -g -sadaptive"
+    "OCC + ATS + CU"    "-idefault -s1.0 -g -x -sadaptive"
+    "TicToc"            "-itictoc -s1.0 -g -snone"
+    "TicToc + CU"       "-itictoc -s1.0 -g -x -snone"
+    "TicToc + STS"      "-itictoc -s1.0 -g -sstatic"
+    "TicToc + STS + CU" "-itictoc -s1.0 -g -x -sstatic"
+    "TicToc + ATS"      "-itictoc -s1.0 -g -sadaptive"
+    "TicToc + ATS + CU" "-itictoc -s1.0 -g -x -sadaptive"
   )
 
   RUBIS_MVCC=(
-    "MVCC"        "-imvcc -s1.0 -g"
-    "MVCC + CU"   "-imvcc -s1.0 -g -x"
-  )
-
-  RUBIS_OCC_BINARIES=(
-    "rubis_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  RUBIS_MVCC_BINARIES=(
-    "rubis_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  RUBIS_BOTH_BINARIES=(
-    "rubis_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+    "MVCC"              "-imvcc -s1.0 -g -snone"
+    "MVCC + CU"         "-imvcc -s1.0 -g -x -snone"
+    "MVCC + STS"        "-imvcc -s1.0 -g -sstatic"
+    "MVCC + STS + CU"   "-imvcc -s1.0 -g -x -sstatic"
+    "MVCC + ATS"        "-imvcc -s1.0 -g -sadaptive"
+    "MVCC + ATS + CU"   "-imvcc -s1.0 -g -x -sadaptive"
   )
 
   OCC_LABELS=("${RUBIS_OCC[@]}")
   MVCC_LABELS=("${RUBIS_MVCC[@]}")
-  OCC_BINARIES=("${RUBIS_OCC_BINARIES[@]}" "${RUBIS_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${RUBIS_MVCC_BINARIES[@]}" "${RUBIS_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("rubis_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -211,26 +215,21 @@ setup_rubis_occ() {
   ITERS=10
 
   RUBIS_OCC=(
-    "OCC"         "-idefault -s1.0 -g"
-    "OCC + CU"    "-idefault -s1.0 -g -x"
+    "OCC"               "-idefault -s1.0 -g -snone"
+    "OCC + CU"          "-idefault -s1.0 -g -x -snone"
+    "OCC + STS"         "-idefault -s1.0 -g -sstatic"
+    "OCC + STS + CU"    "-idefault -s1.0 -g -x -sstatic"
+    "OCC + ATS"         "-idefault -s1.0 -g -sadaptive"
+    "OCC + ATS + CU"    "-idefault -s1.0 -g -x -sadaptive"
   )
 
   RUBIS_MVCC=(
   )
 
-  RUBIS_OCC_BINARIES=(
-    "rubis_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  RUBIS_MVCC_BINARIES=(
-  )
-  RUBIS_BOTH_BINARIES=(
-    "rubis_bench" "-both" "NDEBUG=1" ""
-  )
-
   OCC_LABELS=("${RUBIS_OCC[@]}")
   MVCC_LABELS=("${RUBIS_MVCC[@]}")
-  OCC_BINARIES=("${RUBIS_OCC_BINARIES[@]}" "${RUBIS_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${RUBIS_MVCC_BINARIES[@]}" "${RUBIS_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("rubis_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -249,23 +248,18 @@ setup_rubis_mvcc() {
   )
 
   RUBIS_MVCC=(
-    "MVCC"        "-imvcc -s1.0 -g"
-    "MVCC + CU"   "-imvcc -s1.0 -g -x"
-  )
-
-  RUBIS_OCC_BINARIES=(
-  )
-  RUBIS_MVCC_BINARIES=(
-    "rubis_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  RUBIS_BOTH_BINARIES=(
-    "rubis_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+    "MVCC"              "-imvcc -s1.0 -g -snone"
+    "MVCC + CU"         "-imvcc -s1.0 -g -x -snone"
+    "MVCC + STS"        "-imvcc -s1.0 -g -sstatic"
+    "MVCC + STS + CU"   "-imvcc -s1.0 -g -x -sstatic"
+    "MVCC + ATS"        "-imvcc -s1.0 -g -sadaptive"
+    "MVCC + ATS + CU"   "-imvcc -s1.0 -g -x -sadaptive"
   )
 
   OCC_LABELS=("${RUBIS_OCC[@]}")
   MVCC_LABELS=("${RUBIS_MVCC[@]}")
-  OCC_BINARIES=("${RUBIS_OCC_BINARIES[@]}" "${RUBIS_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${RUBIS_MVCC_BINARIES[@]}" "${RUBIS_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("rubis_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -281,26 +275,21 @@ setup_rubis_tictoc() {
   ITERS=10
 
   RUBIS_OCC=(
-    "TicToc"      "-itictoc -s1.0 -g"
-    "TicToc + CU" "-itictoc -s1.0 -g -x"
+    "TicToc"            "-itictoc -s1.0 -g -snone"
+    "TicToc + CU"       "-itictoc -s1.0 -g -x -snone"
+    "TicToc + STS"      "-itictoc -s1.0 -g -sstatic"
+    "TicToc + STS + CU" "-itictoc -s1.0 -g -x -sstatic"
+    "TicToc + ATS"      "-itictoc -s1.0 -g -sadaptive"
+    "TicToc + ATS + CU" "-itictoc -s1.0 -g -x -sadaptive"
   )
 
   RUBIS_MVCC=(
   )
 
-  RUBIS_OCC_BINARIES=(
-    "rubis_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  RUBIS_MVCC_BINARIES=(
-  )
-  RUBIS_BOTH_BINARIES=(
-    "rubis_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
-  )
-
   OCC_LABELS=("${RUBIS_OCC[@]}")
   MVCC_LABELS=("${RUBIS_MVCC[@]}")
-  OCC_BINARIES=("${RUBIS_OCC_BINARIES[@]}" "${RUBIS_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${RUBIS_MVCC_BINARIES[@]}" "${RUBIS_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("rubis_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -315,37 +304,69 @@ setup_tpcc() {
   EXPERIMENT_NAME="TPC-C"
 
   TPCC_OCC=(
-    "OCC (W1)"         "-idefault -g -w1"
-    "OCC + CU (W1)"    "-idefault -g -x -w1"
-    "OCC (W4)"         "-idefault -g -w4"
-    "OCC + CU (W4)"    "-idefault -g -x -w4"
-    "OCC (W0)"         "-idefault -g"
-    "OCC + CU (W0)"    "-idefault -g -x"
+    "OCC (W1)"         "-idefault -g -w1 -snone"
+    "OCC + CU (W1)"    "-idefault -g -x -w1 -snone"
+    "OCC (W4)"         "-idefault -g -w4 -snone"
+    "OCC + CU (W4)"    "-idefault -g -x -w4 -snone"
+    "OCC (W0)"         "-idefault -g -snone"
+    "OCC + CU (W0)"    "-idefault -g -x -snone"
+    "OCC + STS (W1)"         "-idefault -g -w1 -sstatic"
+    "OCC + STS + CU (W1)"    "-idefault -g -x -w1 -sstatic"
+    "OCC + STS (W4)"         "-idefault -g -w4 -sstatic"
+    "OCC + STS + CU (W4)"    "-idefault -g -x -w4 -sstatic"
+    "OCC + STS (W0)"         "-idefault -g -sstatic"
+    "OCC + STS + CU (W0)"    "-idefault -g -x -sstatic"
+    "OCC + ATS (W1)"         "-idefault -g -w1 -sadaptive"
+    "OCC + ATS + CU (W1)"    "-idefault -g -x -w1 -sadaptive"
+    "OCC + ATS (W4)"         "-idefault -g -w4 -sadaptive"
+    "OCC + ATS + CU (W4)"    "-idefault -g -x -w4 -sadaptive"
+    "OCC + ATS (W0)"         "-idefault -g -sadaptive"
+    "OCC + ATS + CU (W0)"    "-idefault -g -x -sadaptive"
+    "TicToc (W1)"         "-itictoc -g -w1 -snone"
+    "TicToc + CU (W1)"    "-itictoc -g -x -w1 -snone"
+    "TicToc (W4)"         "-itictoc -g -w4 -snone"
+    "TicToc + CU (W4)"    "-itictoc -g -x -w4 -snone"
+    "TicToc (W0)"         "-itictoc -g -snone"
+    "TicToc + CU (W0)"    "-itictoc -g -x -snone"
+    "TicToc + STS (W1)"         "-itictoc -g -w1 -sstatic"
+    "TicToc + STS + CU (W1)"    "-itictoc -g -x -w1 -sstatic"
+    "TicToc + STS (W4)"         "-itictoc -g -w4 -sstatic"
+    "TicToc + STS + CU (W4)"    "-itictoc -g -x -w4 -sstatic"
+    "TicToc + STS (W0)"         "-itictoc -g -sstatic"
+    "TicToc + STS + CU (W0)"    "-itictoc -g -x -sstatic"
+    "TicToc + ATS (W1)"         "-itictoc -g -w1 -sadaptive"
+    "TicToc + ATS + CU (W1)"    "-itictoc -g -x -w1 -sadaptive"
+    "TicToc + ATS (W4)"         "-itictoc -g -w4 -sadaptive"
+    "TicToc + ATS + CU (W4)"    "-itictoc -g -x -w4 -sadaptive"
+    "TicToc + ATS (W0)"         "-itictoc -g -sadaptive"
+    "TicToc + ATS + CU (W0)"    "-itictoc -g -x -sadaptive"
   )
 
   TPCC_MVCC=(
-    "MVCC (W1)"        "-imvcc -g -w1"
-    "MVCC + CU (W1)"   "-imvcc -g -x -w1"
-    "MVCC (W4)"        "-imvcc -g -w4"
-    "MVCC + CU (W4)"   "-imvcc -g -x -w4"
-    "MVCC (W0)"        "-imvcc -g"
-    "MVCC + CU (W0)"   "-imvcc -g -x"
-  )
-
-  TPCC_OCC_BINARIES=(
-    "tpcc_bench" "-occ" "NDEBUG=1 OBSERVE_C_BALANCE=1 FINE_GRAINED=1" " + SV"
-  )
-  TPCC_MVCC_BINARIES=(
-    "tpcc_bench" "-mvcc" "NDEBUG=1 OBSERVE_C_BALANCE=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  TPCC_BOTH_BINARIES=(
-    "tpcc_bench" "-both" "NDEBUG=1 OBSERVE_C_BALANCE=1 INLINED_VERSIONS=1" ""
+    "MVCC (W1)"         "-imvcc -g -w1 -snone"
+    "MVCC + CU (W1)"    "-imvcc -g -x -w1 -snone"
+    "MVCC (W4)"         "-imvcc -g -w4 -snone"
+    "MVCC + CU (W4)"    "-imvcc -g -x -w4 -snone"
+    "MVCC (W0)"         "-imvcc -g -snone"
+    "MVCC + CU (W0)"    "-imvcc -g -x -snone"
+    "MVCC + STS (W1)"         "-imvcc -g -w1 -sstatic"
+    "MVCC + STS + CU (W1)"    "-imvcc -g -x -w1 -sstatic"
+    "MVCC + STS (W4)"         "-imvcc -g -w4 -sstatic"
+    "MVCC + STS + CU (W4)"    "-imvcc -g -x -w4 -sstatic"
+    "MVCC + STS (W0)"         "-imvcc -g -sstatic"
+    "MVCC + STS + CU (W0)"    "-imvcc -g -x -sstatic"
+    "MVCC + ATS (W1)"         "-imvcc -g -w1 -sadaptive"
+    "MVCC + ATS + CU (W1)"    "-imvcc -g -x -w1 -sadaptive"
+    "MVCC + ATS (W4)"         "-imvcc -g -w4 -sadaptive"
+    "MVCC + ATS + CU (W4)"    "-imvcc -g -x -w4 -sadaptive"
+    "MVCC + ATS (W0)"         "-imvcc -g -sadaptive"
+    "MVCC + ATS + CU (W0)"    "-imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${TPCC_OCC[@]}")
   MVCC_LABELS=("${TPCC_MVCC[@]}")
-  OCC_BINARIES=("${TPCC_OCC_BINARIES[@]}" "${TPCC_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${TPCC_MVCC_BINARIES[@]}" "${TPCC_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("tpcc_bench" "" "NDEBUG=1 OBSERVE_C_BALANCE=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -400,33 +421,36 @@ setup_tpcc_gc() {
 }
 
 setup_tpcc_mvcc() {
-  EXPERIMENT_NAME="TPC-C MVCC (100ms GC)"
+  EXPERIMENT_NAME="TPC-C MVCC"
 
   TPCC_OCC=(
   )
 
   TPCC_MVCC=(
-    "MVCC (W1)"        "-imvcc -g -w1"
-    "MVCC + CU (W1)"   "-imvcc -g -x -w1"
-    "MVCC (W4)"        "-imvcc -g -w4"
-    "MVCC + CU (W4)"   "-imvcc -g -x -w4"
-    "MVCC (W0)"        "-imvcc -g"
-    "MVCC + CU (W0)"   "-imvcc -g -x"
+    "MVCC (W1)"         "-imvcc -g -w1 -snone"
+    "MVCC + CU (W1)"    "-imvcc -g -x -w1 -snone"
+    "MVCC (W4)"         "-imvcc -g -w4 -snone"
+    "MVCC + CU (W4)"    "-imvcc -g -x -w4 -snone"
+    "MVCC (W0)"         "-imvcc -g -snone"
+    "MVCC + CU (W0)"    "-imvcc -g -x -snone"
+    "MVCC + STS (W1)"         "-imvcc -g -w1 -sstatic"
+    "MVCC + STS + CU (W1)"    "-imvcc -g -x -w1 -sstatic"
+    "MVCC + STS (W4)"         "-imvcc -g -w4 -sstatic"
+    "MVCC + STS + CU (W4)"    "-imvcc -g -x -w4 -sstatic"
+    "MVCC + STS (W0)"         "-imvcc -g -sstatic"
+    "MVCC + STS + CU (W0)"    "-imvcc -g -x -sstatic"
+    "MVCC + ATS (W1)"         "-imvcc -g -w1 -sadaptive"
+    "MVCC + ATS + CU (W1)"    "-imvcc -g -x -w1 -sadaptive"
+    "MVCC + ATS (W4)"         "-imvcc -g -w4 -sadaptive"
+    "MVCC + ATS + CU (W4)"    "-imvcc -g -x -w4 -sadaptive"
+    "MVCC + ATS (W0)"         "-imvcc -g -sadaptive"
+    "MVCC + ATS + CU (W0)"    "-imvcc -g -x -sadaptive"
   )
 
-  TPCC_OCC_BINARIES=(
-  )
-  TPCC_MVCC_BINARIES=(
-    "tpcc_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  TPCC_BOTH_BINARIES=(
-    "tpcc_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
-  )
-
-  OCC_LABELS=()
+  OCC_LABELS=("${TPCC_OCC[@]}")
   MVCC_LABELS=("${TPCC_MVCC[@]}")
-  OCC_BINARIES=()
-  MVCC_BINARIES=("${TPCC_MVCC_BINARIES[@]}" "${TPCC_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("tpcc_bench" "" "NDEBUG=1 OBSERVE_C_BALANCE=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -606,30 +630,69 @@ setup_tpcc_occ() {
   EXPERIMENT_NAME="TPC-C OCC"
 
   TPCC_OCC=(
-    "OCC (W1)"         "-idefault -g -w1 -r1000"
-    "OCC + CU (W1)"    "-idefault -g -x -w1 -r1000"
-    "OCC (W4)"         "-idefault -g -w4 -r1000"
-    "OCC + CU (W4)"    "-idefault -g -x -w4 -r1000"
-    "OCC (W0)"         "-idefault -g -r1000"
-    "OCC + CU (W0)"    "-idefault -g -x -r1000"
+    "OCC (W1)"         "-idefault -g -w1 -snone"
+    "OCC + CU (W1)"    "-idefault -g -x -w1 -snone"
+    "OCC (W4)"         "-idefault -g -w4 -snone"
+    "OCC + CU (W4)"    "-idefault -g -x -w4 -snone"
+    "OCC (W0)"         "-idefault -g -snone"
+    "OCC + CU (W0)"    "-idefault -g -x -snone"
+    "OCC + STS (W1)"         "-idefault -g -w1 -sstatic"
+    "OCC + STS + CU (W1)"    "-idefault -g -x -w1 -sstatic"
+    "OCC + STS (W4)"         "-idefault -g -w4 -sstatic"
+    "OCC + STS + CU (W4)"    "-idefault -g -x -w4 -sstatic"
+    "OCC + STS (W0)"         "-idefault -g -sstatic"
+    "OCC + STS + CU (W0)"    "-idefault -g -x -sstatic"
+    "OCC + ATS (W1)"         "-idefault -g -w1 -sadaptive"
+    "OCC + ATS + CU (W1)"    "-idefault -g -x -w1 -sadaptive"
+    "OCC + ATS (W4)"         "-idefault -g -w4 -sadaptive"
+    "OCC + ATS + CU (W4)"    "-idefault -g -x -w4 -sadaptive"
+    "OCC + ATS (W0)"         "-idefault -g -sadaptive"
+    "OCC + ATS + CU (W0)"    "-idefault -g -x -sadaptive"
+    "TicToc (W1)"         "-itictoc -g -w1 -snone"
+    "TicToc + CU (W1)"    "-itictoc -g -x -w1 -snone"
+    "TicToc (W4)"         "-itictoc -g -w4 -snone"
+    "TicToc + CU (W4)"    "-itictoc -g -x -w4 -snone"
+    "TicToc (W0)"         "-itictoc -g -snone"
+    "TicToc + CU (W0)"    "-itictoc -g -x -snone"
+    "TicToc + STS (W1)"         "-itictoc -g -w1 -sstatic"
+    "TicToc + STS + CU (W1)"    "-itictoc -g -x -w1 -sstatic"
+    "TicToc + STS (W4)"         "-itictoc -g -w4 -sstatic"
+    "TicToc + STS + CU (W4)"    "-itictoc -g -x -w4 -sstatic"
+    "TicToc + STS (W0)"         "-itictoc -g -sstatic"
+    "TicToc + STS + CU (W0)"    "-itictoc -g -x -sstatic"
+    "TicToc + ATS (W1)"         "-itictoc -g -w1 -sadaptive"
+    "TicToc + ATS + CU (W1)"    "-itictoc -g -x -w1 -sadaptive"
+    "TicToc + ATS (W4)"         "-itictoc -g -w4 -sadaptive"
+    "TicToc + ATS + CU (W4)"    "-itictoc -g -x -w4 -sadaptive"
+    "TicToc + ATS (W0)"         "-itictoc -g -sadaptive"
+    "TicToc + ATS + CU (W0)"    "-itictoc -g -x -sadaptive"
   )
 
   TPCC_MVCC=(
-  )
-
-  TPCC_OCC_BINARIES=(
-    "tpcc_bench" "-occ" "NDEBUG=1 OBSERVE_C_BALANCE=1 FINE_GRAINED=1" " + SV"
-  )
-  TPCC_MVCC_BINARIES=(
-  )
-  TPCC_BOTH_BINARIES=(
-    "tpcc_bench" "-both" "NDEBUG=1 OBSERVE_C_BALANCE=1" ""
+    "MVCC (W1)"         "-imvcc -g -w1 -snone"
+    "MVCC + CU (W1)"    "-imvcc -g -x -w1 -snone"
+    "MVCC (W4)"         "-imvcc -g -w4 -snone"
+    "MVCC + CU (W4)"    "-imvcc -g -x -w4 -snone"
+    "MVCC (W0)"         "-imvcc -g -snone"
+    "MVCC + CU (W0)"    "-imvcc -g -x -snone"
+    "MVCC + STS (W1)"         "-imvcc -g -w1 -sstatic"
+    "MVCC + STS + CU (W1)"    "-imvcc -g -x -w1 -sstatic"
+    "MVCC + STS (W4)"         "-imvcc -g -w4 -sstatic"
+    "MVCC + STS + CU (W4)"    "-imvcc -g -x -w4 -sstatic"
+    "MVCC + STS (W0)"         "-imvcc -g -sstatic"
+    "MVCC + STS + CU (W0)"    "-imvcc -g -x -sstatic"
+    "MVCC + ATS (W1)"         "-imvcc -g -w1 -sadaptive"
+    "MVCC + ATS + CU (W1)"    "-imvcc -g -x -w1 -sadaptive"
+    "MVCC + ATS (W4)"         "-imvcc -g -w4 -sadaptive"
+    "MVCC + ATS + CU (W4)"    "-imvcc -g -x -w4 -sadaptive"
+    "MVCC + ATS (W0)"         "-imvcc -g -sadaptive"
+    "MVCC + ATS + CU (W0)"    "-imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${TPCC_OCC[@]}")
-  MVCC_LABELS=()
-  OCC_BINARIES=("${TPCC_OCC_BINARIES[@]}" "${TPCC_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=()
+  MVCC_LABELS=("${TPCC_MVCC[@]}")
+  OCC_BINARIES=("tpcc_bench" "" "NDEBUG=1 OBSERVE_C_BALANCE=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -807,30 +870,33 @@ setup_tpcc_tictoc_full() {
   EXPERIMENT_NAME="TPC-C TicToc (full phantom protection)"
 
   TPCC_OCC=(
-    "TicToc (W1)"      "-itictoc -n -g -w1 -r1000"
-    "TicToc + CU (W1)" "-itictoc -n -g -w1 -x -r1000"
-    "TicToc (W4)"      "-itictoc -n -g -w4 -r1000"
-    "TicToc + CU (W4)" "-itictoc -n -g -w4 -x -r1000"
-    "TicToc (W0)"      "-itictoc -n -g -r1000"
-    "TicToc + CU (W0)" "-itictoc -n -g -x -r1000"
+    "TicToc (W1)"         "-itictoc -g -n -w1 -snone"
+    "TicToc + CU (W1)"    "-itictoc -g -n -x -w1 -snone"
+    "TicToc (W4)"         "-itictoc -g -n -w4 -snone"
+    "TicToc + CU (W4)"    "-itictoc -g -n -x -w4 -snone"
+    "TicToc (W0)"         "-itictoc -g -n -snone"
+    "TicToc + CU (W0)"    "-itictoc -g -n -x -snone"
+    "TicToc + STS (W1)"         "-itictoc -g -n -w1 -sstatic"
+    "TicToc + STS + CU (W1)"    "-itictoc -g -n -x -w1 -sstatic"
+    "TicToc + STS (W4)"         "-itictoc -g -n -w4 -sstatic"
+    "TicToc + STS + CU (W4)"    "-itictoc -g -n -x -w4 -sstatic"
+    "TicToc + STS (W0)"         "-itictoc -g -n -sstatic"
+    "TicToc + STS + CU (W0)"    "-itictoc -g -n -x -sstatic"
+    "TicToc + ATS (W1)"         "-itictoc -g -n -w1 -sadaptive"
+    "TicToc + ATS + CU (W1)"    "-itictoc -g -n -x -w1 -sadaptive"
+    "TicToc + ATS (W4)"         "-itictoc -g -n -w4 -sadaptive"
+    "TicToc + ATS + CU (W4)"    "-itictoc -g -n -x -w4 -sadaptive"
+    "TicToc + ATS (W0)"         "-itictoc -g -n -sadaptive"
+    "TicToc + ATS + CU (W0)"    "-itictoc -g -n -x -sadaptive"
   )
 
   TPCC_MVCC=(
   )
 
-  TPCC_OCC_BINARIES=(
-  )
-  TPCC_MVCC_BINARIES=(
-  )
-  TPCC_BOTH_BINARIES=(
-    "tpcc_bench" "-both" "NDEBUG=1 OBSERVE_C_BALANCE=1" ""
-    "tpcc_bench" "-tsplit" "NDEBUG=1 OBSERVE_C_BALANCE=1 FINE_GRAINED=1" " + SV"
-  )
-
   OCC_LABELS=("${TPCC_OCC[@]}")
-  MVCC_LABELS=()
-  OCC_BINARIES=("${TPCC_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=()
+  MVCC_LABELS=("${TPCC_MVCC[@]}")
+  OCC_BINARIES=("tpcc_bench" "" "NDEBUG=1 OBSERVE_C_BALANCE=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -842,6 +908,9 @@ setup_tpcc_tictoc_full() {
       cmd="$cmd -w$i"
     fi
   }
+}
+setup_tpcc_tictoc() {
+  setup_tpcc_tictoc_full
 }
 
 setup_tpcc_tictoc_incorrect() {
@@ -1304,29 +1373,33 @@ setup_wiki() {
   EXPERIMENT_NAME="Wikipedia"
 
   WIKI_OCC=(
-    "OCC"         "-idefault -b"
-    "OCC + CU"    "-idefault -b -x"
+    "OCC"         "-idefault -b -snone"
+    "OCC + CU"    "-idefault -b -x -snone"
+    "OCC + STS"         "-idefault -b -sstatic"
+    "OCC + STS + CU"    "-idefault -b -x -sstatic"
+    "OCC + ATS"         "-idefault -b -sadaptive"
+    "OCC + ATS + CU"    "-idefault -b -x -sadaptive"
+    "TicToc"         "-itictoc -b -snone"
+    "TicToc + CU"    "-itictoc -b -x -snone"
+    "TicToc + STS"         "-itictoc -b -sstatic"
+    "TicToc + STS + CU"    "-itictoc -b -x -sstatic"
+    "TicToc + ATS"         "-itictoc -b -sadaptive"
+    "TicToc + ATS + CU"    "-itictoc -b -x -sadaptive"
   )
 
   WIKI_MVCC=(
-    "MVCC"        "-imvcc -b"
-    "MVCC + CU"   "-imvcc -b -x"
-  )
-
-  WIKI_OCC_BINARIES=(
-    "wiki_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  WIKI_MVCC_BINARIES=(
-    "wiki_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  WIKI_BOTH_BINARIES=(
-    "wiki_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+    "MVCC"         "-imvcc -b -snone"
+    "MVCC + CU"    "-imvcc -b -x -snone"
+    "MVCC + STS"         "-imvcc -b -sstatic"
+    "MVCC + STS + CU"    "-imvcc -b -x -sstatic"
+    "MVCC + ATS"         "-imvcc -b -sadaptive"
+    "MVCC + ATS + CU"    "-imvcc -b -x -sadaptive"
   )
 
   OCC_LABELS=("${WIKI_OCC[@]}")
   MVCC_LABELS=("${WIKI_MVCC[@]}")
-  OCC_BINARIES=("${WIKI_OCC_BINARIES[@]}" "${WIKI_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${WIKI_MVCC_BINARIES[@]}" "${WIKI_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("wiki_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1341,26 +1414,21 @@ setup_wiki_occ() {
   EXPERIMENT_NAME="Wikipedia (OCC only)"
 
   WIKI_OCC=(
-    "OCC"         "-idefault -b"
-    "OCC + CU"    "-idefault -b -x"
+    "OCC"         "-idefault -b -snone"
+    "OCC + CU"    "-idefault -b -x -snone"
+    "OCC + STS"         "-idefault -b -sstatic"
+    "OCC + STS + CU"    "-idefault -b -x -sstatic"
+    "OCC + ATS"         "-idefault -b -sadaptive"
+    "OCC + ATS + CU"    "-idefault -b -x -sadaptive"
   )
 
   WIKI_MVCC=(
   )
 
-  WIKI_OCC_BINARIES=(
-    "wiki_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  WIKI_MVCC_BINARIES=(
-  )
-  WIKI_BOTH_BINARIES=(
-    "wiki_bench" "-both" "NDEBUG=1" ""
-  )
-
   OCC_LABELS=("${WIKI_OCC[@]}")
   MVCC_LABELS=("${WIKI_MVCC[@]}")
-  OCC_BINARIES=("${WIKI_OCC_BINARIES[@]}" "${WIKI_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${WIKI_MVCC_BINARIES[@]}" "${WIKI_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("wiki_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1378,23 +1446,18 @@ setup_wiki_mvcc() {
   )
 
   WIKI_MVCC=(
-    "MVCC"        "-imvcc -b"
-    "MVCC + CU"   "-imvcc -b -x"
-  )
-
-  WIKI_OCC_BINARIES=(
-  )
-  WIKI_MVCC_BINARIES=(
-    "wiki_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  WIKI_BOTH_BINARIES=(
-    "wiki_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+    "MVCC"         "-imvcc -b -snone"
+    "MVCC + CU"    "-imvcc -b -x -snone"
+    "MVCC + STS"         "-imvcc -b -sstatic"
+    "MVCC + STS + CU"    "-imvcc -b -x -sstatic"
+    "MVCC + ATS"         "-imvcc -b -sadaptive"
+    "MVCC + ATS + CU"    "-imvcc -b -x -sadaptive"
   )
 
   OCC_LABELS=("${WIKI_OCC[@]}")
   MVCC_LABELS=("${WIKI_MVCC[@]}")
-  OCC_BINARIES=("${WIKI_OCC_BINARIES[@]}" "${WIKI_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${WIKI_MVCC_BINARIES[@]}" "${WIKI_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("wiki_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1409,26 +1472,21 @@ setup_wiki_tictoc() {
   EXPERIMENT_NAME="Wikipedia, TicToc"
 
   WIKI_OCC=(
-    "TicToc"      "-itictoc -b"
-    "TicToc + CU" "-itictoc -b -x"
+    "TicToc"         "-itictoc -b -snone"
+    "TicToc + CU"    "-itictoc -b -x -snone"
+    "TicToc + STS"         "-itictoc -b -sstatic"
+    "TicToc + STS + CU"    "-itictoc -b -x -sstatic"
+    "TicToc + ATS"         "-itictoc -b -sadaptive"
+    "TicToc + ATS + CU"    "-itictoc -b -x -sadaptive"
   )
 
   WIKI_MVCC=(
   )
 
-  WIKI_OCC_BINARIES=(
-    "wiki_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  WIKI_MVCC_BINARIES=(
-  )
-  WIKI_BOTH_BINARIES=(
-    "wiki_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
-  )
-
   OCC_LABELS=("${WIKI_OCC[@]}")
   MVCC_LABELS=("${WIKI_MVCC[@]}")
-  OCC_BINARIES=("${WIKI_OCC_BINARIES[@]}" "${WIKI_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${WIKI_MVCC_BINARIES[@]}" "${WIKI_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("wiki_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1444,29 +1502,33 @@ setup_ycsba() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (A)"         "-mA -idefault -g"
-    "OCC (A) + CU"    "-mA -idefault -g -x"
+    "OCC (A)"         "-mA -idefault -g -snone"
+    "OCC (A) + CU"    "-mA -idefault -g -x -snone"
+    "OCC (A) + STS"         "-mA -idefault -g -sstatic"
+    "OCC (A) + STS + CU"    "-mA -idefault -g -x -sstatic"
+    "OCC (A) + ATS"         "-mA -idefault -g -sadaptive"
+    "OCC (A) + ATS + CU"    "-mA -idefault -g -x -sadaptive"
+    "TicToc (A)"         "-mA -itictoc -g -snone"
+    "TicToc (A) + CU"    "-mA -itictoc -g -x -snone"
+    "TicToc (A) + STS"         "-mA -itictoc -g -sstatic"
+    "TicToc (A) + STS + CU"    "-mA -itictoc -g -x -sstatic"
+    "TicToc (A) + ATS"         "-mA -itictoc -g -sadaptive"
+    "TicToc (A) + ATS + CU"    "-mA -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
-    "MVCC (A)"        "-mA -imvcc -g"
-    "MVCC (A) + CU"   "-mA -imvcc -g -x"
-  )
-
-  YCSB_OCC_BINARIES=(
-    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  YCSB_MVCC_BINARIES=(
-    "ycsb_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+    "MVCC (A)"         "-mA -imvcc -g -snone"
+    "MVCC (A) + CU"    "-mA -imvcc -g -x -snone"
+    "MVCC (A) + STS"         "-mA -imvcc -g -sstatic"
+    "MVCC (A) + STS + CU"    "-mA -imvcc -g -x -sstatic"
+    "MVCC (A) + ATS"         "-mA -imvcc -g -sadaptive"
+    "MVCC (A) + ATS + CU"    "-mA -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
   MVCC_LABELS=("${YCSB_MVCC[@]}")
-  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${YCSB_MVCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1482,26 +1544,21 @@ setup_ycsba_occ() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (A)"         "-mA -idefault -g"
-    "OCC (A) + CU"    "-mA -idefault -g -x"
+    "OCC (A)"         "-mA -idefault -g -snone"
+    "OCC + CU (A)"    "-mA -idefault -g -x -snone"
+    "OCC + STS (A)"         "-mA -idefault -g -sstatic"
+    "OCC + STS + CU (A)"    "-mA -idefault -g -x -sstatic"
+    "OCC + ATS (A)"         "-mA -idefault -g -sadaptive"
+    "OCC + ATS + CU (A)"    "-mA -idefault -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
   )
 
-  YCSB_OCC_BINARIES=(
-    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  YCSB_MVCC_BINARIES=(
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
-  )
-
   OCC_LABELS=("${YCSB_OCC[@]}")
-  MVCC_LABELS=()
-  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=()
+  MVCC_LABELS=("${YCSB_MVCC[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1552,31 +1609,33 @@ setup_ycsba_semopts() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + CU (A)"    "-mA -idefault -g -x"
-    "TicToc + CU (A)" "-mA -itictoc -g -x"
-    "OCC (A)"         "-mA -idefault -g"
-    "TicToc (A)"      "-mA -itictoc -g"
+    "OCC (A)"         "-mA -idefault -g -snone"
+    "OCC + CU (A)"    "-mA -idefault -g -x -snone"
+    "OCC + STS (A)"         "-mA -idefault -g -sstatic"
+    "OCC + STS + CU (A)"    "-mA -idefault -g -x -sstatic"
+    "OCC + ATS (A)"         "-mA -idefault -g -sadaptive"
+    "OCC + ATS + CU (A)"    "-mA -idefault -g -x -sadaptive"
+    "TicToc (A)"         "-mA -itictoc -g -snone"
+    "TicToc + CU (A)"    "-mA -itictoc -g -x -snone"
+    "TicToc + STS (A)"         "-mA -itictoc -g -sstatic"
+    "TicToc + STS + CU (A)"    "-mA -itictoc -g -x -sstatic"
+    "TicToc + ATS (A)"         "-mA -itictoc -g -sadaptive"
+    "TicToc + ATS + CU (A)"    "-mA -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
-    "MVCC + CU (A)" "-mA -imvcc -g -x"
-    "MVCC (A)"      "-mA -imvcc -g"
-  )
-
-  YCSB_OCC_BINARIES=(
-    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  YCSB_MVCC_BINARIES=(
-    "ycsb_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+    "MVCC (A)"         "-mA -imvcc -g -snone"
+    "MVCC + CU (A)"    "-mA -imvcc -g -x -snone"
+    "MVCC + STS (A)"         "-mA -imvcc -g -sstatic"
+    "MVCC + STS + CU (A)"    "-mA -imvcc -g -x -sstatic"
+    "MVCC + ATS (A)"         "-mA -imvcc -g -sadaptive"
+    "MVCC + ATS + CU (A)"    "-mA -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
   MVCC_LABELS=("${YCSB_MVCC[@]}")
-  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${YCSB_MVCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1627,26 +1686,21 @@ setup_ycsba_tictoc() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "TicToc (A)"    "-mA -itictoc -g"
-    "TicToc + CU (A)" "-mA -itictoc -g -x"
+    "TicToc (A)"         "-mA -itictoc -g -snone"
+    "TicToc + CU (A)"    "-mA -itictoc -g -x -snone"
+    "TicToc + STS (A)"         "-mA -itictoc -g -sstatic"
+    "TicToc + STS + CU (A)"    "-mA -itictoc -g -x -sstatic"
+    "TicToc + ATS (A)"         "-mA -itictoc -g -sadaptive"
+    "TicToc + ATS + CU (A)"    "-mA -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
   )
 
-  YCSB_OCC_BINARIES=(
-    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  YCSB_MVCC_BINARIES=(
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1" ""
-  )
-
   OCC_LABELS=("${YCSB_OCC[@]}")
-  MVCC_LABELS=()
-  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=()
+  MVCC_LABELS=("${YCSB_MVCC[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1665,23 +1719,18 @@ setup_ycsba_mvcc() {
   )
 
   YCSB_MVCC=(
-    "MVCC (A)"        "-mA -imvcc -g"
-    "MVCC (A) + CU"   "-mA -imvcc -g -x"
+    "MVCC (A)"         "-mA -imvcc -g -snone"
+    "MVCC + CU (A)"    "-mA -imvcc -g -x -snone"
+    "MVCC + STS (A)"         "-mA -imvcc -g -sstatic"
+    "MVCC + STS + CU (A)"    "-mA -imvcc -g -x -sstatic"
+    "MVCC + ATS (A)"         "-mA -imvcc -g -sadaptive"
+    "MVCC + ATS + CU (A)"    "-mA -imvcc -g -x -sadaptive"
   )
 
-  YCSB_OCC_BINARIES=(
-  )
-  YCSB_MVCC_BINARIES=(
-    "ycsb_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
-  )
-
-  OCC_LABELS=()
+  OCC_LABELS=("${YCSB_OCC[@]}")
   MVCC_LABELS=("${YCSB_MVCC[@]}")
-  OCC_BINARIES=()
-  MVCC_BINARIES=("${YCSB_MVCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1697,29 +1746,33 @@ setup_ycsbb() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (B)"         "-mB -idefault -g"
-    "OCC (B) + CU"    "-mB -idefault -g -x"
+    "OCC (B)"         "-mB -idefault -g -snone"
+    "OCC + CU (B)"    "-mB -idefault -g -x -snone"
+    "OCC + STS (B)"         "-mB -idefault -g -sstatic"
+    "OCC + STS + CU (B)"    "-mB -idefault -g -x -sstatic"
+    "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
+    "OCC + ATS + CU (B)"    "-mB -idefault -g -x -sadaptive"
+    "TicToc (B)"         "-mB -itictoc -g -snone"
+    "TicToc + CU (B)"    "-mB -itictoc -g -x -snone"
+    "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
+    "TicToc + STS + CU (B)"    "-mB -itictoc -g -x -sstatic"
+    "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
+    "TicToc + ATS + CU (B)"    "-mB -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
-    "MVCC (B)"        "-mB -imvcc -g"
-    "MVCC (B) + CU"   "-mB -imvcc -g -x"
-  )
-
-  YCSB_OCC_BINARIES=(
-    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  YCSB_MVCC_BINARIES=(
-    "ycsb_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+    "MVCC (B)"         "-mB -imvcc -g -snone"
+    "MVCC + CU (B)"    "-mB -imvcc -g -x -snone"
+    "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
+    "MVCC + STS + CU (B)"    "-mB -imvcc -g -x -sstatic"
+    "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
+    "MVCC + ATS + CU (B)"    "-mB -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
   MVCC_LABELS=("${YCSB_MVCC[@]}")
-  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${YCSB_MVCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1735,26 +1788,21 @@ setup_ycsbb_occ() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (B)"         "-mB -idefault -g"
-    "OCC (B) + CU"    "-mB -idefault -g -x"
+    "OCC (B)"         "-mB -idefault -g -snone"
+    "OCC + CU (B)"    "-mB -idefault -g -x -snone"
+    "OCC + STS (B)"         "-mB -idefault -g -sstatic"
+    "OCC + STS + CU (B)"    "-mB -idefault -g -x -sstatic"
+    "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
+    "OCC + ATS + CU (B)"    "-mB -idefault -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
   )
 
-  YCSB_OCC_BINARIES=(
-    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  YCSB_MVCC_BINARIES=(
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
-  )
-
   OCC_LABELS=("${YCSB_OCC[@]}")
-  MVCC_LABELS=()
-  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=()
+  MVCC_LABELS=("${YCSB_MVCC[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1770,31 +1818,33 @@ setup_ycsbb_semopts() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + CU (B)"    "-mB -idefault -g -x"
-    "TicToc + CU (B)" "-mB -itictoc -g -x"
-    "OCC (B)"         "-mB -idefault -g"
-    "TicToc (B)"      "-mB -itictoc -g"
+    "OCC (B)"         "-mB -idefault -g -snone"
+    "OCC + CU (B)"    "-mB -idefault -g -x -snone"
+    "OCC + STS (B)"         "-mB -idefault -g -sstatic"
+    "OCC + STS + CU (B)"    "-mB -idefault -g -x -sstatic"
+    "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
+    "OCC + ATS + CU (B)"    "-mB -idefault -g -x -sadaptive"
+    "TicToc (B)"         "-mB -itictoc -g -snone"
+    "TicToc + CU (B)"    "-mB -itictoc -g -x -snone"
+    "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
+    "TicToc + STS + CU (B)"    "-mB -itictoc -g -x -sstatic"
+    "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
+    "TicToc + ATS + CU (B)"    "-mB -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
-    "MVCC + CU (B)" "-mB -imvcc -g -x"
-    "MVCC (B)"      "-mB -imvcc -g"
-  )
-
-  YCSB_OCC_BINARIES=(
-    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  YCSB_MVCC_BINARIES=(
-    "ycsb_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+    "MVCC (B)"         "-mB -imvcc -g -snone"
+    "MVCC + CU (B)"    "-mB -imvcc -g -x -snone"
+    "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
+    "MVCC + STS + CU (B)"    "-mB -imvcc -g -x -sstatic"
+    "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
+    "MVCC + ATS + CU (B)"    "-mB -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
   MVCC_LABELS=("${YCSB_MVCC[@]}")
-  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${YCSB_MVCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1810,26 +1860,21 @@ setup_ycsbb_tictoc() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "TicToc (B)"    "-mB -itictoc -g"
-    "TicToc + CU (B)" "-mB -itictoc -g -x"
+    "TicToc (B)"         "-mB -itictoc -g -snone"
+    "TicToc + CU (B)"    "-mB -itictoc -g -x -snone"
+    "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
+    "TicToc + STS + CU (B)"    "-mB -itictoc -g -x -sstatic"
+    "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
+    "TicToc + ATS + CU (B)"    "-mB -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
   )
 
-  YCSB_OCC_BINARIES=(
-    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  YCSB_MVCC_BINARIES=(
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1" ""
-  )
-
   OCC_LABELS=("${YCSB_OCC[@]}")
-  MVCC_LABELS=()
-  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=()
+  MVCC_LABELS=("${YCSB_MVCC[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1848,23 +1893,18 @@ setup_ycsbb_mvcc() {
   )
 
   YCSB_MVCC=(
-    "MVCC (B)"        "-mB -imvcc -g"
-    "MVCC (B) + CU"   "-mB -imvcc -g -x"
+    "MVCC (B)"         "-mB -imvcc -g -snone"
+    "MVCC + CU (B)"    "-mB -imvcc -g -x -snone"
+    "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
+    "MVCC + STS + CU (B)"    "-mB -imvcc -g -x -sstatic"
+    "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
+    "MVCC + ATS + CU (B)"    "-mB -imvcc -g -x -sadaptive"
   )
 
-  YCSB_OCC_BINARIES=(
-  )
-  YCSB_MVCC_BINARIES=(
-    "ycsb_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
-  )
-
-  OCC_LABELS=()
+  OCC_LABELS=("${YCSB_OCC[@]}")
   MVCC_LABELS=("${YCSB_MVCC[@]}")
-  OCC_BINARIES=()
-  MVCC_BINARIES=("${YCSB_MVCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs
@@ -1918,31 +1958,33 @@ setup_ycsbc_semopts() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + CU (C)"    "-mC -idefault -g -x"
-    "TicToc + CU (C)" "-mC -itictoc -g -x"
-    "OCC (C)"         "-mC -idefault -g"
-    "TicToc (C)"      "-mC -itictoc -g"
+    "OCC (C)"         "-mC -idefault -g -snone"
+    "OCC + CU (C)"    "-mC -idefault -g -x -snone"
+    "OCC + STS (C)"         "-mC -idefault -g -sstatic"
+    "OCC + STS + CU (C)"    "-mC -idefault -g -x -sstatic"
+    "OCC + ATS (C)"         "-mC -idefault -g -sadaptive"
+    "OCC + ATS + CU (C)"    "-mC -idefault -g -x -sadaptive"
+    "TicToc (C)"         "-mC -itictoc -g -snone"
+    "TicToc + CU (C)"    "-mC -itictoc -g -x -snone"
+    "TicToc + STS (C)"         "-mC -itictoc -g -sstatic"
+    "TicToc + STS + CU (C)"    "-mC -itictoc -g -x -sstatic"
+    "TicToc + ATS (C)"         "-mC -itictoc -g -sadaptive"
+    "TicToc + ATS + CU (C)"    "-mC -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
-    "MVCC + CU (C)" "-mC -imvcc -g -x"
-    "MVCC (C)"      "-mC -imvcc -g"
-  )
-
-  YCSB_OCC_BINARIES=(
-    "ycsb_bench" "-occ" "NDEBUG=1 FINE_GRAINED=1" " + SV"
-  )
-  YCSB_MVCC_BINARIES=(
-    "ycsb_bench" "-mvcc" "NDEBUG=1 FINE_GRAINED=1 INLINED_VERSIONS=1" " + SV"
-  )
-  YCSB_BOTH_BINARIES=(
-    "ycsb_bench" "-both" "NDEBUG=1 INLINED_VERSIONS=1" ""
+    "MVCC (C)"         "-mC -imvcc -g -snone"
+    "MVCC + CU (C)"    "-mC -imvcc -g -x -snone"
+    "MVCC + STS (C)"         "-mC -imvcc -g -sstatic"
+    "MVCC + STS + CU (C)"    "-mC -imvcc -g -x -sstatic"
+    "MVCC + ATS (C)"         "-mC -imvcc -g -sadaptive"
+    "MVCC + ATS + CU (C)"    "-mC -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
   MVCC_LABELS=("${YCSB_MVCC[@]}")
-  OCC_BINARIES=("${YCSB_OCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
-  MVCC_BINARIES=("${YCSB_MVCC_BINARIES[@]}" "${YCSB_BOTH_BINARIES[@]}")
+  OCC_BINARIES=("ycsb_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
 
   call_runs() {
     default_call_runs

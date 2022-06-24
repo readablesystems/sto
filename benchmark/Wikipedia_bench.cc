@@ -290,9 +290,33 @@ int main(int argc, const char * const *argv) {
             }
             break;
         case db_params_id::TicToc:
-            ret_code = params.enable_comm ?
-                    bench_access<db_tictoc_commute_node_params>::execute(params) :
-                    bench_access<db_tictoc_node_params>::execute(params);
+            if (params.enable_comm) {
+                switch (params.split_type) {
+                case db_split_type::None:
+                    return bench_access<db_params::db_tictoc_commute_params>::execute(params);
+                case db_split_type::Static:
+                    return bench_access<db_params::db_tictoc_sts_commute_params>::execute(params);
+                case db_split_type::Adaptive:
+                    return bench_access<db_params::db_tictoc_ats_commute_params>::execute(params);
+                default:
+                    std::cerr << "Invalid TS choice" << std::endl;
+                    ret_code = 1;
+                    break;
+                }
+            } else {
+                switch (params.split_type) {
+                case db_split_type::None:
+                    return bench_access<db_params::db_tictoc_params>::execute(params);
+                case db_split_type::Static:
+                    return bench_access<db_params::db_tictoc_sts_params>::execute(params);
+                case db_split_type::Adaptive:
+                    return bench_access<db_params::db_tictoc_ats_params>::execute(params);
+                default:
+                    std::cerr << "Invalid TS choice" << std::endl;
+                    ret_code = 1;
+                    break;
+                }
+            }
             break;
 #if 0
         case db_params_id::Opaque:

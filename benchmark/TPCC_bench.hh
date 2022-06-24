@@ -60,10 +60,10 @@ extern int tpcc_mcn(int, char const* const*);
 
 extern int tpcc_s(int, char const* const*);
 
-extern int tpcc_t(int, char const* const*);
-extern int tpcc_tc(int, char const* const*);
-extern int tpcc_tn(int, char const* const*);
-extern int tpcc_tcn(int, char const* const*);
+extern int tpcc_t(int, char const* const*, db_params::db_split_type);
+extern int tpcc_tc(int, char const* const*, db_params::db_split_type);
+extern int tpcc_tn(int, char const* const*, db_params::db_split_type);
+extern int tpcc_tcn(int, char const* const*, db_params::db_split_type);
 
 namespace tpcc {
 

@@ -429,9 +429,31 @@ int main(int argc, const char *const *argv) {
             std::cerr << "Warning: node tracking and commute options ignored." << std::endl;
         }
         if (enable_commute) {
-            ret_code = ycsb_access<db_tictoc_commute_params>::execute(argc, argv);
+            switch (split_type) {
+            case db_split_type::None:
+                return ycsb_access<db_tictoc_commute_params>::execute(argc, argv);
+            case db_split_type::Static:
+                return ycsb_access<db_tictoc_sts_commute_params>::execute(argc, argv);
+            case db_split_type::Adaptive:
+                return ycsb_access<db_tictoc_ats_commute_params>::execute(argc, argv);
+            default:
+                std::cerr << "Invalid TS choice" << std::endl;
+                ret_code = 1;
+                break;
+            }
         } else {
-            ret_code = ycsb_access<db_tictoc_params>::execute(argc, argv);
+            switch (split_type) {
+            case db_split_type::None:
+                return ycsb_access<db_tictoc_params>::execute(argc, argv);
+            case db_split_type::Static:
+                return ycsb_access<db_tictoc_sts_params>::execute(argc, argv);
+            case db_split_type::Adaptive:
+                return ycsb_access<db_tictoc_ats_params>::execute(argc, argv);
+            default:
+                std::cerr << "Invalid TS choice" << std::endl;
+                ret_code = 1;
+                break;
+            }
         }
         break;
     case db_params_id::MVCC:
