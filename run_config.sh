@@ -4,6 +4,9 @@
 #
 # (Sorted in lexicographical order by setup function name)
 #
+# setup_adapting_100opt: Adapting microbenchmark (100 ops/txn)
+# setup_adapting_1000opt: Adapting microbenchmark (1000 ops/txn)
+# setup_like: LIKE
 # setup_rubis: RUBiS
 # setup_tpcc: TPC-C, 1, 4, and scaling (#wh = #th) warehouses, OCC and MVCC
 # setup_tpcc_gc: TPC-C, 1 and scaling warehouses, gc cycle of 1ms, 100ms, 10s (off)
@@ -38,6 +41,132 @@
 # setup_ycsbx_semopts: YCSB Collapse on Writers + R/O semantic optimizations comparison
 # setup_ycsby_semopts: YCSB Collapse on Writers + R/W semantic optimizations comparison
 # setup_ycsbz_semopts: YCSB Collapse on R/W + Writers semantic optimizations comparison
+
+setup_adapting_100opt() {
+  EXPERIMENT_NAME="Adapting (100 ops/txn)"
+  ITERS=5
+
+  Adapting_OCC=(
+    "OCC"                "-idefault -g -v4 -snone -o100"
+    "OCC + DU"           "-idefault -g -v4 -snone -o100 -x"
+    "OCC + STS"          "-idefault -g -v4 -sstatic -o100"
+    "OCC + STS + DU"     "-idefault -g -v4 -sstatic -o100 -x"
+    "OCC + ATS"          "-idefault -g -v4 -sadaptive -o100"
+    "OCC + ATS + DU"     "-idefault -g -v4 -sadaptive -o100 -x"
+    "TicToc"             "-itictoc -g -v4 -snone -o100"
+    "TicToc + DU"        "-itictoc -g -v4 -snone -o100 -x"
+    "TicToc + STS"       "-itictoc -g -v4 -sstatic -o100"
+    "TicToc + STS + DU"  "-itictoc -g -v4 -sstatic -o100 -x"
+    "TicToc + ATS"       "-itictoc -g -v4 -sadaptive -o100"
+    "TicToc + ATS + DU"  "-itictoc -g -v4 -sadaptive -o100 -x"
+  )
+
+  Adapting_MVCC=(
+    "MVCC"               "-imvcc -g -v4 -snone -o100"
+    "MVCC + DU"          "-imvcc -g -v4 -snone -o100 -x"
+    "MVCC + STS"         "-imvcc -g -v4 -sstatic -o100"
+    "MVCC + STS + DU"    "-imvcc -g -v4 -sstatic -o100 -x"
+    "MVCC + ATS"         "-imvcc -g -v4 -sadaptive -o100"
+    "MVCC + ATS + DU"    "-imvcc -g -v4 -sadaptive -o100 -x"
+  )
+
+  OCC_LABELS=("${Adapting_OCC[@]}")
+  MVCC_LABELS=("${Adapting_MVCC[@]}")
+  OCC_BINARIES=("adapting_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
+
+  call_runs() {
+    default_call_runs
+  }
+
+  update_cmd() {
+    ``  # noop
+  }
+}
+
+setup_adapting_1000opt() {
+  EXPERIMENT_NAME="Adapting (1000 ops/txn)"
+  ITERS=5
+
+  Adapting_OCC=(
+    "OCC"                "-idefault -g -v4 -snone -o1000"
+    "OCC + DU"           "-idefault -g -v4 -snone -o1000 -x"
+    "OCC + STS"          "-idefault -g -v4 -sstatic -o1000"
+    "OCC + STS + DU"     "-idefault -g -v4 -sstatic -o1000 -x"
+    "OCC + ATS"          "-idefault -g -v4 -sadaptive -o1000"
+    "OCC + ATS + DU"     "-idefault -g -v4 -sadaptive -o1000 -x"
+    "TicToc"             "-itictoc -g -v4 -snone -o1000"
+    "TicToc + DU"        "-itictoc -g -v4 -snone -o1000 -x"
+    "TicToc + STS"       "-itictoc -g -v4 -sstatic -o1000"
+    "TicToc + STS + DU"  "-itictoc -g -v4 -sstatic -o1000 -x"
+    "TicToc + ATS"       "-itictoc -g -v4 -sadaptive -o1000"
+    "TicToc + ATS + DU"  "-itictoc -g -v4 -sadaptive -o1000 -x"
+  )
+
+  Adapting_MVCC=(
+    "MVCC"               "-imvcc -g -v4 -snone -o1000"
+    "MVCC + DU"          "-imvcc -g -v4 -snone -o1000 -x"
+    "MVCC + STS"         "-imvcc -g -v4 -sstatic -o1000"
+    "MVCC + STS + DU"    "-imvcc -g -v4 -sstatic -o1000 -x"
+    "MVCC + ATS"         "-imvcc -g -v4 -sadaptive -o1000"
+    "MVCC + ATS + DU"    "-imvcc -g -v4 -sadaptive -o1000 -x"
+  )
+
+  OCC_LABELS=("${Adapting_OCC[@]}")
+  MVCC_LABELS=("${Adapting_MVCC[@]}")
+  OCC_BINARIES=("adapting_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
+
+  call_runs() {
+    default_call_runs
+  }
+
+  update_cmd() {
+    ``  # noop
+  }
+}
+
+setup_like() {
+  EXPERIMENT_NAME="LIKE"
+  ITERS=5
+
+  LIKE_OCC=(
+    "OCC"                "-idefault -g -n0 -r10 -azipf -k1.4 -snone"
+    "OCC + DU"           "-idefault -g -n0 -r10 -azipf -k1.4 -snone -x"
+    "OCC + STS"          "-idefault -g -n0 -r10 -azipf -k1.4 -sstatic"
+    "OCC + STS + DU"     "-idefault -g -n0 -r10 -azipf -k1.4 -sstatic -x"
+    "OCC + ATS"          "-idefault -g -n0 -r10 -azipf -k1.4 -sadaptive"
+    "OCC + ATS + DU"     "-idefault -g -n0 -r10 -azipf -k1.4 -sadaptive -x"
+    "TicToc"             "-itictoc -g -n0 -r10 -azipf -k1.4 -snone"
+    "TicToc + DU"        "-itictoc -g -n0 -r10 -azipf -k1.4 -snone -x"
+    "TicToc + STS"       "-itictoc -g -n0 -r10 -azipf -k1.4 -sstatic"
+    "TicToc + STS + DU"  "-itictoc -g -n0 -r10 -azipf -k1.4 -sstatic -x"
+    "TicToc + ATS"       "-itictoc -g -n0 -r10 -azipf -k1.4 -sadaptive"
+    "TicToc + ATS + DU"  "-itictoc -g -n0 -r10 -azipf -k1.4 -sadaptive -x"
+  )
+
+  LIKE_MVCC=(
+    "MVCC"               "-imvcc -g -n0 -r10 -azipf -k1.4 -snone"
+    "MVCC + DU"          "-imvcc -g -n0 -r10 -azipf -k1.4 -snone -x"
+    "MVCC + STS"         "-imvcc -g -n0 -r10 -azipf -k1.4 -sstatic"
+    "MVCC + STS + DU"    "-imvcc -g -n0 -r10 -azipf -k1.4 -sstatic -x"
+    "MVCC + ATS"         "-imvcc -g -n0 -r10 -azipf -k1.4 -sadaptive"
+    "MVCC + ATS + DU"  "-imvcc -g -n0 -r10 -azipf -k1.4 -sadaptive -x"
+  )
+
+  OCC_LABELS=("${LIKE_OCC[@]}")
+  MVCC_LABELS=("${LIKE_MVCC[@]}")
+  OCC_BINARIES=("like_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
+
+  call_runs() {
+    default_call_runs
+  }
+
+  update_cmd() {
+    ``  # noop
+  }
+}
 
 setup_rubis() {
   EXPERIMENT_NAME="RUBiS"
