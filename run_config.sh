@@ -128,7 +128,7 @@ setup_adapting_1000opt() {
   }
 }
 
-setup_adapting_100opt() {
+setup_adapting_100opt_4sp() {
   EXPERIMENT_NAME="Adapting (100 ops/txn): 4 split policies active"
   ITERS=5
 
@@ -170,7 +170,7 @@ setup_adapting_100opt() {
   }
 }
 
-setup_adapting_1000opt() {
+setup_adapting_1000opt_4sp() {
   EXPERIMENT_NAME="Adapting (1000 ops/txn): 4 split policies active"
   ITERS=5
 
