@@ -1655,7 +1655,7 @@ setup_ycsba() {
   EXPERIMENT_NAME="YCSB-A"
   TIMEOUT=60
 
-    "OCC (A) + DU"    "-mA -idefault -g -x -snone"
+  YCSB_OCC=(
     "OCC (A) + STS"         "-mA -idefault -g -sstatic"
     "OCC (A) + STS + DU"    "-mA -idefault -g -x -sstatic"
     "OCC (A) + ATS"         "-mA -idefault -g -sadaptive"
