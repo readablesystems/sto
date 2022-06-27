@@ -548,12 +548,6 @@ setup_tpcc() {
   )
 
   TPCC_MVCC=(
-    "MVCC (W1)"         "-imvcc -g -r1000 -w1 -snone"
-    "MVCC + DU (W1)"    "-imvcc -g -r1000 -x -w1 -snone"
-    "MVCC (W4)"         "-imvcc -g -r1000 -w4 -snone"
-    "MVCC + DU (W4)"    "-imvcc -g -r1000 -x -w4 -snone"
-    "MVCC (W0)"         "-imvcc -g -r1000 -snone"
-    "MVCC + DU (W0)"    "-imvcc -g -r1000 -x -snone"
     "MVCC + STS (W1)"         "-imvcc -g -r1000 -w1 -sstatic"
     "MVCC + STS + DU (W1)"    "-imvcc -g -r1000 -x -w1 -sstatic"
     "MVCC + STS (W4)"         "-imvcc -g -r1000 -w4 -sstatic"
@@ -838,12 +832,6 @@ setup_tpcc_occ() {
   EXPERIMENT_NAME="TPC-C OCC"
 
   TPCC_OCC=(
-    "OCC (W1)"         "-idefault -g -r1000 -w1 -snone"
-    "OCC + DU (W1)"    "-idefault -g -r1000 -x -w1 -snone"
-    "OCC (W4)"         "-idefault -g -r1000 -w4 -snone"
-    "OCC + DU (W4)"    "-idefault -g -r1000 -x -w4 -snone"
-    "OCC (W0)"         "-idefault -g -r1000 -snone"
-    "OCC + DU (W0)"    "-idefault -g -r1000 -x -snone"
     "OCC + STS (W1)"         "-idefault -g -r1000 -w1 -sstatic"
     "OCC + STS + DU (W1)"    "-idefault -g -r1000 -x -w1 -sstatic"
     "OCC + STS (W4)"         "-idefault -g -r1000 -w4 -sstatic"
@@ -1042,12 +1030,6 @@ setup_tpcc_tictoc_full() {
   EXPERIMENT_NAME="TPC-C TicToc (full phantom protection)"
 
   TPCC_OCC=(
-    "TicToc (W1)"         "-itictoc -g -r1000 -n -w1 -snone"
-    "TicToc + DU (W1)"    "-itictoc -g -r1000 -n -x -w1 -snone"
-    "TicToc (W4)"         "-itictoc -g -r1000 -n -w4 -snone"
-    "TicToc + DU (W4)"    "-itictoc -g -r1000 -n -x -w4 -snone"
-    "TicToc (W0)"         "-itictoc -g -r1000 -n -snone"
-    "TicToc + DU (W0)"    "-itictoc -g -r1000 -n -x -snone"
     "TicToc + STS (W1)"         "-itictoc -g -r1000 -n -w1 -sstatic"
     "TicToc + STS + DU (W1)"    "-itictoc -g -r1000 -n -x -w1 -sstatic"
     "TicToc + STS (W4)"         "-itictoc -g -r1000 -n -w4 -sstatic"
@@ -1673,15 +1655,11 @@ setup_ycsba() {
   EXPERIMENT_NAME="YCSB-A"
   TIMEOUT=60
 
-  YCSB_OCC=(
-    "OCC (A)"         "-mA -idefault -g -snone"
     "OCC (A) + DU"    "-mA -idefault -g -x -snone"
     "OCC (A) + STS"         "-mA -idefault -g -sstatic"
     "OCC (A) + STS + DU"    "-mA -idefault -g -x -sstatic"
     "OCC (A) + ATS"         "-mA -idefault -g -sadaptive"
     "OCC (A) + ATS + DU"    "-mA -idefault -g -x -sadaptive"
-    "TicToc (A)"         "-mA -itictoc -g -snone"
-    "TicToc (A) + DU"    "-mA -itictoc -g -x -snone"
     "TicToc (A) + STS"         "-mA -itictoc -g -sstatic"
     "TicToc (A) + STS + DU"    "-mA -itictoc -g -x -sstatic"
     "TicToc (A) + ATS"         "-mA -itictoc -g -sadaptive"
@@ -1689,8 +1667,6 @@ setup_ycsba() {
   )
 
   YCSB_MVCC=(
-    "MVCC (A)"         "-mA -imvcc -g -snone"
-    "MVCC (A) + DU"    "-mA -imvcc -g -x -snone"
     "MVCC (A) + STS"         "-mA -imvcc -g -sstatic"
     "MVCC (A) + STS + DU"    "-mA -imvcc -g -x -sstatic"
     "MVCC (A) + ATS"         "-mA -imvcc -g -sadaptive"
@@ -1716,8 +1692,6 @@ setup_ycsba_occ() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (A)"         "-mA -idefault -g -snone"
-    "OCC + DU (A)"    "-mA -idefault -g -x -snone"
     "OCC + STS (A)"         "-mA -idefault -g -sstatic"
     "OCC + STS + DU (A)"    "-mA -idefault -g -x -sstatic"
     "OCC + ATS (A)"         "-mA -idefault -g -sadaptive"
@@ -1781,14 +1755,10 @@ setup_ycsba_semopts() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (A)"         "-mA -idefault -g -snone"
-    "OCC + DU (A)"    "-mA -idefault -g -x -snone"
     "OCC + STS (A)"         "-mA -idefault -g -sstatic"
     "OCC + STS + DU (A)"    "-mA -idefault -g -x -sstatic"
     "OCC + ATS (A)"         "-mA -idefault -g -sadaptive"
     "OCC + ATS + DU (A)"    "-mA -idefault -g -x -sadaptive"
-    "TicToc (A)"         "-mA -itictoc -g -snone"
-    "TicToc + DU (A)"    "-mA -itictoc -g -x -snone"
     "TicToc + STS (A)"         "-mA -itictoc -g -sstatic"
     "TicToc + STS + DU (A)"    "-mA -itictoc -g -x -sstatic"
     "TicToc + ATS (A)"         "-mA -itictoc -g -sadaptive"
@@ -1796,8 +1766,6 @@ setup_ycsba_semopts() {
   )
 
   YCSB_MVCC=(
-    "MVCC (A)"         "-mA -imvcc -g -snone"
-    "MVCC + DU (A)"    "-mA -imvcc -g -x -snone"
     "MVCC + STS (A)"         "-mA -imvcc -g -sstatic"
     "MVCC + STS + DU (A)"    "-mA -imvcc -g -x -sstatic"
     "MVCC + ATS (A)"         "-mA -imvcc -g -sadaptive"
@@ -1858,8 +1826,6 @@ setup_ycsba_tictoc() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "TicToc (A)"         "-mA -itictoc -g -snone"
-    "TicToc + DU (A)"    "-mA -itictoc -g -x -snone"
     "TicToc + STS (A)"         "-mA -itictoc -g -sstatic"
     "TicToc + STS + DU (A)"    "-mA -itictoc -g -x -sstatic"
     "TicToc + ATS (A)"         "-mA -itictoc -g -sadaptive"
@@ -1891,8 +1857,6 @@ setup_ycsba_mvcc() {
   )
 
   YCSB_MVCC=(
-    "MVCC (A)"         "-mA -imvcc -g -snone"
-    "MVCC + DU (A)"    "-mA -imvcc -g -x -snone"
     "MVCC + STS (A)"         "-mA -imvcc -g -sstatic"
     "MVCC + STS + DU (A)"    "-mA -imvcc -g -x -sstatic"
     "MVCC + ATS (A)"         "-mA -imvcc -g -sadaptive"
@@ -1918,14 +1882,10 @@ setup_ycsbb() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (B)"         "-mB -idefault -g -snone"
-    "OCC + DU (B)"    "-mB -idefault -g -x -snone"
     "OCC + STS (B)"         "-mB -idefault -g -sstatic"
     "OCC + STS + DU (B)"    "-mB -idefault -g -x -sstatic"
     "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
     "OCC + ATS + DU (B)"    "-mB -idefault -g -x -sadaptive"
-    "TicToc (B)"         "-mB -itictoc -g -snone"
-    "TicToc + DU (B)"    "-mB -itictoc -g -x -snone"
     "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
     "TicToc + STS + DU (B)"    "-mB -itictoc -g -x -sstatic"
     "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
@@ -1933,8 +1893,6 @@ setup_ycsbb() {
   )
 
   YCSB_MVCC=(
-    "MVCC (B)"         "-mB -imvcc -g -snone"
-    "MVCC + DU (B)"    "-mB -imvcc -g -x -snone"
     "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
     "MVCC + STS + DU (B)"    "-mB -imvcc -g -x -sstatic"
     "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
@@ -1960,8 +1918,6 @@ setup_ycsbb_occ() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (B)"         "-mB -idefault -g -snone"
-    "OCC + DU (B)"    "-mB -idefault -g -x -snone"
     "OCC + STS (B)"         "-mB -idefault -g -sstatic"
     "OCC + STS + DU (B)"    "-mB -idefault -g -x -sstatic"
     "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
@@ -1990,14 +1946,10 @@ setup_ycsbb_semopts() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (B)"         "-mB -idefault -g -snone"
-    "OCC + DU (B)"    "-mB -idefault -g -x -snone"
     "OCC + STS (B)"         "-mB -idefault -g -sstatic"
     "OCC + STS + DU (B)"    "-mB -idefault -g -x -sstatic"
     "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
     "OCC + ATS + DU (B)"    "-mB -idefault -g -x -sadaptive"
-    "TicToc (B)"         "-mB -itictoc -g -snone"
-    "TicToc + DU (B)"    "-mB -itictoc -g -x -snone"
     "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
     "TicToc + STS + DU (B)"    "-mB -itictoc -g -x -sstatic"
     "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
@@ -2005,8 +1957,6 @@ setup_ycsbb_semopts() {
   )
 
   YCSB_MVCC=(
-    "MVCC (B)"         "-mB -imvcc -g -snone"
-    "MVCC + DU (B)"    "-mB -imvcc -g -x -snone"
     "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
     "MVCC + STS + DU (B)"    "-mB -imvcc -g -x -sstatic"
     "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
@@ -2032,8 +1982,6 @@ setup_ycsbb_tictoc() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "TicToc (B)"         "-mB -itictoc -g -snone"
-    "TicToc + DU (B)"    "-mB -itictoc -g -x -snone"
     "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
     "TicToc + STS + DU (B)"    "-mB -itictoc -g -x -sstatic"
     "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
@@ -2065,8 +2013,6 @@ setup_ycsbb_mvcc() {
   )
 
   YCSB_MVCC=(
-    "MVCC (B)"         "-mB -imvcc -g -snone"
-    "MVCC + DU (B)"    "-mB -imvcc -g -x -snone"
     "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
     "MVCC + STS + DU (B)"    "-mB -imvcc -g -x -sstatic"
     "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
@@ -2130,14 +2076,10 @@ setup_ycsbc_semopts() {
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (C)"         "-mC -idefault -g -snone"
-    "OCC + DU (C)"    "-mC -idefault -g -x -snone"
     "OCC + STS (C)"         "-mC -idefault -g -sstatic"
     "OCC + STS + DU (C)"    "-mC -idefault -g -x -sstatic"
     "OCC + ATS (C)"         "-mC -idefault -g -sadaptive"
     "OCC + ATS + DU (C)"    "-mC -idefault -g -x -sadaptive"
-    "TicToc (C)"         "-mC -itictoc -g -snone"
-    "TicToc + DU (C)"    "-mC -itictoc -g -x -snone"
     "TicToc + STS (C)"         "-mC -itictoc -g -sstatic"
     "TicToc + STS + DU (C)"    "-mC -itictoc -g -x -sstatic"
     "TicToc + ATS (C)"         "-mC -itictoc -g -sadaptive"
@@ -2145,8 +2087,6 @@ setup_ycsbc_semopts() {
   )
 
   YCSB_MVCC=(
-    "MVCC (C)"         "-mC -imvcc -g -snone"
-    "MVCC + DU (C)"    "-mC -imvcc -g -x -snone"
     "MVCC + STS (C)"         "-mC -imvcc -g -sstatic"
     "MVCC + STS + DU (C)"    "-mC -imvcc -g -x -sstatic"
     "MVCC + ATS (C)"         "-mC -imvcc -g -sadaptive"
