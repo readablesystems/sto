@@ -4,8 +4,10 @@
 #
 # (Sorted in lexicographical order by setup function name)
 #
-# setup_adapting_100opt: Adapting microbenchmark (100 ops/txn)
-# setup_adapting_1000opt: Adapting microbenchmark (1000 ops/txn)
+# setup_adapting_100opt: Adapting microbenchmark (100 ops/txn), 2 split policies active
+# setup_adapting_1000opt: Adapting microbenchmark (1000 ops/txn), 2 split policies active
+# setup_adapting_100opt_4sp: Adapting microbenchmark (100 ops/txn), 4 split policies active
+# setup_adapting_1000opt_4sp: Adapting microbenchmark (1000 ops/txn), 4 split policies active
 # setup_like: LIKE
 # setup_rubis: RUBiS
 # setup_tpcc: TPC-C, 1, 4, and scaling (#wh = #th) warehouses, OCC and MVCC
@@ -47,27 +49,27 @@ setup_adapting_100opt() {
   ITERS=5
 
   Adapting_OCC=(
-    "OCC (100opt)"                "-idefault -g -v4 -snone -o100"
-    "OCC + DU (100opt)"           "-idefault -g -v4 -snone -o100 -x"
-    "OCC + STS (100opt)"          "-idefault -g -v4 -sstatic -o100"
-    "OCC + STS + DU (100opt)"     "-idefault -g -v4 -sstatic -o100 -x"
-    "OCC + ATS (100opt)"          "-idefault -g -v4 -sadaptive -o100"
-    "OCC + ATS + DU (100opt)"     "-idefault -g -v4 -sadaptive -o100 -x"
-    "TicToc (100opt)"             "-itictoc -g -v4 -snone -o100"
-    "TicToc + DU (100opt)"        "-itictoc -g -v4 -snone -o100 -x"
-    "TicToc + STS (100opt)"       "-itictoc -g -v4 -sstatic -o100"
-    "TicToc + STS + DU (100opt)"  "-itictoc -g -v4 -sstatic -o100 -x"
-    "TicToc + ATS (100opt)"       "-itictoc -g -v4 -sadaptive -o100"
-    "TicToc + ATS + DU (100opt)"  "-itictoc -g -v4 -sadaptive -o100 -x"
+    "OCC (100opt-2sp)"                "-idefault -g -v2 -snone -o100"
+    "OCC + DU (100opt-2sp)"           "-idefault -g -v2 -snone -o100 -x"
+    "OCC + STS (100opt-2sp)"          "-idefault -g -v2 -sstatic -o100"
+    "OCC + STS + DU (100opt-2sp)"     "-idefault -g -v2 -sstatic -o100 -x"
+    "OCC + ATS (100opt-2sp)"          "-idefault -g -v2 -sadaptive -o100"
+    "OCC + ATS + DU (100opt-2sp)"     "-idefault -g -v2 -sadaptive -o100 -x"
+    "TicToc (100opt-2sp)"             "-itictoc -g -v2 -snone -o100"
+    "TicToc + DU (100opt-2sp)"        "-itictoc -g -v2 -snone -o100 -x"
+    "TicToc + STS (100opt-2sp)"       "-itictoc -g -v2 -sstatic -o100"
+    "TicToc + STS + DU (100opt-2sp)"  "-itictoc -g -v2 -sstatic -o100 -x"
+    "TicToc + ATS (100opt-2sp)"       "-itictoc -g -v2 -sadaptive -o100"
+    "TicToc + ATS + DU (100opt-2sp)"  "-itictoc -g -v2 -sadaptive -o100 -x"
   )
 
   Adapting_MVCC=(
-    "MVCC (100opt)"               "-imvcc -g -v4 -snone -o100"
-    "MVCC + DU (100opt)"          "-imvcc -g -v4 -snone -o100 -x"
-    "MVCC + STS (100opt)"         "-imvcc -g -v4 -sstatic -o100"
-    "MVCC + STS + DU (100opt)"    "-imvcc -g -v4 -sstatic -o100 -x"
-    "MVCC + ATS (100opt)"         "-imvcc -g -v4 -sadaptive -o100"
-    "MVCC + ATS + DU (100opt)"    "-imvcc -g -v4 -sadaptive -o100 -x"
+    "MVCC (100opt-2sp)"               "-imvcc -g -v2 -snone -o100"
+    "MVCC + DU (100opt-2sp)"          "-imvcc -g -v2 -snone -o100 -x"
+    "MVCC + STS (100opt-2sp)"         "-imvcc -g -v2 -sstatic -o100"
+    "MVCC + STS + DU (100opt-2sp)"    "-imvcc -g -v2 -sstatic -o100 -x"
+    "MVCC + ATS (100opt-2sp)"         "-imvcc -g -v2 -sadaptive -o100"
+    "MVCC + ATS + DU (100opt-2sp)"    "-imvcc -g -v2 -sadaptive -o100 -x"
   )
 
   OCC_LABELS=("${Adapting_OCC[@]}")
@@ -85,31 +87,115 @@ setup_adapting_100opt() {
 }
 
 setup_adapting_1000opt() {
-    EXPERIMENT_NAME="Adapting (1000 ops/txn)"
+  EXPERIMENT_NAME="Adapting (1000 ops/txn)"
   ITERS=5
 
   Adapting_OCC=(
-    "OCC (1000opt)"                "-idefault -g -v4 -snone -o1000"
-    "OCC + DU (1000opt)"           "-idefault -g -v4 -snone -o1000 -x"
-    "OCC + STS (1000opt)"          "-idefault -g -v4 -sstatic -o1000"
-    "OCC + STS + DU (1000opt)"     "-idefault -g -v4 -sstatic -o1000 -x"
-    "OCC + ATS (1000opt)"          "-idefault -g -v4 -sadaptive -o1000"
-    "OCC + ATS + DU (1000opt)"     "-idefault -g -v4 -sadaptive -o1000 -x"
-    "TicToc (1000opt)"             "-itictoc -g -v4 -snone -o1000"
-    "TicToc + DU (1000opt)"        "-itictoc -g -v4 -snone -o1000 -x"
-    "TicToc + STS (1000opt)"       "-itictoc -g -v4 -sstatic -o1000"
-    "TicToc + STS + DU (1000opt)"  "-itictoc -g -v4 -sstatic -o1000 -x"
-    "TicToc + ATS (1000opt)"       "-itictoc -g -v4 -sadaptive -o1000"
-    "TicToc + ATS + DU (1000opt)"  "-itictoc -g -v4 -sadaptive -o1000 -x"
+    "OCC (1000opt-2sp)"                "-idefault -g -v2 -snone -o1000"
+    "OCC + DU (1000opt-2sp)"           "-idefault -g -v2 -snone -o1000 -x"
+    "OCC + STS (1000opt-2sp)"          "-idefault -g -v2 -sstatic -o1000"
+    "OCC + STS + DU (1000opt-2sp)"     "-idefault -g -v2 -sstatic -o1000 -x"
+    "OCC + ATS (1000opt-2sp)"          "-idefault -g -v2 -sadaptive -o1000"
+    "OCC + ATS + DU (1000opt-2sp)"     "-idefault -g -v2 -sadaptive -o1000 -x"
+    "TicToc (1000opt-2sp)"             "-itictoc -g -v2 -snone -o1000"
+    "TicToc + DU (1000opt-2sp)"        "-itictoc -g -v2 -snone -o1000 -x"
+    "TicToc + STS (1000opt-2sp)"       "-itictoc -g -v2 -sstatic -o1000"
+    "TicToc + STS + DU (1000opt-2sp)"  "-itictoc -g -v2 -sstatic -o1000 -x"
+    "TicToc + ATS (1000opt-2sp)"       "-itictoc -g -v2 -sadaptive -o1000"
+    "TicToc + ATS + DU (1000opt-2sp)"  "-itictoc -g -v2 -sadaptive -o1000 -x"
   )
 
   Adapting_MVCC=(
-    "MVCC (1000opt)"               "-imvcc -g -v4 -snone -o1000"
-    "MVCC + DU (1000opt)"          "-imvcc -g -v4 -snone -o1000 -x"
-    "MVCC + STS (1000opt)"         "-imvcc -g -v4 -sstatic -o1000"
-    "MVCC + STS + DU (1000opt)"    "-imvcc -g -v4 -sstatic -o1000 -x"
-    "MVCC + ATS (1000opt)"         "-imvcc -g -v4 -sadaptive -o1000"
-    "MVCC + ATS + DU (1000opt)"    "-imvcc -g -v4 -sadaptive -o1000 -x"
+    "MVCC (1000opt-2sp)"               "-imvcc -g -v2 -snone -o1000"
+    "MVCC + DU (1000opt-2sp)"          "-imvcc -g -v2 -snone -o1000 -x"
+    "MVCC + STS (1000opt-2sp)"         "-imvcc -g -v2 -sstatic -o1000"
+    "MVCC + STS + DU (1000opt-2sp)"    "-imvcc -g -v2 -sstatic -o1000 -x"
+    "MVCC + ATS (1000opt-2sp)"         "-imvcc -g -v2 -sadaptive -o1000"
+    "MVCC + ATS + DU (1000opt-2sp)"    "-imvcc -g -v2 -sadaptive -o1000 -x"
+  )
+
+  OCC_LABELS=("${Adapting_OCC[@]}")
+  MVCC_LABELS=("${Adapting_MVCC[@]}")
+  OCC_BINARIES=("adapting_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
+
+  call_runs() {
+    default_call_runs
+  }
+
+  update_cmd() {
+    ``  # noop
+  }
+}
+
+setup_adapting_100opt() {
+  EXPERIMENT_NAME="Adapting (100 ops/txn): 4 split policies active"
+  ITERS=5
+
+  Adapting_OCC=(
+    "OCC (100opt-4sp)"                "-idefault -g -v4 -snone -o100"
+    "OCC + DU (100opt-4sp)"           "-idefault -g -v4 -snone -o100 -x"
+    "OCC + STS (100opt-4sp)"          "-idefault -g -v4 -sstatic -o100"
+    "OCC + STS + DU (100opt-4sp)"     "-idefault -g -v4 -sstatic -o100 -x"
+    "OCC + ATS (100opt-4sp)"          "-idefault -g -v4 -sadaptive -o100"
+    "OCC + ATS + DU (100opt-4sp)"     "-idefault -g -v4 -sadaptive -o100 -x"
+    "TicToc (100opt-4sp)"             "-itictoc -g -v4 -snone -o100"
+    "TicToc + DU (100opt-4sp)"        "-itictoc -g -v4 -snone -o100 -x"
+    "TicToc + STS (100opt-4sp)"       "-itictoc -g -v4 -sstatic -o100"
+    "TicToc + STS + DU (100opt-4sp)"  "-itictoc -g -v4 -sstatic -o100 -x"
+    "TicToc + ATS (100opt-4sp)"       "-itictoc -g -v4 -sadaptive -o100"
+    "TicToc + ATS + DU (100opt-4sp)"  "-itictoc -g -v4 -sadaptive -o100 -x"
+  )
+
+  Adapting_MVCC=(
+    "MVCC (100opt-4sp)"               "-imvcc -g -v4 -snone -o100"
+    "MVCC + DU (100opt-4sp)"          "-imvcc -g -v4 -snone -o100 -x"
+    "MVCC + STS (100opt-4sp)"         "-imvcc -g -v4 -sstatic -o100"
+    "MVCC + STS + DU (100opt-4sp)"    "-imvcc -g -v4 -sstatic -o100 -x"
+    "MVCC + ATS (100opt-4sp)"         "-imvcc -g -v4 -sadaptive -o100"
+    "MVCC + ATS + DU (100opt-4sp)"    "-imvcc -g -v4 -sadaptive -o100 -x"
+  )
+
+  OCC_LABELS=("${Adapting_OCC[@]}")
+  MVCC_LABELS=("${Adapting_MVCC[@]}")
+  OCC_BINARIES=("adapting_bench" "" "NDEBUG=1 INLINED_VERSIONS=1" "")
+  MVCC_BINARIES=("${OCC_BINARIES[@]}")
+
+  call_runs() {
+    default_call_runs
+  }
+
+  update_cmd() {
+    ``  # noop
+  }
+}
+
+setup_adapting_1000opt() {
+  EXPERIMENT_NAME="Adapting (1000 ops/txn): 4 split policies active"
+  ITERS=5
+
+  Adapting_OCC=(
+    "OCC (1000opt-4sp)"                "-idefault -g -v4 -snone -o1000"
+    "OCC + DU (1000opt-4sp)"           "-idefault -g -v4 -snone -o1000 -x"
+    "OCC + STS (1000opt-4sp)"          "-idefault -g -v4 -sstatic -o1000"
+    "OCC + STS + DU (1000opt-4sp)"     "-idefault -g -v4 -sstatic -o1000 -x"
+    "OCC + ATS (1000opt-4sp)"          "-idefault -g -v4 -sadaptive -o1000"
+    "OCC + ATS + DU (1000opt-4sp)"     "-idefault -g -v4 -sadaptive -o1000 -x"
+    "TicToc (1000opt-4sp)"             "-itictoc -g -v4 -snone -o1000"
+    "TicToc + DU (1000opt-4sp)"        "-itictoc -g -v4 -snone -o1000 -x"
+    "TicToc + STS (1000opt-4sp)"       "-itictoc -g -v4 -sstatic -o1000"
+    "TicToc + STS + DU (1000opt-4sp)"  "-itictoc -g -v4 -sstatic -o1000 -x"
+    "TicToc + ATS (1000opt-4sp)"       "-itictoc -g -v4 -sadaptive -o1000"
+    "TicToc + ATS + DU (1000opt-4sp)"  "-itictoc -g -v4 -sadaptive -o1000 -x"
+  )
+
+  Adapting_MVCC=(
+    "MVCC (1000opt-4sp)"               "-imvcc -g -v4 -snone -o1000"
+    "MVCC + DU (1000opt-4sp)"          "-imvcc -g -v4 -snone -o1000 -x"
+    "MVCC + STS (1000opt-4sp)"         "-imvcc -g -v4 -sstatic -o1000"
+    "MVCC + STS + DU (1000opt-4sp)"    "-imvcc -g -v4 -sstatic -o1000 -x"
+    "MVCC + ATS (1000opt-4sp)"         "-imvcc -g -v4 -sadaptive -o1000"
+    "MVCC + ATS + DU (1000opt-4sp)"    "-imvcc -g -v4 -sadaptive -o1000 -x"
   )
 
   OCC_LABELS=("${Adapting_OCC[@]}")
@@ -151,7 +237,7 @@ setup_like() {
     "MVCC + STS"         "-imvcc -g -n0 -r10 -azipf -k1.4 -sstatic"
     "MVCC + STS + DU"    "-imvcc -g -n0 -r10 -azipf -k1.4 -sstatic -x"
     "MVCC + ATS"         "-imvcc -g -n0 -r10 -azipf -k1.4 -sadaptive"
-    "MVCC + ATS + DU"  "-imvcc -g -n0 -r10 -azipf -k1.4 -sadaptive -x"
+    "MVCC + ATS + DU"    "-imvcc -g -n0 -r10 -azipf -k1.4 -sadaptive -x"
   )
 
   OCC_LABELS=("${LIKE_OCC[@]}")
