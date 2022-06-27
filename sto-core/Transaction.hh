@@ -731,7 +731,9 @@ private:
         // New committed versions “happen” in write_snapshot_epoch
         thr.write_snapshot_epoch.store(global_epochs.global_epoch.load(std::memory_order_acquire), std::memory_order_release);
         thr.epoch.store(global_epochs.read_epoch.load(std::memory_order_acquire), std::memory_order_release);
-        thr.rcu_set.clean_until(global_epochs.active_epoch.load(std::memory_order_acquire));
+        // clean_until uses its parameter as an **include** upper bound, but
+        // threads might still be reading at the active epoch, so we need to exclude it
+        thr.rcu_set.clean_until(global_epochs.active_epoch.load(std::memory_order_acquire) - 1);
         thr.wtid.store(_TID.load(std::memory_order_relaxed), std::memory_order_release);
         if (thr.trans_start_callback)
             thr.trans_start_callback();
