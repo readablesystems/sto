@@ -625,6 +625,7 @@ private:
             older[cell] = hptr->prev_relaxed(cell);
             if (older[cell]) {
                 MvHistoryBase* expected = older[cell];
+                /*
                 while (!hptr->prev_[cell].compare_exchange_weak(expected, nullptr)) {
                     if (!expected) {
                         break;
@@ -632,6 +633,7 @@ private:
                     expected = older[cell];
                 }
                 assert(!expected || expected == older[cell]);
+                */
 
                 if (expected) {
 #if VERBOSE > 0
@@ -713,12 +715,14 @@ private:
                         --count;
                     } else {
                         MvHistoryBase* expected = older[ncell];
+                        /*
                         while (!h->prev_[ncell].compare_exchange_weak(expected, nullptr)) {
                             if (!expected) {
                                 break;
                             }
                             expected = older[ncell];
                         }
+                        */
                         assert(!expected || expected == older[ncell]);
                         if (expected) {
                             /*
