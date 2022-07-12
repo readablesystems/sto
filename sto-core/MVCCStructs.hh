@@ -333,11 +333,17 @@ public:
                 "object ", object(), " committed enq ", this, " tid ", wtid(),
                 " ", file, ":", line, "\n");
 #endif
-        MvStatus s;
+        MvStatus s = status();
         do {
-            s = status();
             assert_status((s & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
-        } while (!status_.compare_exchange_weak(s, static_cast<MvStatus>(s | ENQUEUED)));
+            if ((s & ENQUEUED) == ENQUEUED) {
+                break;
+            }
+        } while (!status_.compare_exchange_weak(
+                    s, static_cast<MvStatus>(s | ENQUEUED),
+                    std::memory_order_release,
+                    std::memory_order_relaxed
+                    ));
         Transaction::rcu_call(gc_committed_cb, this);
     }
 
