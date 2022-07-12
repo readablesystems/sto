@@ -953,7 +953,6 @@ public:
 #else
         auto* hnew = new_history();
 #endif
-        hnew->cells_.store(Cells, std::memory_order::memory_order_relaxed);
         if (std::is_trivial<T>::value) {
             hnew->v_ = T(); /* XXXX */
         }
@@ -1401,7 +1400,7 @@ protected:
     std::atomic<int> cuctr_ = 0;  // For gc-time flattening
     std::atomic<tid_type> flattenv_;
 
-    void setup(history_type* hnew) {
+    inline void setup(history_type* hnew) {
         for (size_t cell = 0; cell < Cells; ++cell) {
             h_[cell].store(hnew, std::memory_order::memory_order_relaxed);
         }
