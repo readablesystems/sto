@@ -320,30 +320,50 @@ public:
         return !this->status_is(DELETED) && !this->status_is(RESPLIT);
     }
 
+    inline bool cells_equals(ssize_t amount) {
+        if constexpr (Cells > 1) {
+            return cells_.load(std::memory_order_relaxed) == amount;
+        } else {
+            (void) amount;
+            return true;
+        }
+    }
+
+    inline ssize_t cells_increment(ssize_t amount) {
+        if constexpr (Cells > 1) {
+            return cells_.fetch_add(amount, std::memory_order_relaxed);
+        } else {
+            (void) amount;
+            return 0;
+        }
+    }
+
     // Enqueues the deleted version for future cleanup
-#if VERBOSE > 0
-    inline void enqueue_for_committed(const char* file, const int line)
-#else
-    inline void enqueue_for_committed(const char*, const int)
-#endif
-    {
+    inline void enqueue_for_committed(const char* file, const int line) {
         //printf("%p committed enq %p tid %zu %s:%d\n", object(), this, wtid(), file, line);
 #if VERBOSE > 0
         Transaction::fprint(
                 "object ", object(), " committed enq ", this, " tid ", wtid(),
                 " ", file, ":", line, "\n");
+#else
+        (void) file;
+        (void) line;
 #endif
         MvStatus s = status();
-        do {
+        if constexpr (Cells > 1) {
+            do {
+                assert_status((s & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
+                if ((s & ENQUEUED) == ENQUEUED) {
+                    break;
+                }
+            } while (!status_.compare_exchange_weak(
+                        s, static_cast<MvStatus>(s | ENQUEUED),
+                        std::memory_order_release,
+                        std::memory_order_relaxed
+                        ));
+        } else {
             assert_status((s & COMMITTED_DELTA) == COMMITTED, "enqueue_for_committed");
-            if ((s & ENQUEUED) == ENQUEUED) {
-                break;
-            }
-        } while (!status_.compare_exchange_weak(
-                    s, static_cast<MvStatus>(s | ENQUEUED),
-                    std::memory_order_release,
-                    std::memory_order_relaxed
-                    ));
+        }
         Transaction::rcu_call(gc_committed_cb, this);
     }
 
@@ -596,16 +616,20 @@ private:
         return true;
     }
 
-    static void gc_committed_cb(void* ptr) {
+    template <int C = Cells>
+    std::enable_if_t<(C > 1), void>
+    static gc_committed_cb(void* ptr) {
         history_type* hptr = static_cast<history_type*>(ptr);
 #if VERBOSE > 0
         Transaction::fprint("gc_committed_cb called on ", hptr, "\n");
 #endif
         //printf("%p gc cb on %p\n", hptr->object(), hptr);
         auto s = hptr->status();
+        /*
         if ((s & COMMITTED_DELTA) != COMMITTED) {
-            //printf("%p status %p: %d\n", hptr->object(), hptr, s);
+            printf("%p status %p: %d\n", hptr->object(), hptr, s);
         }
+        */
         hptr->assert_status((s & COMMITTED_DELTA) == COMMITTED, "gc_committed_cb");
         hptr->assert_status((s & ENQUEUED) == ENQUEUED, "gc_committed_cb enq flag");
         // Here is how we ensure that `gc_committed_cb` never conflicts
@@ -643,12 +667,12 @@ private:
 
                 if (expected) {
 #if VERBOSE > 0
-                    auto before = older[cell]->cells_.fetch_add(-1, std::memory_order_relaxed);
+                    auto before = older[cell]->cells_increment(-1);
                     Transaction::fprint(
                             "Precleared pointer from ", hptr, " to ", older[cell],
                             " on cell ", cell, ", ", before - 1, " remaining \n");
 #else
-                    older[cell]->cells_.fetch_add(-1, std::memory_order_relaxed);
+                    older[cell]->cells_increment(-1);
 #endif
                     ++count;
                 } else {
@@ -743,12 +767,12 @@ private:
                                     " on cell ", ncell, ", ", kcount, " remaining \n");
                             */
 #if VERBOSE > 0
-                            auto before = older[ncell]->cells_.fetch_add(-1, std::memory_order_relaxed);
+                            auto before = older[ncell]->cells_increment(-1);
                             Transaction::fprint(
                                     "Cleared pointer from ", h, " to ", older[ncell],
                                     " on cell ", ncell, ", ", before - 1, " remaining \n");
 #else
-                            older[ncell]->cells_.fetch_add(-1, std::memory_order_relaxed);
+                            older[ncell]->cells_increment(-1);
 #endif
                         } else {
                             older[ncell] = nullptr;
@@ -775,7 +799,7 @@ private:
                 //printf("%p skipping %p with %zx references left\n", obj, h, h->cells_.load());
             //} else {
                 //printf("%p enqueuing delete %p\n", obj, h);
-            //if (h->cells_.fetch_add(-iterations, std::memory_order_relaxed) == iterations) {
+            //if (h->cells_increment(-iterations) == iterations) {
             ssize_t gc_cells = 0;
             /*
             if ((status & ENQUEUED) != ENQUEUED && h->status_.compare_exchange_strong(
@@ -810,6 +834,41 @@ private:
         }
     }
 
+    template <int C = Cells>
+    std::enable_if_t<C == 1, void>
+    static gc_committed_cb(void* ptr) {
+        history_type* h = static_cast<history_type*>(ptr);
+        h->assert_status((h->status() & COMMITTED_DELTA) == COMMITTED, "gc_committed_cb");
+        // Here is how we ensure that `gc_committed_cb` never conflicts
+        // with a flatten operation.
+        // (1) When `gc_committed_cb` runs, `h->prev()`
+        // is definitively in the past. No active flattens
+        // will overlap with it.
+        // (2) `gc_flatten_cb`, the background flattener, stops at
+        // the first committed version it sees, which will always be
+        // in the present (not the past---all versions touched by
+        // `gc_committed_cb` are in the past).
+        // EXCEPTION: Some nontransactional accesses (`v()`, `nontrans_*`)
+        // ignore this protocol.
+        history_type* next = h->prev_relaxed();
+        while (next) {
+            h = next;
+            next = h->prev_relaxed();
+            MvStatus status = h->status();
+#if MVCC_GARBAGE_DEBUG
+            h->assert_status(!(status & (GARBAGE | GARBAGE2)), "gc_committed_cb garbage tracking");
+            while (!(status & GARBAGE)
+                   && h->status_.compare_exchange_weak(status, MvStatus(status | GARBAGE))) {
+            }
+#endif
+            Transaction::rcu_call(gc_deleted_cb, h);
+            h->assert_status(!(status & (LOCKED | PENDING)), "gc_committed_cb unlocked not pending");
+            if ((status & COMMITTED_DELTA) == COMMITTED) {
+                break;
+            }
+        }
+    }
+
     static void gc_deleted_cb(void* ptr) {
         history_type* h = static_cast<history_type*>(ptr);
 #if MVCC_GARBAGE_DEBUG
@@ -838,6 +897,7 @@ private:
         assert_status(!(s & ABORTED), "enflatten not aborted");
         if ((s & COMMITTED_DELTA) == COMMITTED_DELTA) {
             if (!(s & LOCKED)) {
+                TXP_INCREMENT(txp_mvcc_enflatten_calls);
                 flatten(s, true);
             } else {
                 TXP_INCREMENT(txp_mvcc_flat_spins);
@@ -869,11 +929,11 @@ private:
             }
         }
 
-        TXP_INCREMENT(txp_mvcc_flat_versions);
         T value {curr->v_};
         tid_type safe_wtid = curr->wtid();
         curr->update_rtid(this->wtid());
 
+        int flattenings = 0;
         while (!trace.empty()) {
             auto hnext = trace.top();
 
@@ -900,6 +960,8 @@ private:
 
             trace.pop();
             safe_wtid = hnext->wtid();
+            ++flattenings;
+            TXP_INCREMENT(txp_mvcc_flat_versions);
         }
 
         auto expected = COMMITTED_DELTA;
@@ -909,6 +971,7 @@ private:
 #endif
             v_ = value;
             TXP_INCREMENT(txp_mvcc_flat_commits);
+            TXP_ACCOUNT(txp_mvcc_flat_commit_versions, flattenings);
             status(COMMITTED);
             if (object()->is_inlined(this)) {
                 //
@@ -920,7 +983,9 @@ private:
             }
         } else {
             TXP_INCREMENT(txp_mvcc_flat_spins);
+            TXP_ACCOUNT(txp_mvcc_flat_spin_versions, flattenings);
         }
+        TXP_INCREMENT(txp_mvcc_flat_runs);
     }
 
     std::array<std::atomic<MvHistoryBase*>, Cells> prev_;
@@ -1041,10 +1106,8 @@ public:
         // Can only install pending versions
         hw->assert_status(hw->status_is(PENDING), "cp_lock pending");
 
-        //printf("%p cp_lock %p cell %zu\n", this, hw, cell);
-
         std::atomic<base_type*>* target = &h_[cell];
-        hw->cells_.fetch_add(1, std::memory_order_relaxed);
+        hw->cells_increment(1);
         while (true) {
             // Discover target atomic on which to do CAS
             base_type* t = *target;
@@ -1054,7 +1117,8 @@ public:
                     Sto::transaction()->mark_abort_because(
                             nullptr, "MVCC Lock: Invalid DU reordering.",
                             0, __FILE__, __LINE__, __FUNCTION__);
-                    hw->cells_.fetch_add(-1, std::memory_order_relaxed);
+                    hw->cells_increment(-1);
+                    TXP_INCREMENT(txp_mvcc_lock_vis_aborts);
                     return false;
                 }
                 target = &ht->prev_[cell];
@@ -1062,7 +1126,8 @@ public:
                 Sto::transaction()->mark_abort_because(
                         nullptr, "MVCC Lock: Predecessor RTID higher than this WTID.",
                         0, __FILE__, __LINE__, __FUNCTION__);
-                hw->cells_.fetch_add(-1, std::memory_order_relaxed);
+                hw->cells_increment(-1);
+                TXP_INCREMENT(txp_mvcc_lock_vis_aborts);
                 return false;
             } else {
                 // Properly link h's prev_
@@ -1105,6 +1170,7 @@ public:
                     Sto::transaction()->mark_abort_because(
                             nullptr, "MVCC Lock: Write version consistency check #1.",
                             0, __FILE__, __LINE__, __FUNCTION__);
+                    TXP_INCREMENT(txp_mvcc_lock_vc_aborts);
                     return false;
                 }
             }
@@ -1122,6 +1188,7 @@ public:
                 Sto::transaction()->mark_abort_because(
                         nullptr, reason.str(),
                         0, __FILE__, __LINE__, __FUNCTION__);
+                TXP_INCREMENT(txp_mvcc_lock_vc_aborts);
                 return false;
             }
             if (h->status_is(COMMITTED)) {
@@ -1136,6 +1203,7 @@ public:
             Sto::transaction()->mark_abort_because(
                     nullptr, "MVCC Lock: Poisoned version",
                     0, __FILE__, __LINE__, __FUNCTION__);
+            TXP_INCREMENT(txp_mvcc_lock_status_aborts);
             return false;
         }
     }
@@ -1151,23 +1219,31 @@ public:
 
         // Read version consistency check
         for (history_type* h = head(cell); h != hr; h = h->prev(cell)) {
-            if (!h->status_is(ABORTED) && h->wtid() < tid) {
+            auto status = h->status();
+            if (h->wtid() < tid) {
+                h->wait_if_pending(status);
+                assert((status & PENDING) != PENDING);
+                if ((status & ABORTED) != ABORTED) {
 #if VERBOSE > 0
-                Transaction::fprint(
-                        "hr: ", hr, "; h: ", h, "\n",
-                        hr->list_prevs(10, cell));
+                    Transaction::fprint(
+                            "hr: ", hr, "; h: ", h, "\n",
+                            hr->list_prevs(10, cell));
 #endif
-                /*
-                fprintf(stdout, "%p aborting %p @ %zu cell %zu at %p with status %x tid %zu/%zu\n", this, hr, hr->wtid(), cell, h, h->status(), h->wtid(), tid);
-                for (size_t cell = 0; cell < Cells; ++cell) {
-                    head(cell)->print_prevs(5, cell, stdout);
+                    /*
+                    fprintf(stdout, "%p aborting %p @ %zu cell %zu at %p with status %x tid %zu/%zu\n", this, hr, hr->wtid(), cell, h, h->status(), h->wtid(), tid);
+                    for (size_t cell = 0; cell < Cells; ++cell) {
+                        head(cell)->print_prevs(5, cell, stdout);
+                    }
+                    */
+                    TXP_INCREMENT(txp_mvcc_check_vc_aborts);
+                    return false;
                 }
-                */
-                return false;
             }
         }
 
-        return !hr->status_is(POISONED);
+        bool success = !hr->status_is(POISONED);
+        TXP_ACCOUNT(txp_mvcc_check_poison_aborts, !success);
+        return success;
     }
 
     // "Install" step: set status to committed
@@ -1212,10 +1288,12 @@ public:
                 h, " status ", h->status(),
                 " with ", h->cells_.load(std::memory_order_relaxed),
                 " cell connections remaining\n");
-        assert(h->cells_.load(std::memory_order_relaxed) == -1);
+        assert(h->cells_equals(-1));
+        /*
         for (size_t cell = 0; cell < Cells; ++cell) {
             assert(h->prev_relaxed(cell) == nullptr);
         }
+        */
 #endif
         if (is_inlined(h)) {
             //printf("%p deleting %p\n", this, h);
@@ -1362,7 +1440,7 @@ public:
                 if (h->status_is(DELTA)) {
                     h->enflatten();
                 }
-                h->status(COMMITTED);
+                h->status(COMMITTED | (h->status() & ENQUEUED));
                 return h->v();
             }
             next = h;

@@ -1069,7 +1069,7 @@ bool mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(
     assert(h);
     bool result = chain->template cp_lock<DBParams::Commute>(Sto::commit_tid(), h);
     if (!result && !h->status_is(MvStatus::ABORTED)) {
-        h->cells_.fetch_add(-1);  // For refcounter verification
+        h->cells_increment(-1);  // For refcounter verification
         chain->delete_history(h);
         TransProxy(txn, item).add_mvhistory(nullptr);
         TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);

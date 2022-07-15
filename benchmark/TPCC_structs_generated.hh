@@ -261,22 +261,22 @@ struct SplitPolicy<0> {
 template <>
 struct SplitPolicy<1> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 0 };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 1 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
-        if (cell == 1) {
+        if (cell == 0) {
             return 7;
         }
-        if (cell == 0) {
+        if (cell == 1) {
             return 1;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(warehouse_value* dest, warehouse_value* src) {
-        if constexpr(Cell == 1) {
+        if constexpr(Cell == 0) {
             dest->w_name = src->w_name;
             dest->w_street_1 = src->w_street_1;
             dest->w_street_2 = src->w_street_2;
@@ -285,7 +285,7 @@ struct SplitPolicy<1> {
             dest->w_zip = src->w_zip;
             dest->w_tax = src->w_tax;
         }
-        if constexpr(Cell == 0) {
+        if constexpr(Cell == 1) {
             dest->w_ytd = src->w_ytd;
         }
     }
@@ -757,22 +757,22 @@ struct SplitPolicy<0> {
 template <>
 struct SplitPolicy<1> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 0 };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 1 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
-        if (cell == 1) {
+        if (cell == 0) {
             return 7;
         }
-        if (cell == 0) {
+        if (cell == 1) {
             return 1;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(district_value* dest, district_value* src) {
-        if constexpr(Cell == 1) {
+        if constexpr(Cell == 0) {
             dest->d_name = src->d_name;
             dest->d_street_1 = src->d_street_1;
             dest->d_street_2 = src->d_street_2;
@@ -781,7 +781,7 @@ struct SplitPolicy<1> {
             dest->d_zip = src->d_zip;
             dest->d_tax = src->d_tax;
         }
-        if constexpr(Cell == 0) {
+        if constexpr(Cell == 1) {
             dest->d_ytd = src->d_ytd;
         }
     }
@@ -1678,22 +1678,22 @@ struct SplitPolicy<0> {
 template <>
 struct SplitPolicy<1> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0 };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
-        if (cell == 1) {
+        if (cell == 0) {
             return 13;
         }
-        if (cell == 0) {
+        if (cell == 1) {
             return 5;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(customer_value* dest, customer_value* src) {
-        if constexpr(Cell == 1) {
+        if constexpr(Cell == 0) {
             dest->c_first = src->c_first;
             dest->c_middle = src->c_middle;
             dest->c_last = src->c_last;
@@ -1708,7 +1708,7 @@ struct SplitPolicy<1> {
             dest->c_credit_lim = src->c_credit_lim;
             dest->c_discount = src->c_discount;
         }
-        if constexpr(Cell == 0) {
+        if constexpr(Cell == 1) {
             dest->c_balance = src->c_balance;
             dest->c_ytd_payment = src->c_ytd_payment;
             dest->c_payment_cnt = src->c_payment_cnt;
@@ -3104,29 +3104,29 @@ struct SplitPolicy<0> {
 template <>
 struct SplitPolicy<1> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 0 };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 1 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
-        if (cell == 1) {
+        if (cell == 0) {
             return 5;
         }
-        if (cell == 0) {
+        if (cell == 1) {
             return 1;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(orderline_value* dest, orderline_value* src) {
-        if constexpr(Cell == 1) {
+        if constexpr(Cell == 0) {
             dest->ol_i_id = src->ol_i_id;
             dest->ol_supply_w_id = src->ol_supply_w_id;
             dest->ol_quantity = src->ol_quantity;
             dest->ol_amount = src->ol_amount;
             dest->ol_dist_info = src->ol_dist_info;
         }
-        if constexpr(Cell == 0) {
+        if constexpr(Cell == 1) {
             dest->ol_delivery_d = src->ol_delivery_d;
         }
     }
@@ -3665,7 +3665,7 @@ struct stock_value {
 
 enum class NamedColumn : int {
     s_dists = 0,
-    s_data = 10,
+    s_data,
     s_quantity,
     s_ytd,
     s_order_cnt,
@@ -3744,10 +3744,10 @@ template <>
 struct accessor_info<NamedColumn::s_dists> {
     using NamedColumn = stock_value_datatypes::NamedColumn;
     using struct_type = RecordAccessor;
-    using type = fix_string<24>;
+    using type = std::array<fix_string<24>, 10>;
     using value_type = std::array<fix_string<24>, 10>;
     static constexpr NamedColumn Column = NamedColumn::s_dists;
-    static constexpr bool is_array = true;
+    static constexpr bool is_array = false;
 };
 
 template <>
@@ -3810,7 +3810,7 @@ struct StructAccessor {
     static inline typename accessor_info<RoundedNamedColumn<Column>()>::type& get_value(
             stock_value* ptr) {
         if constexpr (NamedColumn::s_dists <= Column && Column < NamedColumn::s_data) {
-            return ptr->s_dists[static_cast<std::underlying_type_t<NamedColumn>>(Column - NamedColumn::s_dists)];
+            return ptr->s_dists;
         }
         if constexpr (NamedColumn::s_data <= Column && Column < NamedColumn::s_quantity) {
             return ptr->s_data;
@@ -3837,29 +3837,20 @@ struct SplitPolicy;
 template <>
 struct SplitPolicy<0> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
         if (cell == 0) {
-            return 15;
+            return 6;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(stock_value* dest, stock_value* src) {
         if constexpr(Cell == 0) {
-            dest->s_dists[0] = src->s_dists[0];
-            dest->s_dists[1] = src->s_dists[1];
-            dest->s_dists[2] = src->s_dists[2];
-            dest->s_dists[3] = src->s_dists[3];
-            dest->s_dists[4] = src->s_dists[4];
-            dest->s_dists[5] = src->s_dists[5];
-            dest->s_dists[6] = src->s_dists[6];
-            dest->s_dists[7] = src->s_dists[7];
-            dest->s_dists[8] = src->s_dists[8];
-            dest->s_dists[9] = src->s_dists[9];
+            dest->s_dists = src->s_dists;
             dest->s_data = src->s_data;
             dest->s_quantity = src->s_quantity;
             dest->s_ytd = src->s_ytd;
@@ -3872,35 +3863,26 @@ struct SplitPolicy<0> {
 template <>
 struct SplitPolicy<1> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0 };
+    static constexpr int policy[ColCount] = { 0, 0, 1, 1, 1, 1 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
-        if (cell == 1) {
-            return 11;
-        }
         if (cell == 0) {
+            return 2;
+        }
+        if (cell == 1) {
             return 4;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(stock_value* dest, stock_value* src) {
-        if constexpr(Cell == 1) {
-            dest->s_dists[0] = src->s_dists[0];
-            dest->s_dists[1] = src->s_dists[1];
-            dest->s_dists[2] = src->s_dists[2];
-            dest->s_dists[3] = src->s_dists[3];
-            dest->s_dists[4] = src->s_dists[4];
-            dest->s_dists[5] = src->s_dists[5];
-            dest->s_dists[6] = src->s_dists[6];
-            dest->s_dists[7] = src->s_dists[7];
-            dest->s_dists[8] = src->s_dists[8];
-            dest->s_dists[9] = src->s_dists[9];
+        if constexpr(Cell == 0) {
+            dest->s_dists = src->s_dists;
             dest->s_data = src->s_data;
         }
-        if constexpr(Cell == 0) {
+        if constexpr(Cell == 1) {
             dest->s_quantity = src->s_quantity;
             dest->s_ytd = src->s_ytd;
             dest->s_order_cnt = src->s_order_cnt;
@@ -4013,18 +3995,8 @@ public:
         return vptrs_[cell_of(NamedColumn::s_dists)]->s_dists;
     }
 
-    inline typename accessor_info<NamedColumn::s_dists>::type& s_dists(
-            const std::underlying_type_t<NamedColumn> index) {
-        return vptrs_[cell_of(NamedColumn::s_dists)]->s_dists[index];
-    }
-
     inline const typename accessor_info<NamedColumn::s_dists>::value_type& s_dists() const {
         return vptrs_[cell_of(NamedColumn::s_dists)]->s_dists;
-    }
-
-    inline const typename accessor_info<NamedColumn::s_dists>::type& s_dists(
-            const std::underlying_type_t<NamedColumn> index) const {
-        return vptrs_[cell_of(NamedColumn::s_dists)]->s_dists[index];
     }
 
     inline typename accessor_info<NamedColumn::s_data>::value_type& s_data() {

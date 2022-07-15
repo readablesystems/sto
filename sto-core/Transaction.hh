@@ -251,15 +251,19 @@ enum txp {
     txp_hco_lock,
     txp_hco_invalid,
     txp_hco_abort,
+    // STO_PROFILE_COUNTERS > 1 only
     txp_mvcc_lock_status_aborts,
     txp_mvcc_lock_vc_aborts,
     txp_mvcc_lock_vis_aborts,
-    txp_mvcc_check_aborts,
-    // STO_PROFILE_COUNTERS > 1 only
+    txp_mvcc_check_vc_aborts,
+    txp_mvcc_check_poison_aborts,
     txp_mvcc_flat_runs,
     txp_mvcc_flat_versions,
     txp_mvcc_flat_commits,
+    txp_mvcc_flat_commit_versions,
     txp_mvcc_flat_spins,
+    txp_mvcc_flat_spin_versions,
+    txp_mvcc_enflatten_calls,
     txp_tpcc_no_aborts,
     txp_tpcc_no_commits,
     txp_tpcc_no_stage1,
@@ -1559,7 +1563,10 @@ public:
     }
 
     static TransactionTid::type read_tid() {
-        return TThread::txn->read_tid();
+        if (TThread::txn) {
+            return TThread::txn->read_tid();
+        }
+        return 0;
     }
 
     static TransactionTid::type write_tid() {
