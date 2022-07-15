@@ -46,7 +46,11 @@ extern void print_usage(const char *);
 // @endsection: clp parser definitions
 
 extern int tpcc_d(int, char const* const*, db_params::db_split_type);
+extern int tpcc_d_sts(int, char const* const*);
+extern int tpcc_d_ats(int, char const* const*);
 extern int tpcc_dc(int, char const* const*, db_params::db_split_type);
+extern int tpcc_dc_sts(int, char const* const*);
+extern int tpcc_dc_ats(int, char const* const*);
 extern int tpcc_dn(int, char const* const*);
 extern int tpcc_dcn(int, char const* const*);
 
@@ -54,16 +58,28 @@ extern int tpcc_o(int, char const* const*);
 extern int tpcc_oc(int, char const* const*);
 
 extern int tpcc_m(int, char const* const*, db_params::db_split_type);
+extern int tpcc_m_sts(int, char const* const*);
+extern int tpcc_m_ats(int, char const* const*);
 extern int tpcc_mc(int, char const* const*, db_params::db_split_type);
+extern int tpcc_mc_sts(int, char const* const*);
+extern int tpcc_mc_ats(int, char const* const*);
 extern int tpcc_mn(int, char const* const*);
 extern int tpcc_mcn(int, char const* const*);
 
 extern int tpcc_s(int, char const* const*);
 
 extern int tpcc_t(int, char const* const*, db_params::db_split_type);
+extern int tpcc_t_sts(int, char const* const*);
+extern int tpcc_t_ats(int, char const* const*);
 extern int tpcc_tc(int, char const* const*, db_params::db_split_type);
+extern int tpcc_tc_sts(int, char const* const*);
+extern int tpcc_tc_ats(int, char const* const*);
 extern int tpcc_tn(int, char const* const*, db_params::db_split_type);
+extern int tpcc_tn_sts(int, char const* const*);
+extern int tpcc_tn_ats(int, char const* const*);
 extern int tpcc_tcn(int, char const* const*, db_params::db_split_type);
+extern int tpcc_tcn_sts(int, char const* const*);
+extern int tpcc_tcn_ats(int, char const* const*);
 
 namespace tpcc {
 

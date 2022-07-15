@@ -10,9 +10,9 @@ int tpcc_m(int argc, char const* const* argv, db_split_type split) {
     case db_split_type::None:
         return tpcc_access<db_mvcc_params>::execute(argc, argv);
     case db_split_type::Static:
-        return tpcc_access<db_mvcc_sts_params>::execute(argc, argv);
+        return tpcc_m_sts(argc, argv);
     case db_split_type::Adaptive:
-        return tpcc_access<db_mvcc_ats_params>::execute(argc, argv);
+        return tpcc_m_ats(argc, argv);
     default:
         break;
     }
