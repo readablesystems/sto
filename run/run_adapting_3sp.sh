@@ -9,7 +9,7 @@ DRY_RUN=0  # >0 means do a dry run
 
 . run_config.sh
 
-setup_adapting_1000opt_4sp  # Change this accordingly!
+setup_adapting_3sp  # Change this accordingly!
 
 printf "Experiment: $EXPERIMENT_NAME ($ITERS trials)\n"
 
@@ -240,8 +240,8 @@ compile "${ALL_BINARIES[@]}"
 
 rm -rf results
 mkdir results
-RFILE=results/adapting_1000opt_4sp_results.txt
-DFILE=results/adapting_1000opt_4sp_delivery_results.txt
+RFILE=results/adapting_3sp_results.txt
+DFILE=results/adapting_3sp_delivery_results.txt
 TEMPDIR=$(mktemp -d /tmp/sto-XXXXXX)
 TEMPERR="$TEMPDIR/err"
 TEMPOUT="$TEMPDIR/out"
