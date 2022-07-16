@@ -518,10 +518,16 @@ void Transaction::print_stats() {
                         100.0 * (double) out.p(txp_mvcc_lock_vc_aborts) / out.p(txp_total_aborts));
             }
 
-            if (out.p(txp_mvcc_check_aborts)) {
-                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts due to MVCC check failure",
-                        out.p(txp_mvcc_check_aborts),
-                        100.0 * (double) out.p(txp_mvcc_check_aborts) / out.p(txp_total_aborts));
+            if (out.p(txp_mvcc_check_vc_aborts)) {
+                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts due to MVCC check version consistency failure",
+                        out.p(txp_mvcc_check_vc_aborts),
+                        100.0 * (double) out.p(txp_mvcc_check_vc_aborts) / out.p(txp_total_aborts));
+            }
+
+            if (out.p(txp_mvcc_check_poison_aborts)) {
+                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts due to MVCC check poison status failure",
+                        out.p(txp_mvcc_check_poison_aborts),
+                        100.0 * (double) out.p(txp_mvcc_check_poison_aborts) / out.p(txp_total_aborts));
             }
         }
         unsigned long long txc_commit_attempts = txc_total_starts - (txc_total_aborts - txc_commit_aborts);
@@ -542,12 +548,22 @@ void Transaction::print_stats() {
                 out.p(txp_max_transbuffer), out.p(txp_total_transbuffer));
     if (txp_count >= txp_mvcc_flat_spins) {
         fprintf(stderr, "$ MVCC flattening profiles:\n");
-        fprintf(stderr, "$       Enflatten runs: %llu\n", out.p(txp_mvcc_flat_runs));
+        fprintf(stderr, "$         Flatten runs: %llu\n", out.p(txp_mvcc_flat_runs));
+        fprintf(stderr, "$      Enflatten calls: %llu (%.3f%%)\n",
+                out.p(txp_mvcc_enflatten_calls),
+                100. * out.p(txp_mvcc_enflatten_calls) / out.p(txp_mvcc_flat_runs));
+        fprintf(stderr, "$    Flatten callbacks: %llu (%.3f%%)\n",
+                out.p(txp_mvcc_flat_runs) - out.p(txp_mvcc_enflatten_calls),
+                100. - 100. * out.p(txp_mvcc_enflatten_calls) / out.p(txp_mvcc_flat_runs));
         fprintf(stderr, "$   Flattened versions: %llu\n", out.p(txp_mvcc_flat_versions));
         fprintf(stderr, "$     Avg versions/run: %.3f\n", 1.0 * out.p(txp_mvcc_flat_versions) / out.p(txp_mvcc_flat_runs));
         fprintf(stderr, "$      Committing runs: %llu\n", out.p(txp_mvcc_flat_commits));
+        fprintf(stderr, "$        Version count: %llu\n", out.p(txp_mvcc_flat_commit_versions));
+        fprintf(stderr, "$      Versions/commit: %.3f\n", 1.0 * out.p(txp_mvcc_flat_commit_versions) / out.p(txp_mvcc_flat_commits));
         fprintf(stderr, "$        Spinning runs: %llu\n", out.p(txp_mvcc_flat_spins));
-        fprintf(stderr, "$     Avg spins/commit: %.3f\n", 1.0 * out.p(txp_mvcc_flat_spins) / out.p(txp_mvcc_flat_commits));
+        fprintf(stderr, "$        Version count: %llu\n", out.p(txp_mvcc_flat_spin_versions));
+        fprintf(stderr, "$        Versions/spin: %.3f\n", 1.0 * out.p(txp_mvcc_flat_spin_versions) / out.p(txp_mvcc_flat_spins));
+        fprintf(stderr, "$            Spin rate: %.3f%%\n", 100. * out.p(txp_mvcc_flat_spins) / out.p(txp_mvcc_flat_runs));
     }
     if (txp_count >= txp_tpcc_st_aborts) {
         fprintf(stderr, "$ TPCC txn profiles: commits(aborts), abort rate\n");

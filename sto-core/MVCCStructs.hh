@@ -298,6 +298,7 @@ private:
         assert_status(!(s & ABORTED), "enflatten not aborted");
         if ((s & COMMITTED_DELTA) == COMMITTED_DELTA) {
             if (!(s & LOCKED)) {
+                TXP_INCREMENT(txp_mvcc_enflatten_calls);
                 flatten(s, true);
             } else {
                 TXP_INCREMENT(txp_mvcc_flat_spins);
@@ -321,11 +322,11 @@ private:
             curr = curr->prev();
         }
 
-        TXP_INCREMENT(txp_mvcc_flat_versions);
         T value {curr->v_};
         tid_type safe_wtid = curr->wtid();
         curr->update_rtid(this->wtid());
 
+        int flattenings = 0;
         while (!trace.empty()) {
             auto hnext = trace.top();
 
@@ -352,12 +353,15 @@ private:
 
             trace.pop();
             safe_wtid = hnext->wtid();
+            ++flattenings;
+            TXP_INCREMENT(txp_mvcc_flat_versions);
         }
 
         auto expected = COMMITTED_DELTA;
         if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
             v_ = value;
             TXP_INCREMENT(txp_mvcc_flat_commits);
+            TXP_ACCOUNT(txp_mvcc_flat_commit_versions, flattenings);
             status(COMMITTED);
             enqueue_for_committed();
             if (fg) {
@@ -365,7 +369,9 @@ private:
             }
         } else {
             TXP_INCREMENT(txp_mvcc_flat_spins);
+            TXP_ACCOUNT(txp_mvcc_flat_spin_versions, flattenings);
         }
+        TXP_INCREMENT(txp_mvcc_flat_runs);
     }
 
     comm_type c_;
@@ -459,11 +465,13 @@ public:
             MvHistoryBase* t = *target;
             if (t->wtid_ > tid) {
                 if (may_commute && !hw->can_precede(static_cast<history_type*>(t))) {
+                    TXP_INCREMENT(txp_mvcc_lock_vis_aborts);
                     return false;
                 }
                 target = &t->prev_;
             } else if (!(t->status_.load(std::memory_order_acquire) & ABORTED)
                        && t->rtid_.load(std::memory_order_acquire) > tid) {
+                TXP_INCREMENT(txp_mvcc_lock_vis_aborts);
                 return false;
             } else {
                 // Properly link h's prev_
@@ -481,6 +489,7 @@ public:
             for (history_type* h = head(); h != hw; h = h->prev()) {
                 if (!hw->can_precede(h)) {
                     hw->status_abort(ABORTED_WV1);
+                    TXP_INCREMENT(txp_mvcc_lock_vc_aborts);
                     return false;
                 }
             }
@@ -492,6 +501,7 @@ public:
             if ((may_commute && !h->can_precede(hw))
                 || (h->status_is(COMMITTED) && h->rtid() > tid)) {
                 hw->status_abort(ABORTED_WV2);
+                TXP_INCREMENT(txp_mvcc_lock_vc_aborts);
                 return false;
             }
             if (h->status_is(COMMITTED)) {
@@ -503,6 +513,7 @@ public:
             return true;
         } else {
             hw->status_abort(ABORTED_POISON);
+            TXP_INCREMENT(txp_mvcc_lock_status_aborts);
             return false;
         }
     }
@@ -515,12 +526,19 @@ public:
 
         // Read version consistency check
         for (history_type* h = head(); h != hr; h = h->prev()) {
-            if (!h->status_is(ABORTED) && h->wtid() < tid) {
-                return false;
+            auto status = h->status();
+            if (h->wtid() < tid) {
+                h->wait_if_pending(status);
+                if ((status & ABORTED) != ABORTED) {
+                    TXP_INCREMENT(txp_mvcc_check_vc_aborts);
+                    return false;
+                }
             }
         }
 
-        return !hr->status_is(POISONED);
+        bool success = !hr->status_is(POISONED);
+        TXP_ACCOUNT(txp_mvcc_check_poison_aborts, !success);
+        return success;
     }
 
     // "Install" step: set status to committed
@@ -554,7 +572,7 @@ public:
             h->status_.store(UNUSED, std::memory_order_release);
         } else {
 #if MVCC_GARBAGE_DEBUG
-            memset(h, 0xFF, sizeof(MvHistoryBase));
+            memset((void*)h, 0xFF, sizeof(MvHistoryBase));
 #endif
             delete h;
         }

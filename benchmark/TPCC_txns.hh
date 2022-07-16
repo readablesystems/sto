@@ -64,6 +64,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     // begin txn
     RWTXN {
+    Sto::transaction()->special_txp = true;
     ++starts;
 
     int64_t wh_tax_rate, dt_tax_rate;
@@ -298,7 +299,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // begin txn
     RWTXN {
-    Sto::transaction()->special_txp = true;
     ++starts;
 
     // select warehouse row for update and retrieve warehouse info

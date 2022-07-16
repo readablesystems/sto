@@ -4,6 +4,8 @@
 #include "Transaction.hh"
 #include "DB_params.hh"
 
+#include "valgrind/callgrind.h"
+
 namespace bench {
 
 class db_profiler {
@@ -24,6 +26,7 @@ public:
     void start(Profiler::perf_mode mode) {
         if (spawn_perf_)
             perf_pid_ = Profiler::spawn("perf", mode);
+        CALLGRIND_START_INSTRUMENTATION;
         start_tsc_ = read_tsc();
     }
 
@@ -33,6 +36,7 @@ public:
 
     double finish(size_t num_txns) {
         end_tsc_ = read_tsc();
+        CALLGRIND_STOP_INSTRUMENTATION;
         if (spawn_perf_) {
             bool ok = Profiler::stop(perf_pid_);
             always_assert(ok, "killing profiler");
