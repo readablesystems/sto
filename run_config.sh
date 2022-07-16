@@ -620,30 +620,24 @@ setup_tpcc_gc() {
 }
 
 setup_tpcc_mvcc() {
-  EXPERIMENT_NAME="TPC-C MVCC"
+  EXPERIMENT_NAME="TPC-C MVCC (ATS compare)"
 
   TPCC_OCC=(
   )
 
   TPCC_MVCC=(
-    "MVCC (W1)"         "-imvcc -g -r1000 -w1 -snone"
-    "MVCC + DU (W1)"    "-imvcc -g -r1000 -x -w1 -snone"
-    "MVCC (W4)"         "-imvcc -g -r1000 -w4 -snone"
-    "MVCC + DU (W4)"    "-imvcc -g -r1000 -x -w4 -snone"
-    "MVCC (W0)"         "-imvcc -g -r1000 -snone"
-    "MVCC + DU (W0)"    "-imvcc -g -r1000 -x -snone"
-    "MVCC + STS (W1)"         "-imvcc -g -r1000 -w1 -sstatic"
-    "MVCC + STS + DU (W1)"    "-imvcc -g -r1000 -x -w1 -sstatic"
-    "MVCC + STS (W4)"         "-imvcc -g -r1000 -w4 -sstatic"
-    "MVCC + STS + DU (W4)"    "-imvcc -g -r1000 -x -w4 -sstatic"
-    "MVCC + STS (W0)"         "-imvcc -g -r1000 -sstatic"
-    "MVCC + STS + DU (W0)"    "-imvcc -g -r1000 -x -sstatic"
-    "MVCC + ATS (W1)"         "-imvcc -g -r1000 -w1 -sadaptive"
-    "MVCC + ATS + DU (W1)"    "-imvcc -g -r1000 -x -w1 -sadaptive"
-    "MVCC + ATS (W4)"         "-imvcc -g -r1000 -w4 -sadaptive"
-    "MVCC + ATS + DU (W4)"    "-imvcc -g -r1000 -x -w4 -sadaptive"
-    "MVCC + ATS (W0)"         "-imvcc -g -r1000 -sadaptive"
-    "MVCC + ATS + DU (W0)"    "-imvcc -g -r1000 -x -sadaptive"
+    "MVCC + STS (W1-compare)"         "-imvcc -g -r1000 -w1 -sstatic"
+    "MVCC + STS + DU (W1-compare)"    "-imvcc -g -r1000 -x -w1 -sstatic"
+    "MVCC + STS (W4-compare)"         "-imvcc -g -r1000 -w4 -sstatic"
+    "MVCC + STS + DU (W4-compare)"    "-imvcc -g -r1000 -x -w4 -sstatic"
+    "MVCC + STS (W0-compare)"         "-imvcc -g -r1000 -sstatic"
+    "MVCC + STS + DU (W0-compare)"    "-imvcc -g -r1000 -x -sstatic"
+    "MVCC + ATS (W1-compare)"         "-imvcc -g -r1000 -w1 -sadaptive"
+    "MVCC + ATS + DU (W1-compare)"    "-imvcc -g -r1000 -x -w1 -sadaptive"
+    "MVCC + ATS (W4-compare)"         "-imvcc -g -r1000 -w4 -sadaptive"
+    "MVCC + ATS + DU (W4-compare)"    "-imvcc -g -r1000 -x -w4 -sadaptive"
+    "MVCC + ATS (W0-compare)"         "-imvcc -g -r1000 -sadaptive"
+    "MVCC + ATS + DU (W0-compare)"    "-imvcc -g -r1000 -x -sadaptive"
   )
 
   OCC_LABELS=("${TPCC_OCC[@]}")
@@ -829,21 +823,21 @@ setup_tpcc_mvcc_ts_1gc() {
 }
 
 setup_tpcc_occ() {
-  EXPERIMENT_NAME="TPC-C OCC"
+  EXPERIMENT_NAME="TPC-C OCC (ATS compare)"
 
   TPCC_OCC=(
-    "OCC + STS (W1)"         "-idefault -g -r1000 -w1 -sstatic"
-    "OCC + STS + DU (W1)"    "-idefault -g -r1000 -x -w1 -sstatic"
-    "OCC + STS (W4)"         "-idefault -g -r1000 -w4 -sstatic"
-    "OCC + STS + DU (W4)"    "-idefault -g -r1000 -x -w4 -sstatic"
-    "OCC + STS (W0)"         "-idefault -g -r1000 -sstatic"
-    "OCC + STS + DU (W0)"    "-idefault -g -r1000 -x -sstatic"
-    "OCC + ATS (W1)"         "-idefault -g -r1000 -w1 -sadaptive"
-    "OCC + ATS + DU (W1)"    "-idefault -g -r1000 -x -w1 -sadaptive"
-    "OCC + ATS (W4)"         "-idefault -g -r1000 -w4 -sadaptive"
-    "OCC + ATS + DU (W4)"    "-idefault -g -r1000 -x -w4 -sadaptive"
-    "OCC + ATS (W0)"         "-idefault -g -r1000 -sadaptive"
-    "OCC + ATS + DU (W0)"    "-idefault -g -r1000 -x -sadaptive"
+    "OCC + STS (W1-compare)"         "-idefault -g -r1000 -w1 -sstatic"
+    "OCC + STS + DU (W1-compare)"    "-idefault -g -r1000 -x -w1 -sstatic"
+    "OCC + STS (W4-compare)"         "-idefault -g -r1000 -w4 -sstatic"
+    "OCC + STS + DU (W4-compare)"    "-idefault -g -r1000 -x -w4 -sstatic"
+    "OCC + STS (W0-compare)"         "-idefault -g -r1000 -sstatic"
+    "OCC + STS + DU (W0-compare)"    "-idefault -g -r1000 -x -sstatic"
+    "OCC + ATS (W1-compare)"         "-idefault -g -r1000 -w1 -sadaptive"
+    "OCC + ATS + DU (W1-compare)"    "-idefault -g -r1000 -x -w1 -sadaptive"
+    "OCC + ATS (W4-compare)"         "-idefault -g -r1000 -w4 -sadaptive"
+    "OCC + ATS + DU (W4-compare)"    "-idefault -g -r1000 -x -w4 -sadaptive"
+    "OCC + ATS (W0-compare)"         "-idefault -g -r1000 -sadaptive"
+    "OCC + ATS + DU (W0-compare)"    "-idefault -g -r1000 -x -sadaptive"
   )
 
   TPCC_MVCC=(
@@ -1027,21 +1021,21 @@ setup_tpcc_history_key() {
 }
 
 setup_tpcc_tictoc_full() {
-  EXPERIMENT_NAME="TPC-C TicToc (full phantom protection)"
+  EXPERIMENT_NAME="TPC-C TicToc (full phantom protection) (ATS compare)"
 
   TPCC_OCC=(
-    "TicToc + STS (W1)"         "-itictoc -g -r1000 -n -w1 -sstatic"
-    "TicToc + STS + DU (W1)"    "-itictoc -g -r1000 -n -x -w1 -sstatic"
-    "TicToc + STS (W4)"         "-itictoc -g -r1000 -n -w4 -sstatic"
-    "TicToc + STS + DU (W4)"    "-itictoc -g -r1000 -n -x -w4 -sstatic"
-    "TicToc + STS (W0)"         "-itictoc -g -r1000 -n -sstatic"
-    "TicToc + STS + DU (W0)"    "-itictoc -g -r1000 -n -x -sstatic"
-    "TicToc + ATS (W1)"         "-itictoc -g -r1000 -n -w1 -sadaptive"
-    "TicToc + ATS + DU (W1)"    "-itictoc -g -r1000 -n -x -w1 -sadaptive"
-    "TicToc + ATS (W4)"         "-itictoc -g -r1000 -n -w4 -sadaptive"
-    "TicToc + ATS + DU (W4)"    "-itictoc -g -r1000 -n -x -w4 -sadaptive"
-    "TicToc + ATS (W0)"         "-itictoc -g -r1000 -n -sadaptive"
-    "TicToc + ATS + DU (W0)"    "-itictoc -g -r1000 -n -x -sadaptive"
+    "TicToc + STS (W1-compare)"         "-itictoc -g -r1000 -n -w1 -sstatic"
+    "TicToc + STS + DU (W1-compare)"    "-itictoc -g -r1000 -n -x -w1 -sstatic"
+    "TicToc + STS (W4-compare)"         "-itictoc -g -r1000 -n -w4 -sstatic"
+    "TicToc + STS + DU (W4-compare)"    "-itictoc -g -r1000 -n -x -w4 -sstatic"
+    "TicToc + STS (W0-compare)"         "-itictoc -g -r1000 -n -sstatic"
+    "TicToc + STS + DU (W0-compare)"    "-itictoc -g -r1000 -n -x -sstatic"
+    "TicToc + ATS (W1-compare)"         "-itictoc -g -r1000 -n -w1 -sadaptive"
+    "TicToc + ATS + DU (W1-compare)"    "-itictoc -g -r1000 -n -x -w1 -sadaptive"
+    "TicToc + ATS (W4-compare)"         "-itictoc -g -r1000 -n -w4 -sadaptive"
+    "TicToc + ATS + DU (W4-compare)"    "-itictoc -g -r1000 -n -x -w4 -sadaptive"
+    "TicToc + ATS (W0-compare)"         "-itictoc -g -r1000 -n -sadaptive"
+    "TicToc + ATS + DU (W0-compare)"    "-itictoc -g -r1000 -n -x -sadaptive"
   )
 
   TPCC_MVCC=(
@@ -1652,25 +1646,25 @@ setup_wiki_tictoc() {
 }
 
 setup_ycsba() {
-  EXPERIMENT_NAME="YCSB-A"
+  EXPERIMENT_NAME="YCSB-A (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (A) + STS"         "-mA -idefault -g -sstatic"
-    "OCC (A) + STS + DU"    "-mA -idefault -g -x -sstatic"
-    "OCC (A) + ATS"         "-mA -idefault -g -sadaptive"
-    "OCC (A) + ATS + DU"    "-mA -idefault -g -x -sadaptive"
-    "TicToc (A) + STS"         "-mA -itictoc -g -sstatic"
-    "TicToc (A) + STS + DU"    "-mA -itictoc -g -x -sstatic"
-    "TicToc (A) + ATS"         "-mA -itictoc -g -sadaptive"
-    "TicToc (A) + ATS + DU"    "-mA -itictoc -g -x -sadaptive"
+    "OCC (A-compare) + STS"         "-mA -idefault -g -sstatic"
+    "OCC (A-compare) + STS + DU"    "-mA -idefault -g -x -sstatic"
+    "OCC (A-compare) + ATS"         "-mA -idefault -g -sadaptive"
+    "OCC (A-compare) + ATS + DU"    "-mA -idefault -g -x -sadaptive"
+    "TicToc (A-compare) + STS"         "-mA -itictoc -g -sstatic"
+    "TicToc (A-compare) + STS + DU"    "-mA -itictoc -g -x -sstatic"
+    "TicToc (A-compare) + ATS"         "-mA -itictoc -g -sadaptive"
+    "TicToc (A-compare) + ATS + DU"    "-mA -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
-    "MVCC (A) + STS"         "-mA -imvcc -g -sstatic"
-    "MVCC (A) + STS + DU"    "-mA -imvcc -g -x -sstatic"
-    "MVCC (A) + ATS"         "-mA -imvcc -g -sadaptive"
-    "MVCC (A) + ATS + DU"    "-mA -imvcc -g -x -sadaptive"
+    "MVCC (A-compare) + STS"         "-mA -imvcc -g -sstatic"
+    "MVCC (A-compare) + STS + DU"    "-mA -imvcc -g -x -sstatic"
+    "MVCC (A-compare) + ATS"         "-mA -imvcc -g -sadaptive"
+    "MVCC (A-compare) + ATS + DU"    "-mA -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1688,14 +1682,14 @@ setup_ycsba() {
 }
 
 setup_ycsba_occ() {
-  EXPERIMENT_NAME="YCSB-A, OCC only"
+  EXPERIMENT_NAME="YCSB-A, OCC only (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + STS (A)"         "-mA -idefault -g -sstatic"
-    "OCC + STS + DU (A)"    "-mA -idefault -g -x -sstatic"
-    "OCC + ATS (A)"         "-mA -idefault -g -sadaptive"
-    "OCC + ATS + DU (A)"    "-mA -idefault -g -x -sadaptive"
+    "OCC + STS (A-compare)"         "-mA -idefault -g -sstatic"
+    "OCC + STS + DU (A-compare)"    "-mA -idefault -g -x -sstatic"
+    "OCC + ATS (A-compare)"         "-mA -idefault -g -sadaptive"
+    "OCC + ATS + DU (A-compare)"    "-mA -idefault -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
@@ -1751,25 +1745,25 @@ setup_ycsba_baselines() {
 }
 
 setup_ycsba_semopts() {
-  EXPERIMENT_NAME="YCSB-A Semantic optimizations, OCC vs TTCC vs MVCC"
+  EXPERIMENT_NAME="YCSB-A Semantic optimizations, OCC vs TTCC vs MVCC (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + STS (A)"         "-mA -idefault -g -sstatic"
-    "OCC + STS + DU (A)"    "-mA -idefault -g -x -sstatic"
-    "OCC + ATS (A)"         "-mA -idefault -g -sadaptive"
-    "OCC + ATS + DU (A)"    "-mA -idefault -g -x -sadaptive"
-    "TicToc + STS (A)"         "-mA -itictoc -g -sstatic"
-    "TicToc + STS + DU (A)"    "-mA -itictoc -g -x -sstatic"
-    "TicToc + ATS (A)"         "-mA -itictoc -g -sadaptive"
-    "TicToc + ATS + DU (A)"    "-mA -itictoc -g -x -sadaptive"
+    "OCC + STS (A-compare)"         "-mA -idefault -g -sstatic"
+    "OCC + STS + DU (A-compare)"    "-mA -idefault -g -x -sstatic"
+    "OCC + ATS (A-compare)"         "-mA -idefault -g -sadaptive"
+    "OCC + ATS + DU (A-compare)"    "-mA -idefault -g -x -sadaptive"
+    "TicToc + STS (A-compare)"         "-mA -itictoc -g -sstatic"
+    "TicToc + STS + DU (A-compare)"    "-mA -itictoc -g -x -sstatic"
+    "TicToc + ATS (A-compare)"         "-mA -itictoc -g -sadaptive"
+    "TicToc + ATS + DU (A-compare)"    "-mA -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
-    "MVCC + STS (A)"         "-mA -imvcc -g -sstatic"
-    "MVCC + STS + DU (A)"    "-mA -imvcc -g -x -sstatic"
-    "MVCC + ATS (A)"         "-mA -imvcc -g -sadaptive"
-    "MVCC + ATS + DU (A)"    "-mA -imvcc -g -x -sadaptive"
+    "MVCC + STS (A-compare)"         "-mA -imvcc -g -sstatic"
+    "MVCC + STS + DU (A-compare)"    "-mA -imvcc -g -x -sstatic"
+    "MVCC + ATS (A-compare)"         "-mA -imvcc -g -sadaptive"
+    "MVCC + ATS + DU (A-compare)"    "-mA -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1822,14 +1816,14 @@ setup_ycsbb_baselines() {
 }
 
 setup_ycsba_tictoc() {
-  EXPERIMENT_NAME="YCSB-A, TicToc only"
+  EXPERIMENT_NAME="YCSB-A, TicToc only (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
-    "TicToc + STS (A)"         "-mA -itictoc -g -sstatic"
-    "TicToc + STS + DU (A)"    "-mA -itictoc -g -x -sstatic"
-    "TicToc + ATS (A)"         "-mA -itictoc -g -sadaptive"
-    "TicToc + ATS + DU (A)"    "-mA -itictoc -g -x -sadaptive"
+    "TicToc + STS (A-compare)"         "-mA -itictoc -g -sstatic"
+    "TicToc + STS + DU (A-compare)"    "-mA -itictoc -g -x -sstatic"
+    "TicToc + ATS (A-compare)"         "-mA -itictoc -g -sadaptive"
+    "TicToc + ATS + DU (A-compare)"    "-mA -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
@@ -1850,17 +1844,17 @@ setup_ycsba_tictoc() {
 }
 
 setup_ycsba_mvcc() {
-  EXPERIMENT_NAME="YCSB-A, MVCC only, integrated TS"
+  EXPERIMENT_NAME="YCSB-A, MVCC only, integrated TS (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
   )
 
   YCSB_MVCC=(
-    "MVCC + STS (A)"         "-mA -imvcc -g -sstatic"
-    "MVCC + STS + DU (A)"    "-mA -imvcc -g -x -sstatic"
-    "MVCC + ATS (A)"         "-mA -imvcc -g -sadaptive"
-    "MVCC + ATS + DU (A)"    "-mA -imvcc -g -x -sadaptive"
+    "MVCC + STS (A-compare)"         "-mA -imvcc -g -sstatic"
+    "MVCC + STS + DU (A-compare)"    "-mA -imvcc -g -x -sstatic"
+    "MVCC + ATS (A-compare)"         "-mA -imvcc -g -sadaptive"
+    "MVCC + ATS + DU (A-compare)"    "-mA -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1878,25 +1872,25 @@ setup_ycsba_mvcc() {
 }
 
 setup_ycsbb() {
-  EXPERIMENT_NAME="YCSB-B"
+  EXPERIMENT_NAME="YCSB-B (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + STS (B)"         "-mB -idefault -g -sstatic"
-    "OCC + STS + DU (B)"    "-mB -idefault -g -x -sstatic"
-    "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
-    "OCC + ATS + DU (B)"    "-mB -idefault -g -x -sadaptive"
-    "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
-    "TicToc + STS + DU (B)"    "-mB -itictoc -g -x -sstatic"
-    "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
-    "TicToc + ATS + DU (B)"    "-mB -itictoc -g -x -sadaptive"
+    "OCC + STS (B-compare)"         "-mB -idefault -g -sstatic"
+    "OCC + STS + DU (B-compare)"    "-mB -idefault -g -x -sstatic"
+    "OCC + ATS (B-compare)"         "-mB -idefault -g -sadaptive"
+    "OCC + ATS + DU (B-compare)"    "-mB -idefault -g -x -sadaptive"
+    "TicToc + STS (B-compare)"         "-mB -itictoc -g -sstatic"
+    "TicToc + STS + DU (B-compare)"    "-mB -itictoc -g -x -sstatic"
+    "TicToc + ATS (B-compare)"         "-mB -itictoc -g -sadaptive"
+    "TicToc + ATS + DU (B-compare)"    "-mB -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
-    "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
-    "MVCC + STS + DU (B)"    "-mB -imvcc -g -x -sstatic"
-    "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
-    "MVCC + ATS + DU (B)"    "-mB -imvcc -g -x -sadaptive"
+    "MVCC + STS (B-compare)"         "-mB -imvcc -g -sstatic"
+    "MVCC + STS + DU (B-compare)"    "-mB -imvcc -g -x -sstatic"
+    "MVCC + ATS (B-compare)"         "-mB -imvcc -g -sadaptive"
+    "MVCC + ATS + DU (B-compare)"    "-mB -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1914,14 +1908,14 @@ setup_ycsbb() {
 }
 
 setup_ycsbb_occ() {
-  EXPERIMENT_NAME="YCSB-B, OCC only"
+  EXPERIMENT_NAME="YCSB-B, OCC only (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + STS (B)"         "-mB -idefault -g -sstatic"
-    "OCC + STS + DU (B)"    "-mB -idefault -g -x -sstatic"
-    "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
-    "OCC + ATS + DU (B)"    "-mB -idefault -g -x -sadaptive"
+    "OCC + STS (B-compare)"         "-mB -idefault -g -sstatic"
+    "OCC + STS + DU (B-compare)"    "-mB -idefault -g -x -sstatic"
+    "OCC + ATS (B-compare)"         "-mB -idefault -g -sadaptive"
+    "OCC + ATS + DU (B-compare)"    "-mB -idefault -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
@@ -1942,25 +1936,25 @@ setup_ycsbb_occ() {
 }
 
 setup_ycsbb_semopts() {
-  EXPERIMENT_NAME="YCSB-B Semantic optimizations, OCC vs TTCC vs MVCC"
+  EXPERIMENT_NAME="YCSB-B Semantic optimizations, OCC vs TTCC vs MVCC (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + STS (B)"         "-mB -idefault -g -sstatic"
-    "OCC + STS + DU (B)"    "-mB -idefault -g -x -sstatic"
-    "OCC + ATS (B)"         "-mB -idefault -g -sadaptive"
-    "OCC + ATS + DU (B)"    "-mB -idefault -g -x -sadaptive"
-    "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
-    "TicToc + STS + DU (B)"    "-mB -itictoc -g -x -sstatic"
-    "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
-    "TicToc + ATS + DU (B)"    "-mB -itictoc -g -x -sadaptive"
+    "OCC + STS (B-compare)"         "-mB -idefault -g -sstatic"
+    "OCC + STS + DU (B-compare)"    "-mB -idefault -g -x -sstatic"
+    "OCC + ATS (B-compare)"         "-mB -idefault -g -sadaptive"
+    "OCC + ATS + DU (B-compare)"    "-mB -idefault -g -x -sadaptive"
+    "TicToc + STS (B-compare)"         "-mB -itictoc -g -sstatic"
+    "TicToc + STS + DU (B-compare)"    "-mB -itictoc -g -x -sstatic"
+    "TicToc + ATS (B-compare)"         "-mB -itictoc -g -sadaptive"
+    "TicToc + ATS + DU (B-compare)"    "-mB -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
-    "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
-    "MVCC + STS + DU (B)"    "-mB -imvcc -g -x -sstatic"
-    "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
-    "MVCC + ATS + DU (B)"    "-mB -imvcc -g -x -sadaptive"
+    "MVCC + STS (B-compare)"         "-mB -imvcc -g -sstatic"
+    "MVCC + STS + DU (B-compare)"    "-mB -imvcc -g -x -sstatic"
+    "MVCC + ATS (B-compare)"         "-mB -imvcc -g -sadaptive"
+    "MVCC + ATS + DU (B-compare)"    "-mB -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -1978,14 +1972,14 @@ setup_ycsbb_semopts() {
 }
 
 setup_ycsbb_tictoc() {
-  EXPERIMENT_NAME="YCSB-B, TicToc only"
+  EXPERIMENT_NAME="YCSB-B, TicToc only (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
-    "TicToc + STS (B)"         "-mB -itictoc -g -sstatic"
-    "TicToc + STS + DU (B)"    "-mB -itictoc -g -x -sstatic"
-    "TicToc + ATS (B)"         "-mB -itictoc -g -sadaptive"
-    "TicToc + ATS + DU (B)"    "-mB -itictoc -g -x -sadaptive"
+    "TicToc + STS (B-compare)"         "-mB -itictoc -g -sstatic"
+    "TicToc + STS + DU (B-compare)"    "-mB -itictoc -g -x -sstatic"
+    "TicToc + ATS (B-compare)"         "-mB -itictoc -g -sadaptive"
+    "TicToc + ATS + DU (B-compare)"    "-mB -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
@@ -2006,17 +2000,17 @@ setup_ycsbb_tictoc() {
 }
 
 setup_ycsbb_mvcc() {
-  EXPERIMENT_NAME="YCSB-B, MVCC only, integrated TS"
+  EXPERIMENT_NAME="YCSB-B, MVCC only, integrated TS (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
   )
 
   YCSB_MVCC=(
-    "MVCC + STS (B)"         "-mB -imvcc -g -sstatic"
-    "MVCC + STS + DU (B)"    "-mB -imvcc -g -x -sstatic"
-    "MVCC + ATS (B)"         "-mB -imvcc -g -sadaptive"
-    "MVCC + ATS + DU (B)"    "-mB -imvcc -g -x -sadaptive"
+    "MVCC + STS (B-compare)"         "-mB -imvcc -g -sstatic"
+    "MVCC + STS + DU (B-compare)"    "-mB -imvcc -g -x -sstatic"
+    "MVCC + ATS (B-compare)"         "-mB -imvcc -g -sadaptive"
+    "MVCC + ATS + DU (B-compare)"    "-mB -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
@@ -2034,17 +2028,17 @@ setup_ycsbb_mvcc() {
 }
 
 setup_ycsbc() {
-  EXPERIMENT_NAME="YCSB-C"
+  EXPERIMENT_NAME="YCSB-C (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC (C)"         "-mC -idefault -g"
-    "OCC (C) + DU"    "-mC -idefault -g -x"
+    "OCC (C-compare)"         "-mC -idefault -g"
+    "OCC (C-compare) + DU"    "-mC -idefault -g -x"
   )
 
   YCSB_MVCC=(
-    "MVCC (C)"        "-mC -imvcc -g"
-    "MVCC (C) + DU"   "-mC -imvcc -g -x"
+    "MVCC (C-compare)"        "-mC -imvcc -g"
+    "MVCC (C-compare) + DU"   "-mC -imvcc -g -x"
   )
 
   YCSB_OCC_BINARIES=(
@@ -2072,25 +2066,25 @@ setup_ycsbc() {
 }
 
 setup_ycsbc_semopts() {
-  EXPERIMENT_NAME="YCSB-C Semantic optimizations, OCC vs TTCC vs MVCC"
+  EXPERIMENT_NAME="YCSB-C Semantic optimizations, OCC vs TTCC vs MVCC (ATS compare)"
   TIMEOUT=60
 
   YCSB_OCC=(
-    "OCC + STS (C)"         "-mC -idefault -g -sstatic"
-    "OCC + STS + DU (C)"    "-mC -idefault -g -x -sstatic"
-    "OCC + ATS (C)"         "-mC -idefault -g -sadaptive"
-    "OCC + ATS + DU (C)"    "-mC -idefault -g -x -sadaptive"
-    "TicToc + STS (C)"         "-mC -itictoc -g -sstatic"
-    "TicToc + STS + DU (C)"    "-mC -itictoc -g -x -sstatic"
-    "TicToc + ATS (C)"         "-mC -itictoc -g -sadaptive"
-    "TicToc + ATS + DU (C)"    "-mC -itictoc -g -x -sadaptive"
+    "OCC + STS (C-compare)"         "-mC -idefault -g -sstatic"
+    "OCC + STS + DU (C-compare)"    "-mC -idefault -g -x -sstatic"
+    "OCC + ATS (C-compare)"         "-mC -idefault -g -sadaptive"
+    "OCC + ATS + DU (C-compare)"    "-mC -idefault -g -x -sadaptive"
+    "TicToc + STS (C-compare)"         "-mC -itictoc -g -sstatic"
+    "TicToc + STS + DU (C-compare)"    "-mC -itictoc -g -x -sstatic"
+    "TicToc + ATS (C-compare)"         "-mC -itictoc -g -sadaptive"
+    "TicToc + ATS + DU (C-compare)"    "-mC -itictoc -g -x -sadaptive"
   )
 
   YCSB_MVCC=(
-    "MVCC + STS (C)"         "-mC -imvcc -g -sstatic"
-    "MVCC + STS + DU (C)"    "-mC -imvcc -g -x -sstatic"
-    "MVCC + ATS (C)"         "-mC -imvcc -g -sadaptive"
-    "MVCC + ATS + DU (C)"    "-mC -imvcc -g -x -sadaptive"
+    "MVCC + STS (C-compare)"         "-mC -imvcc -g -sstatic"
+    "MVCC + STS + DU (C-compare)"    "-mC -imvcc -g -x -sstatic"
+    "MVCC + ATS (C-compare)"         "-mC -imvcc -g -sadaptive"
+    "MVCC + ATS + DU (C-compare)"    "-mC -imvcc -g -x -sadaptive"
   )
 
   OCC_LABELS=("${YCSB_OCC[@]}")
