@@ -240,8 +240,8 @@ compile "${ALL_BINARIES[@]}"
 
 rm -rf results
 mkdir results
-RFILE=results/tpcc_tictoc_results.txt
-DFILE=results/tpcc_tictoc_delivery_results.txt
+RFILE=results/tpcc_tictoc_compare_results.txt
+DFILE=results/tpcc_tictoc_compare_delivery_results.txt
 TEMPDIR=$(mktemp -d /tmp/sto-XXXXXX)
 TEMPERR="$TEMPDIR/err"
 TEMPOUT="$TEMPDIR/out"
