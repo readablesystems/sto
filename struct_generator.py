@@ -407,26 +407,40 @@ if (cell == {cell}) {{
 }}\
 ''', cell=cell, count=len(cells[cell]))
             self.writeln('return 0;')
-            self.unindent(2)
+            self.unindent(1)
             self.writelns('''\
-{indent}}}
-{indent}template <int Cell>
-{indent}inline static constexpr void copy_cell({struct}* dest, {struct}* src) {{\
+}}
+template <int Cell>
+inline static constexpr void copy_cell({struct}* dest, {struct}* src) {{\
 ''')
 
-            self.indent(2)
+            self.indent(1)
+            exclusive = 0
+            for cell, columns in cells.items():
+                if not len(columns):
+                    if cell == exclusive:
+                        exclusive += 1
+                    continue
+                if cell != exclusive:
+                    exclusive = -1
             for cell, columns in cells.items():
                 self.writeln('if constexpr(Cell == {cell}) {{', cell=cell)
                 self.indent()
-                for column in columns:
-                    self.writeln(
-                            'dest->{column} = src->{column};',
-                            column=members[column])
+                if cell == exclusive:
+                    self.writeln('*dest = *src;')
+                else:
+                    for column in columns:
+                        self.writeln(
+                                'dest->{column} = src->{column};',
+                                column=members[column])
                 self.unindent()
                 self.writeln('}}')
-            self.unindent(2)
+            self.writeln('(void) dest; (void) src;')
+            self.unindent(1)
 
-            self.writeln('{indent}}}')
+            self.writeln('}}')
+            self.unindent(1)
+
             self.writeln('}};\n')
 
     def convert_coercions(self):
@@ -540,6 +554,23 @@ if (index == {variant}) {{
 ''', variant=variant)
         self.unindent()
 
+        self.writelns('''\
+}}
+
+template <int Cell>
+inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {{\
+''')
+
+        self.indent()
+        for variant, _ in enumerate(self.mdata['splits'], start=0):
+            self.writelns('''\
+if (index == {variant}) {{
+{indent}SplitPolicy<{variant}>::copy_cell<Cell>(dest, src);
+{indent}return;
+}}\
+''', variant=variant)
+        self.unindent()
+
         '''
 {indent}if constexpr (Index >= 0 && Index < POLICIES) {{
 {indent}{indent}if (Index == index) {{
@@ -574,15 +605,23 @@ if (index == {variant}) {{
 {indent}return 0;
 }}
 
-void copy_into({struct}* vptr, int index=0) {{\
+inline void copy_into({struct}* vptr, int index) {{\
 ''')
         self.indent()
         for cell in range(max_splits + 1):
-            self.writeln(
-                    'copy_cell(index, {cell}, vptr, vptrs_[{cell}]);',
-                    cell=cell)
+            self.writelns('''\
+if (vptrs_[{cell}]) {{
+{indent}copy_split_cell<{cell}>(index, vptr, vptrs_[{cell}]);
+}}\
+''', cell=cell)
         self.unindent()
-        self.writeln('}}\n')
+        self.writelns('''\
+}}
+
+inline void copy_into({struct}* vptr) {{
+{indent}copy_into(vptr, splitindex_);
+}}\
+''')
 
     def convert_getters(self):
         '''Output the constexpr getters.'''

@@ -390,23 +390,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(ipblocks_row* dest, ipblocks_row* src) {
         if constexpr(Cell == 0) {
-            dest->ipb_address = src->ipb_address;
-            dest->ipb_user = src->ipb_user;
-            dest->ipb_by = src->ipb_by;
-            dest->ipb_by_text = src->ipb_by_text;
-            dest->ipb_reason = src->ipb_reason;
-            dest->ipb_timestamp = src->ipb_timestamp;
-            dest->ipb_auto = src->ipb_auto;
-            dest->ipb_anon_only = src->ipb_anon_only;
-            dest->ipb_create_account = src->ipb_create_account;
-            dest->ipb_enable_autoblock = src->ipb_enable_autoblock;
-            dest->ipb_expiry = src->ipb_expiry;
-            dest->ipb_range_start = src->ipb_range_start;
-            dest->ipb_range_end = src->ipb_range_end;
-            dest->ipb_deleted = src->ipb_deleted;
-            dest->ipb_block_email = src->ipb_block_email;
-            dest->ipb_allow_usertalk = src->ipb_allow_usertalk;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -481,6 +467,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -488,10 +482,15 @@ public:
         return 0;
     }
 
-    void copy_into(ipblocks_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(ipblocks_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(ipblocks_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::ipb_address>::value_type& ipb_address() {
         return vptrs_[cell_of(NamedColumn::ipb_address)]->ipb_address;
     }
@@ -985,18 +984,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(logging_row* dest, logging_row* src) {
         if constexpr(Cell == 0) {
-            dest->log_type = src->log_type;
-            dest->log_action = src->log_action;
-            dest->log_timestamp = src->log_timestamp;
-            dest->log_user = src->log_user;
-            dest->log_namespace = src->log_namespace;
-            dest->log_title = src->log_title;
-            dest->log_comment = src->log_comment;
-            dest->log_params = src->log_params;
-            dest->log_deleted = src->log_deleted;
-            dest->log_user_text = src->log_user_text;
-            dest->log_page = src->log_page;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -1071,6 +1061,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -1078,10 +1076,15 @@ public:
         return 0;
     }
 
-    void copy_into(logging_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(logging_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(logging_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::log_type>::value_type& log_type() {
         return vptrs_[cell_of(NamedColumn::log_type)]->log_type;
     }
@@ -1502,17 +1505,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(page_row* dest, page_row* src) {
         if constexpr(Cell == 0) {
-            dest->page_namespace = src->page_namespace;
-            dest->page_title = src->page_title;
-            dest->page_restrictions = src->page_restrictions;
-            dest->page_counter = src->page_counter;
-            dest->page_random = src->page_random;
-            dest->page_is_redirect = src->page_is_redirect;
-            dest->page_is_new = src->page_is_new;
-            dest->page_touched = src->page_touched;
-            dest->page_latest = src->page_latest;
-            dest->page_len = src->page_len;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -1548,6 +1543,7 @@ struct SplitPolicy<1> {
             dest->page_latest = src->page_latest;
             dest->page_len = src->page_len;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -1636,6 +1632,18 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+        if (index == 1) {
+            SplitPolicy<1>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -1646,11 +1654,18 @@ public:
         return 0;
     }
 
-    void copy_into(page_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
-        copy_cell(index, 1, vptr, vptrs_[1]);
+    inline void copy_into(page_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
+        if (vptrs_[1]) {
+            copy_split_cell<1>(index, vptr, vptrs_[1]);
+        }
     }
 
+    inline void copy_into(page_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::page_namespace>::value_type& page_namespace() {
         return vptrs_[cell_of(NamedColumn::page_namespace)]->page_namespace;
     }
@@ -1898,8 +1913,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(page_idx_row* dest, page_idx_row* src) {
         if constexpr(Cell == 0) {
-            dest->page_id = src->page_id;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -1974,6 +1990,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -1981,10 +2005,15 @@ public:
         return 0;
     }
 
-    void copy_into(page_idx_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(page_idx_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(page_idx_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::page_id>::value_type& page_id() {
         return vptrs_[cell_of(NamedColumn::page_id)]->page_id;
     }
@@ -2223,13 +2252,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(page_restrictions_row* dest, page_restrictions_row* src) {
         if constexpr(Cell == 0) {
-            dest->pr_page = src->pr_page;
-            dest->pr_type = src->pr_type;
-            dest->pr_level = src->pr_level;
-            dest->pr_cascade = src->pr_cascade;
-            dest->pr_user = src->pr_user;
-            dest->pr_expiry = src->pr_expiry;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -2304,6 +2329,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -2311,10 +2344,15 @@ public:
         return 0;
     }
 
-    void copy_into(page_restrictions_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(page_restrictions_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(page_restrictions_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::pr_page>::value_type& pr_page() {
         return vptrs_[cell_of(NamedColumn::pr_page)]->pr_page;
     }
@@ -2518,8 +2556,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(page_restrictions_idx_row* dest, page_restrictions_idx_row* src) {
         if constexpr(Cell == 0) {
-            dest->pr_id = src->pr_id;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -2594,6 +2633,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -2601,10 +2648,15 @@ public:
         return 0;
     }
 
-    void copy_into(page_restrictions_idx_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(page_restrictions_idx_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(page_restrictions_idx_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::pr_id>::value_type& pr_id() {
         return vptrs_[cell_of(NamedColumn::pr_id)]->pr_id;
     }
@@ -3185,32 +3237,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(recentchanges_row* dest, recentchanges_row* src) {
         if constexpr(Cell == 0) {
-            dest->rc_timestamp = src->rc_timestamp;
-            dest->rc_cur_time = src->rc_cur_time;
-            dest->rc_user = src->rc_user;
-            dest->rc_user_text = src->rc_user_text;
-            dest->rc_namespace = src->rc_namespace;
-            dest->rc_title = src->rc_title;
-            dest->rc_comment = src->rc_comment;
-            dest->rc_minor = src->rc_minor;
-            dest->rc_bot = src->rc_bot;
-            dest->rc_new = src->rc_new;
-            dest->rc_cur_id = src->rc_cur_id;
-            dest->rc_this_oldid = src->rc_this_oldid;
-            dest->rc_last_oldid = src->rc_last_oldid;
-            dest->rc_type = src->rc_type;
-            dest->rc_moved_to_ns = src->rc_moved_to_ns;
-            dest->rc_moved_to_title = src->rc_moved_to_title;
-            dest->rc_patrolled = src->rc_patrolled;
-            dest->rc_ip = src->rc_ip;
-            dest->rc_old_len = src->rc_old_len;
-            dest->rc_new_len = src->rc_new_len;
-            dest->rc_deleted = src->rc_deleted;
-            dest->rc_logid = src->rc_logid;
-            dest->rc_log_type = src->rc_log_type;
-            dest->rc_log_action = src->rc_log_action;
-            dest->rc_params = src->rc_params;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -3285,6 +3314,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -3292,10 +3329,15 @@ public:
         return 0;
     }
 
-    void copy_into(recentchanges_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(recentchanges_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(recentchanges_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::rc_timestamp>::value_type& rc_timestamp() {
         return vptrs_[cell_of(NamedColumn::rc_timestamp)]->rc_timestamp;
     }
@@ -3870,17 +3912,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(revision_row* dest, revision_row* src) {
         if constexpr(Cell == 0) {
-            dest->rev_page = src->rev_page;
-            dest->rev_text_id = src->rev_text_id;
-            dest->rev_comment = src->rev_comment;
-            dest->rev_user = src->rev_user;
-            dest->rev_user_text = src->rev_user_text;
-            dest->rev_timestamp = src->rev_timestamp;
-            dest->rev_minor_edit = src->rev_minor_edit;
-            dest->rev_deleted = src->rev_deleted;
-            dest->rev_len = src->rev_len;
-            dest->rev_parent_id = src->rev_parent_id;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -3955,6 +3989,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -3962,10 +4004,15 @@ public:
         return 0;
     }
 
-    void copy_into(revision_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(revision_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(revision_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::rev_page>::value_type& rev_page() {
         return vptrs_[cell_of(NamedColumn::rev_page)]->rev_page;
     }
@@ -4249,10 +4296,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(text_row* dest, text_row* src) {
         if constexpr(Cell == 0) {
-            dest->old_text = src->old_text;
-            dest->old_flags = src->old_flags;
-            dest->old_page = src->old_page;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -4327,6 +4373,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -4334,10 +4388,15 @@ public:
         return 0;
     }
 
-    void copy_into(text_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(text_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(text_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::old_text>::value_type& old_text() {
         return vptrs_[cell_of(NamedColumn::old_text)]->old_text;
     }
@@ -4742,21 +4801,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(useracct_row* dest, useracct_row* src) {
         if constexpr(Cell == 0) {
-            dest->user_name = src->user_name;
-            dest->user_real_name = src->user_real_name;
-            dest->user_password = src->user_password;
-            dest->user_newpassword = src->user_newpassword;
-            dest->user_newpass_time = src->user_newpass_time;
-            dest->user_email = src->user_email;
-            dest->user_options = src->user_options;
-            dest->user_token = src->user_token;
-            dest->user_email_authenticated = src->user_email_authenticated;
-            dest->user_email_token = src->user_email_token;
-            dest->user_email_token_expires = src->user_email_token_expires;
-            dest->user_registration = src->user_registration;
-            dest->user_touched = src->user_touched;
-            dest->user_editcount = src->user_editcount;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -4796,6 +4843,7 @@ struct SplitPolicy<1> {
             dest->user_touched = src->user_touched;
             dest->user_editcount = src->user_editcount;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -4884,6 +4932,18 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+        if (index == 1) {
+            SplitPolicy<1>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -4894,11 +4954,18 @@ public:
         return 0;
     }
 
-    void copy_into(useracct_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
-        copy_cell(index, 1, vptr, vptrs_[1]);
+    inline void copy_into(useracct_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
+        if (vptrs_[1]) {
+            copy_split_cell<1>(index, vptr, vptrs_[1]);
+        }
     }
 
+    inline void copy_into(useracct_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::user_name>::value_type& user_name() {
         return vptrs_[cell_of(NamedColumn::user_name)]->user_name;
     }
@@ -5190,8 +5257,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(useracct_idx_row* dest, useracct_idx_row* src) {
         if constexpr(Cell == 0) {
-            dest->user_id = src->user_id;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -5266,6 +5334,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -5273,10 +5349,15 @@ public:
         return 0;
     }
 
-    void copy_into(useracct_idx_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(useracct_idx_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(useracct_idx_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::user_id>::value_type& user_id() {
         return vptrs_[cell_of(NamedColumn::user_id)]->user_id;
     }
@@ -5425,8 +5506,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(user_groups_row* dest, user_groups_row* src) {
         if constexpr(Cell == 0) {
-            dest->ug_group = src->ug_group;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -5501,6 +5583,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -5508,10 +5598,15 @@ public:
         return 0;
     }
 
-    void copy_into(user_groups_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(user_groups_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(user_groups_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::ug_group>::value_type& ug_group() {
         return vptrs_[cell_of(NamedColumn::ug_group)]->ug_group;
     }
@@ -5660,8 +5755,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(watchlist_row* dest, watchlist_row* src) {
         if constexpr(Cell == 0) {
-            dest->wl_notificationtimestamp = src->wl_notificationtimestamp;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -5736,6 +5832,14 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -5743,10 +5847,15 @@ public:
         return 0;
     }
 
-    void copy_into(watchlist_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
+    inline void copy_into(watchlist_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
     }
 
+    inline void copy_into(watchlist_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::wl_notificationtimestamp>::value_type& wl_notificationtimestamp() {
         return vptrs_[cell_of(NamedColumn::wl_notificationtimestamp)]->wl_notificationtimestamp;
     }

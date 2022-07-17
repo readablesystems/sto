@@ -228,7 +228,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         (void)result;
         CHK(abort);
         assert(result);
-        int32_t s_quantity = value.s_quantity();
         auto s_dist = value.s_dists()[q_d_id - 1];
         //auto s_data = sv->s_data;
         //if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
@@ -240,6 +239,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
             commutators::Commutator<stock_value> comm(qty, wid != q_w_id);
             db.tbl_stocks(wid).update_row(row, comm);
         } else {
+            int32_t s_quantity = value.s_quantity();
             stock_value* new_sv = Sto::tx_alloc<stock_value>();
             value.copy_into(new_sv);
             if ((s_quantity - 10) >= (int32_t) qty)

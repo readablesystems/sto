@@ -192,12 +192,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(example_row* dest, example_row* src) {
         if constexpr(Cell == 0) {
-            dest->d_ytd = src->d_ytd;
-            dest->d_payment_cnt = src->d_payment_cnt;
-            dest->d_date = src->d_date;
-            dest->d_tax = src->d_tax;
-            dest->d_next_oid = src->d_next_oid;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -228,6 +225,7 @@ struct SplitPolicy<1> {
             dest->d_tax = src->d_tax;
             dest->d_next_oid = src->d_next_oid;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -316,6 +314,18 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+        if (index == 1) {
+            SplitPolicy<1>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -326,11 +336,18 @@ public:
         return 0;
     }
 
-    void copy_into(example_row* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
-        copy_cell(index, 1, vptr, vptrs_[1]);
+    inline void copy_into(example_row* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
+        if (vptrs_[1]) {
+            copy_split_cell<1>(index, vptr, vptrs_[1]);
+        }
     }
 
+    inline void copy_into(example_row* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::ytd>::value_type& d_ytd() {
         return vptrs_[cell_of(NamedColumn::ytd)]->d_ytd;
     }
