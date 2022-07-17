@@ -683,24 +683,22 @@ public:
             return ((!phantom_protection) || scan_track_node_version(node, version));
         };
 
-        std::array<AccessType, value_container_type::NUM_VERSIONS> cell_accesses;
+        auto cell_access = AccessType::none;
         if constexpr (DBParams::MVCC) {
-            auto each_cell = AccessType::none;
             switch (access) {
                 case RowAccess::ObserveValue:
                 case RowAccess::ObserveExists:
-                    each_cell = AccessType::read;
+                    cell_access = AccessType::read;
                     break;
                 case RowAccess::UpdateValue:
-                    each_cell = AccessType::update;
+                    cell_access = AccessType::update;
                     break;
                 default:
-                    each_cell = AccessType::none;
+                    cell_access = AccessType::none;
                     break;
             }
-            std::fill(cell_accesses.begin(), cell_accesses.end(), each_cell);
         } else {
-            (void) cell_accesses;
+            (void) cell_access;
         }
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
@@ -715,57 +713,73 @@ public:
                     return true;
                 }
 
+                std::array<value_type*, value_container_type::NUM_VERSIONS> values { nullptr };
+                std::fill(values.begin(), values.end(), nullptr);
+
                 auto [ancestor, split, _] =
                     e->row_container.mvcc_split_accesses(Sto::read_tid(), {});
                 (void)_;
 
-                std::array<value_type*, value_container_type::NUM_VERSIONS> values { nullptr };
-                std::fill(values.begin(), values.end(), nullptr);
+                const bool has_read = (cell_access & AccessType::read) != AccessType::none;
+                if (has_read) {
+                    std::array<mvhistory_type*, value_container_type::NUM_VERSIONS> histories = {};
 
-                bool ok = true;
-                for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
-                    auto is_row_item = cell == row_item_key.cell_num();
-                    auto item = is_row_item ? row_item : (
-                            index_read_my_write
-                            ? Sto::item(this, item_key_t(e, cell))
-                            : Sto::fresh_item(this, item_key_t(e, cell)));
-
-                    if (preferred_split >= 0) {
-                        item.set_preferred_split(preferred_split);
-                        if (split != preferred_split) {
-                            Sto::set_stats();
-                        }
+                    for (size_t i = 0; i < value_container_type::NUM_VERSIONS; ++i) {
+                        // ancestor == null means start at the head
+                        histories[i] = ancestor ?
+                            e->row_container.row.find_from(ancestor, Sto::read_tid(), i) :
+                            e->row_container.row.find(Sto::read_tid(), i);
                     }
 
-                    // ancestor == null means start at the head
-                    auto h = ancestor ?
-                        e->row_container.row.find_from(ancestor, Sto::read_tid(), cell) :
-                        e->row_container.row.find(Sto::read_tid(), cell);
-                    if (is_row_item) {
-                        if (h->status_is(DELETED)) {
-                            MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
-                            ok = false;
-                            break;
-                        } else if (index_read_my_write) {
-                            if (has_delete(item)) {
-                                ok = false;
-                                break;
-                            } else if (has_row_update(item)) {
-                                values[cell] = item.template raw_write_value<value_type*>();
-                                continue;
+                    // For DU, because a RESPLIT must be a non-DU version, we
+                    // know that we will never have to recompute a resplit
+                    // during flattening. This means that we just have to make
+                    // sure that we are accessing the necessary cells based on
+                    // the current split.
+                    mvhistory_type::adaptive_flatten(Sto::read_tid(), histories);
+
+                    bool ok = true;
+                    for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                        auto is_row_item = cell == row_item_key.cell_num();
+                        auto item = is_row_item ? row_item : (
+                                index_read_my_write
+                                ? Sto::item(this, item_key_t(e, cell))
+                                : Sto::fresh_item(this, item_key_t(e, cell)));
+
+                        if (preferred_split >= 0) {
+                            item.set_preferred_split(preferred_split);
+                            if (split != preferred_split) {
+                                Sto::set_stats();
                             }
                         }
-                    }
-                    if (cell_accesses[cell] != AccessType::none) {
-                        MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
-                        values[cell] = h->vp();
-                    }
-                }
 
-                if (!ok) {
-                    ret = true;
-                    count = false;
-                    return true;
+                        auto h = histories[cell];
+                        if (is_row_item) {
+                            if (h->status_is(DELETED)) {
+                                MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
+                                ok = false;
+                                break;
+                            } else if (index_read_my_write) {
+                                if (has_delete(item)) {
+                                    ok = false;
+                                    break;
+                                } else if (has_row_update(item)) {
+                                    values[cell] = item.template raw_write_value<value_type*>();
+                                    continue;
+                                }
+                            }
+                        }
+                        if (has_read) {
+                            MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
+                            values[cell] = h->vp();
+                        }
+                    }
+
+                    if (!ok) {
+                        ret = true;
+                        count = false;
+                        return true;
+                    }
                 }
 
                 ret = callback(key_type(key), e->row_container.get(split, values));
@@ -849,53 +863,8 @@ public:
                 auto [ancestor, split, cell_accesses] =
                     e->row_container.mvcc_split_accesses(Sto::read_tid(), accesses);
 
-                std::array<value_type*, value_container_type::NUM_VERSIONS> values { nullptr };
-                std::fill(values.begin(), values.end(), nullptr);
-
-                bool ok = true;
-                for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
-                    if (split >= 0 &&
-                            !value_type::RecordAccessor::cell_col_count(split, cell) &&
-                            cell_accesses[cell] == AccessType::none) {
-                        // Skip cell if it's not part of the split at all
-                        continue;
-                    }
-
-                    auto is_row_item = cell == row_item_key.cell_num();
-                    auto item = is_row_item ? row_item : (
-                            index_read_my_write
-                            ? Sto::item(this, item_key_t(e, cell))
-                            : Sto::fresh_item(this, item_key_t(e, cell)));
-
-                    if (preferred_split >= 0) {
-                        item.set_preferred_split(preferred_split);
-                        if (split != preferred_split) {
-                            Sto::set_stats();
-                        }
-                    }
-
-                    // ancestor == null means start at the head
-                    auto h = ancestor ?
-                        e->row_container.row.find_from(ancestor, Sto::read_tid(), cell) :
-                        e->row_container.row.find(Sto::read_tid(), cell);
-                    if (is_row_item) {
-                        if (h->status_is(DELETED)) {
-                            MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
-                            ok = false;
-                            break;
-                        } else if (index_read_my_write) {
-                            if (has_delete(item)) {
-                                ok = false;
-                                break;
-                            } else if (has_row_update(item)) {
-                                values[cell] = item.template raw_write_value<value_type*>();
-                                continue;
-                            }
-                        }
-                    }
-                    MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
-                    values[cell] = h->vp();
-                }
+                auto [ok, values] = mvcc_extract_and_access<value_container_type>(
+                        cell_accesses, this, e, ancestor, split, preferred_split);
 
                 if (!ok) {
                     ret = true;
