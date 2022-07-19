@@ -1219,8 +1219,8 @@ public:
 
         // Read version consistency check
         for (history_type* h = head(cell); h != hr; h = h->prev(cell)) {
-            auto status = h->status();
             if (h->wtid() < tid) {
+                auto status = h->status();
                 h->wait_if_pending(status);
                 assert((status & PENDING) != PENDING);
                 if ((status & ABORTED) != ABORTED) {

@@ -1704,22 +1704,22 @@ struct SplitPolicy<0> {
 template <>
 struct SplitPolicy<1> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1 };
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
-        if (cell == 0) {
+        if (cell == 1) {
             return 13;
         }
-        if (cell == 1) {
+        if (cell == 0) {
             return 5;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(customer_value* dest, customer_value* src) {
-        if constexpr(Cell == 0) {
+        if constexpr(Cell == 1) {
             dest->c_first = src->c_first;
             dest->c_middle = src->c_middle;
             dest->c_last = src->c_last;
@@ -1734,7 +1734,7 @@ struct SplitPolicy<1> {
             dest->c_credit_lim = src->c_credit_lim;
             dest->c_discount = src->c_discount;
         }
-        if constexpr(Cell == 1) {
+        if constexpr(Cell == 0) {
             dest->c_balance = src->c_balance;
             dest->c_ytd_payment = src->c_ytd_payment;
             dest->c_payment_cnt = src->c_payment_cnt;
