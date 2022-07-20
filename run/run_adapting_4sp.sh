@@ -3,7 +3,7 @@
 MAX_RETRIES=10
 ITERS=5
 THREADS=(1 2 4 12 24 32 40 48 64)
-TIMEOUT=60  # In seconds
+TIMEOUT=20  # In seconds
 HUGEPAGES=102400  # 49152 for stoo, 102400 for AWS
 DRY_RUN=0  # >0 means do a dry run
 
