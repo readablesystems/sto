@@ -140,9 +140,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(page_value* dest, page_value* src) {
         if constexpr(Cell == 0) {
-            dest->page_id = src->page_id;
-            dest->likes = src->likes;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -170,6 +170,7 @@ struct SplitPolicy<1> {
         if constexpr(Cell == 0) {
             dest->likes = src->likes;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -258,6 +259,18 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+        if (index == 1) {
+            SplitPolicy<1>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -268,11 +281,18 @@ public:
         return 0;
     }
 
-    void copy_into(page_value* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
-        copy_cell(index, 1, vptr, vptrs_[1]);
+    inline void copy_into(page_value* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
+        if (vptrs_[1]) {
+            copy_split_cell<1>(index, vptr, vptrs_[1]);
+        }
     }
 
+    inline void copy_into(page_value* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::page_id>::value_type& page_id() {
         return vptrs_[cell_of(NamedColumn::page_id)]->page_id;
     }
@@ -454,9 +474,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(like_value* dest, like_value* src) {
         if constexpr(Cell == 0) {
-            dest->user_id = src->user_id;
-            dest->page_id = src->page_id;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -484,6 +504,7 @@ struct SplitPolicy<1> {
         if constexpr(Cell == 0) {
             dest->page_id = src->page_id;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -572,6 +593,18 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+        if (index == 1) {
+            SplitPolicy<1>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -582,11 +615,18 @@ public:
         return 0;
     }
 
-    void copy_into(like_value* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
-        copy_cell(index, 1, vptr, vptrs_[1]);
+    inline void copy_into(like_value* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
+        if (vptrs_[1]) {
+            copy_split_cell<1>(index, vptr, vptrs_[1]);
+        }
     }
 
+    inline void copy_into(like_value* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::user_id>::value_type& user_id() {
         return vptrs_[cell_of(NamedColumn::user_id)]->user_id;
     }

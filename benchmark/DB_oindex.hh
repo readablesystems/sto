@@ -703,15 +703,8 @@ public:
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
             auto row_item_key = item_key_t::row_item_key(e);
-            TransProxy row_item = index_read_my_write ?
-                Sto::item(this, row_item_key) : Sto::fresh_item(this, row_item_key);
-
             if constexpr (DBParams::MVCC) {
-                 if (is_phantom(e, row_item)) {
-                    ret = true;
-                    count = false;
-                    return true;
-                }
+                const bool has_read = (cell_access & AccessType::read) == AccessType::read;
 
                 std::array<value_type*, value_container_type::NUM_VERSIONS> values { nullptr };
                 std::fill(values.begin(), values.end(), nullptr);
@@ -720,70 +713,77 @@ public:
                     e->row_container.mvcc_split_accesses(Sto::read_tid(), {});
                 (void)_;
 
-                const bool has_read = (cell_access & AccessType::read) != AccessType::none;
-                if (has_read) {
-                    std::array<mvhistory_type*, value_container_type::NUM_VERSIONS> histories = {};
+                std::array<mvhistory_type*, value_container_type::NUM_VERSIONS> histories = {};
 
-                    for (size_t i = 0; i < value_container_type::NUM_VERSIONS; ++i) {
+                for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                    if (has_read || cell == row_item_key.cell_num()) {
                         // ancestor == null means start at the head
-                        histories[i] = ancestor ?
-                            e->row_container.row.find_from(ancestor, Sto::read_tid(), i) :
-                            e->row_container.row.find(Sto::read_tid(), i);
+                        histories[cell] = ancestor ?
+                            e->row_container.row.find_from(ancestor, Sto::read_tid(), cell) :
+                            e->row_container.row.find(Sto::read_tid(), cell);
+                    } else {
+                        histories[cell] = nullptr;
+                    }
+                }
+
+                // For DU, because a RESPLIT must be a non-DU version, we
+                // know that we will never have to recompute a resplit
+                // during flattening. This means that we just have to make
+                // sure that we are accessing the necessary cells based on
+                // the current split.
+                if (has_read) {
+                    mvhistory_type::adaptive_flatten(Sto::read_tid(), histories);
+                }
+
+                bool ok = true;
+                for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
+                    auto is_row_item = cell == row_item_key.cell_num();
+                    auto item = index_read_my_write
+                            ? Sto::item(this, item_key_t(e, cell))
+                            : Sto::fresh_item(this, item_key_t(e, cell));
+
+                    if (preferred_split >= 0) {
+                        item.set_preferred_split(preferred_split);
+                        if (split != preferred_split) {
+                            Sto::set_stats();
+                        }
                     }
 
-                    // For DU, because a RESPLIT must be a non-DU version, we
-                    // know that we will never have to recompute a resplit
-                    // during flattening. This means that we just have to make
-                    // sure that we are accessing the necessary cells based on
-                    // the current split.
-                    mvhistory_type::adaptive_flatten(Sto::read_tid(), histories);
-
-                    bool ok = true;
-                    for (auto cell = 0; cell < value_container_type::NUM_VERSIONS; ++cell) {
-                        auto is_row_item = cell == row_item_key.cell_num();
-                        auto item = is_row_item ? row_item : (
-                                index_read_my_write
-                                ? Sto::item(this, item_key_t(e, cell))
-                                : Sto::fresh_item(this, item_key_t(e, cell)));
-
-                        if (preferred_split >= 0) {
-                            item.set_preferred_split(preferred_split);
-                            if (split != preferred_split) {
-                                Sto::set_stats();
-                            }
-                        }
-
+                    if (is_row_item) {
                         auto h = histories[cell];
-                        if (is_row_item) {
-                            if (h->status_is(DELETED)) {
-                                MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
+                        if (h->status_is(DELETED)) {
+                            MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
+                            ok = false;
+                            break;
+                        } else if (index_read_my_write) {
+                            if (has_delete(item)) {
                                 ok = false;
                                 break;
-                            } else if (index_read_my_write) {
-                                if (has_delete(item)) {
-                                    ok = false;
-                                    break;
-                                } else if (has_row_update(item)) {
-                                    values[cell] = item.template raw_write_value<value_type*>();
-                                    continue;
-                                }
+                            } else if (has_row_update(item)) {
+                                values[cell] = item.template raw_write_value<value_type*>();
+                                continue;
                             }
-                        }
-                        if (has_read) {
-                            MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
-                            values[cell] = h->vp();
                         }
                     }
 
-                    if (!ok) {
-                        ret = true;
-                        count = false;
-                        return true;
+                    if (has_read) {
+                        auto h = histories[cell];
+                        MvAccess::template read<value_type, value_container_type::NUM_VERSIONS>(item, h);
+                        values[cell] = h->vp();
                     }
+                }
+
+                if (!ok) {
+                    ret = true;
+                    count = false;
+                    return true;
                 }
 
                 ret = callback(key_type(key), e->row_container.get(split, values));
             } else {
+                TransProxy row_item = index_read_my_write ?
+                    Sto::item(this, row_item_key) : Sto::fresh_item(this, row_item_key);
+
                 if (index_read_my_write) {
                     if (has_delete(row_item)) {
                         ret = true;
@@ -849,17 +849,7 @@ public:
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
 
-            auto row_item_key = item_key_t::row_item_key(e);
-            TransProxy row_item = index_read_my_write ?
-                Sto::item(this, row_item_key) : Sto::fresh_item(this, row_item_key);
-
             if constexpr (DBParams::MVCC) {
-                if (is_phantom(e, row_item)) {
-                    ret = true;
-                    count = false;
-                    return true;
-                }
-
                 auto [ancestor, split, cell_accesses] =
                     e->row_container.mvcc_split_accesses(Sto::read_tid(), accesses);
 
@@ -874,6 +864,10 @@ public:
 
                 ret = callback(key_type(key), e->row_container.get(split, values));
             } else {
+                auto row_item_key = item_key_t::row_item_key(e);
+                TransProxy row_item = index_read_my_write ?
+                    Sto::item(this, row_item_key) : Sto::fresh_item(this, row_item_key);
+
                 const auto split = e->row_container.split();  // This is a ~2% overhead
                 auto cell_accesses = e->row_container.split_accesses(split, accesses);
 

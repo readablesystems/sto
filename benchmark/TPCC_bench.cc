@@ -31,7 +31,8 @@ const Clp_Option options[] = {
         { "mix",          'm', opt_mix,   Clp_ValInt,    Clp_Optional },
 };
 
-const char* workload_mix_names[] = { "Full", "NO-only", "NO+P-only" };
+const char* workload_mix_names[] = { "Full", "NO-only", "NO+P-only", "NO+P+D-only" };
+const int workload_mix_count = arraysize(workload_mix_names);
 
 const size_t noptions = arraysize(options);
 
@@ -71,7 +72,8 @@ void print_usage(const char *argv_0) {
        << "    Specify workload mix:" << std::endl
        << "    0. Full mix (default)" << std::endl
        << "    1. New-order only" << std::endl
-       << "    2. New-order plus Payment only" << std::endl;
+       << "    2. New-order plus Payment only" << std::endl
+       << "    3. New-order plus Payment and Delivery only" << std::endl;
 
     std::cout << ss.str() << std::flush;
 }

@@ -255,22 +255,22 @@ struct SplitPolicy<0> {
 template <>
 struct SplitPolicy<1> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 1 };
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 0 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
-        if (cell == 0) {
+        if (cell == 1) {
             return 7;
         }
-        if (cell == 1) {
+        if (cell == 0) {
             return 1;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(warehouse_value* dest, warehouse_value* src) {
-        if constexpr(Cell == 0) {
+        if constexpr(Cell == 1) {
             dest->w_name = src->w_name;
             dest->w_street_1 = src->w_street_1;
             dest->w_street_2 = src->w_street_2;
@@ -279,7 +279,7 @@ struct SplitPolicy<1> {
             dest->w_zip = src->w_zip;
             dest->w_tax = src->w_tax;
         }
-        if constexpr(Cell == 1) {
+        if constexpr(Cell == 0) {
             dest->w_ytd = src->w_ytd;
         }
         (void) dest; (void) src;
@@ -765,22 +765,22 @@ struct SplitPolicy<0> {
 template <>
 struct SplitPolicy<1> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 0, 0, 1 };
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 1, 1, 0 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
-        if (cell == 0) {
+        if (cell == 1) {
             return 7;
         }
-        if (cell == 1) {
+        if (cell == 0) {
             return 1;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(district_value* dest, district_value* src) {
-        if constexpr(Cell == 0) {
+        if constexpr(Cell == 1) {
             dest->d_name = src->d_name;
             dest->d_street_1 = src->d_street_1;
             dest->d_street_2 = src->d_street_2;
@@ -789,7 +789,7 @@ struct SplitPolicy<1> {
             dest->d_zip = src->d_zip;
             dest->d_tax = src->d_tax;
         }
-        if constexpr(Cell == 1) {
+        if constexpr(Cell == 0) {
             dest->d_ytd = src->d_ytd;
         }
         (void) dest; (void) src;
@@ -3170,29 +3170,29 @@ struct SplitPolicy<0> {
 template <>
 struct SplitPolicy<1> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 0, 0, 0, 1 };
+    static constexpr int policy[ColCount] = { 1, 1, 1, 1, 1, 0 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
-        if (cell == 0) {
+        if (cell == 1) {
             return 5;
         }
-        if (cell == 1) {
+        if (cell == 0) {
             return 1;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(orderline_value* dest, orderline_value* src) {
-        if constexpr(Cell == 0) {
+        if constexpr(Cell == 1) {
             dest->ol_i_id = src->ol_i_id;
             dest->ol_supply_w_id = src->ol_supply_w_id;
             dest->ol_quantity = src->ol_quantity;
             dest->ol_amount = src->ol_amount;
             dest->ol_dist_info = src->ol_dist_info;
         }
-        if constexpr(Cell == 1) {
+        if constexpr(Cell == 0) {
             dest->ol_delivery_d = src->ol_delivery_d;
         }
         (void) dest; (void) src;
@@ -3956,26 +3956,26 @@ struct SplitPolicy<0> {
 template <>
 struct SplitPolicy<1> {
     static constexpr auto ColCount = static_cast<std::underlying_type_t<NamedColumn>>(NamedColumn::COLCOUNT);
-    static constexpr int policy[ColCount] = { 0, 0, 1, 1, 1, 1 };
+    static constexpr int policy[ColCount] = { 1, 1, 0, 0, 0, 0 };
     inline static constexpr int column_to_cell(NamedColumn column) {
         return policy[static_cast<std::underlying_type_t<NamedColumn> >(column)];
     }
     inline static constexpr size_t cell_col_count(int cell) {
-        if (cell == 0) {
+        if (cell == 1) {
             return 2;
         }
-        if (cell == 1) {
+        if (cell == 0) {
             return 4;
         }
         return 0;
     }
     template <int Cell>
     inline static constexpr void copy_cell(stock_value* dest, stock_value* src) {
-        if constexpr(Cell == 0) {
+        if constexpr(Cell == 1) {
             dest->s_dists = src->s_dists;
             dest->s_data = src->s_data;
         }
-        if constexpr(Cell == 1) {
+        if constexpr(Cell == 0) {
             dest->s_quantity = src->s_quantity;
             dest->s_ytd = src->s_ytd;
             dest->s_order_cnt = src->s_order_cnt;

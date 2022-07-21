@@ -40,6 +40,7 @@ enum {
 };
 
 extern const char* workload_mix_names[];
+extern const int workload_mix_count;
 extern const Clp_Option options[];
 extern const size_t noptions;
 extern void print_usage(const char *);
@@ -291,25 +292,37 @@ public:
 
     inline txn_type next_transaction() {
         uint64_t x = ig.random(1, 100);
-        if (mix == 0) {
-            if (x <= 45)
+        assert(mix < workload_mix_count);
+        switch (mix) {
+            case 0:
+                if (x <= 45)
+                    return txn_type::new_order;
+                else if (x <= 88)
+                    return txn_type::payment;
+                else if (x <= 92)
+                    return txn_type::order_status;
+                else if (x <= 96)
+                    return txn_type::delivery;
+                else
+                    return txn_type::stock_level;
+            case 1:
                 return txn_type::new_order;
-            else if (x <= 88)
-                return txn_type::payment;
-            else if (x <= 92)
-                return txn_type::order_status;
-            else if (x <= 96)
-                return txn_type::delivery;
-            else
-                return txn_type::stock_level;
-        } else if (mix == 1) {
-            return txn_type::new_order;
+            case 2:
+                if (x <= 51)
+                    return txn_type::new_order;
+                else
+                    return txn_type::payment;
+            case 3:
+                if (x <= 51)
+                    return txn_type::new_order;
+                else if (x <= 91)
+                    return txn_type::payment;
+                else
+                    return txn_type::delivery;
+            default:
+                always_assert(mix < workload_mix_count);
+                return (txn_type)-1;
         }
-        assert(mix == 2);
-        if (x <= 51)
-            return txn_type::new_order;
-        else
-            return txn_type::payment;
     }
 
     inline void run_txn_neworder();
@@ -912,7 +925,7 @@ public:
                     break;
                 case opt_mix:
                     mix = clp->val.i;
-                    if (mix > 2 || mix < 0) {
+                    if (mix > workload_mix_count || mix < 0) {
                         mix = 0;
                     }
                     break;

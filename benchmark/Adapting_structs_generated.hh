@@ -176,11 +176,9 @@ struct SplitPolicy<0> {
     template <int Cell>
     inline static constexpr void copy_cell(adapting_value* dest, adapting_value* src) {
         if constexpr(Cell == 0) {
-            dest->read_only = src->read_only;
-            dest->write_some = src->write_some;
-            dest->write_much = src->write_much;
-            dest->write_most = src->write_most;
+            *dest = *src;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -210,6 +208,7 @@ struct SplitPolicy<1> {
         if constexpr(Cell == 0) {
             dest->write_most = src->write_most;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -239,6 +238,7 @@ struct SplitPolicy<2> {
             dest->write_much = src->write_much;
             dest->write_most = src->write_most;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -268,6 +268,7 @@ struct SplitPolicy<3> {
             dest->write_much = src->write_much;
             dest->write_most = src->write_most;
         }
+        (void) dest; (void) src;
     }
 };
 
@@ -376,6 +377,26 @@ public:
         }
     }
 
+    template <int Cell>
+    inline static constexpr void copy_split_cell(int index, ValueType* dest, ValueType* src) {
+        if (index == 0) {
+            SplitPolicy<0>::copy_cell<Cell>(dest, src);
+            return;
+        }
+        if (index == 1) {
+            SplitPolicy<1>::copy_cell<Cell>(dest, src);
+            return;
+        }
+        if (index == 2) {
+            SplitPolicy<2>::copy_cell<Cell>(dest, src);
+            return;
+        }
+        if (index == 3) {
+            SplitPolicy<3>::copy_cell<Cell>(dest, src);
+            return;
+        }
+    }
+
     inline static constexpr size_t cell_col_count(int index, int cell) {
         if (index == 0) {
             return SplitPolicy<0>::cell_col_count(cell);
@@ -392,11 +413,18 @@ public:
         return 0;
     }
 
-    void copy_into(adapting_value* vptr, int index=0) {
-        copy_cell(index, 0, vptr, vptrs_[0]);
-        copy_cell(index, 1, vptr, vptrs_[1]);
+    inline void copy_into(adapting_value* vptr, int index) {
+        if (vptrs_[0]) {
+            copy_split_cell<0>(index, vptr, vptrs_[0]);
+        }
+        if (vptrs_[1]) {
+            copy_split_cell<1>(index, vptr, vptrs_[1]);
+        }
     }
 
+    inline void copy_into(adapting_value* vptr) {
+        copy_into(vptr, splitindex_);
+    }
     inline typename accessor_info<NamedColumn::read_only>::value_type& read_only() {
         return vptrs_[cell_of(NamedColumn::read_only)]->read_only;
     }
