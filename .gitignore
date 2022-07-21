@@ -64,6 +64,7 @@
 /perf.data
 /perf.data.old
 /perf.txt
+/aws.json*
 .ycm_*
 **/.idea/workspace.xml
 **/.idea/tasks.xml
