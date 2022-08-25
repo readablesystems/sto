@@ -1,3 +1,5 @@
+#include "DB_oindexMTrie.hh"
+
 #include "DB_index.hh"
 
 #include "DB_structs.hh"
@@ -8,7 +10,7 @@
 
 
 
-struct coarse_grained_row {
+struct MTrie_coarse_grained_row {
 
     enum class NamedColumn : int { aa = 0, bb, cc };
 
@@ -22,11 +24,11 @@ struct coarse_grained_row {
 
 
 
-    coarse_grained_row() : aa(), bb(), cc() {}
+    MTrie_coarse_grained_row() : aa(), bb(), cc() {}
 
 
 
-    coarse_grained_row(uint64_t a, uint64_t b, uint64_t c)
+    MTrie_coarse_grained_row(uint64_t a, uint64_t b, uint64_t c)
 
             : aa(a), bb(b), cc(c) {}
 
@@ -62,9 +64,9 @@ namespace bench {
 
 template <>
 
-struct SplitParams<coarse_grained_row> {
+struct SplitParams<MTrie_coarse_grained_row> {
 
-    using split_type_list = std::tuple<coarse_grained_row>;
+    using split_type_list = std::tuple<MTrie_coarse_grained_row>;
 
     using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
 
@@ -74,9 +76,9 @@ struct SplitParams<coarse_grained_row> {
 
     static constexpr auto split_builder = std::make_tuple(
 
-        [](const coarse_grained_row& in) -> coarse_grained_row {
+        [](const MTrie_coarse_grained_row& in) -> MTrie_coarse_grained_row {
 
-            coarse_grained_row out;
+            MTrie_coarse_grained_row out;
 
             out.aa = in.aa;
 
@@ -94,7 +96,7 @@ struct SplitParams<coarse_grained_row> {
 
     static constexpr auto split_merger = std::make_tuple(
 
-        [](coarse_grained_row* out, const coarse_grained_row& in) -> void {
+        [](MTrie_coarse_grained_row* out, const MTrie_coarse_grained_row& in) -> void {
 
             out->aa = in.aa;
 
@@ -122,7 +124,7 @@ struct SplitParams<coarse_grained_row> {
 
 template <typename A>
 
-class RecordAccessor<A, coarse_grained_row> {
+class RecordAccessor<A, MTrie_coarse_grained_row> {
 
 public:
 
@@ -150,7 +152,7 @@ public:
 
 
 
-    void copy_into(coarse_grained_row* dst) const {
+    void copy_into(MTrie_coarse_grained_row* dst) const {
 
         return impl().copy_into_impl(dst);
 
@@ -172,11 +174,11 @@ private:
 
 template <>
 
-class UniRecordAccessor<coarse_grained_row> : public RecordAccessor<UniRecordAccessor<coarse_grained_row>, coarse_grained_row> {
+class UniRecordAccessor<MTrie_coarse_grained_row> : public RecordAccessor<UniRecordAccessor<MTrie_coarse_grained_row>, MTrie_coarse_grained_row> {
 
 public:
 
-    UniRecordAccessor(const coarse_grained_row* const vptr) : vptr_(vptr) {}
+    UniRecordAccessor(const MTrie_coarse_grained_row* const vptr) : vptr_(vptr) {}
 
 
 
@@ -206,7 +208,7 @@ private:
 
 
 
-    void copy_into_impl(coarse_grained_row* dst) const {
+    void copy_into_impl(MTrie_coarse_grained_row* dst) const {
 
         if (vptr_) {
 
@@ -222,9 +224,9 @@ private:
 
 
 
-    const coarse_grained_row* vptr_;
+    const MTrie_coarse_grained_row* vptr_;
 
-    friend RecordAccessor<UniRecordAccessor<coarse_grained_row>, coarse_grained_row>;
+    friend RecordAccessor<UniRecordAccessor<MTrie_coarse_grained_row>, MTrie_coarse_grained_row>;
 
 };
 
@@ -232,17 +234,17 @@ private:
 
 template <>
 
-class SplitRecordAccessor<coarse_grained_row> : public RecordAccessor<SplitRecordAccessor<coarse_grained_row>, coarse_grained_row> {
+class SplitRecordAccessor<MTrie_coarse_grained_row> : public RecordAccessor<SplitRecordAccessor<MTrie_coarse_grained_row>, MTrie_coarse_grained_row> {
 
 public:
 
-    static constexpr size_t num_splits = SplitParams<coarse_grained_row>::num_splits;
+    static constexpr size_t num_splits = SplitParams<MTrie_coarse_grained_row>::num_splits;
 
 
 
     SplitRecordAccessor(const std::array<void*, num_splits>& vptrs)
 
-        : vptr_0_(reinterpret_cast<coarse_grained_row*>(vptrs[0])) {}
+        : vptr_0_(reinterpret_cast<MTrie_coarse_grained_row*>(vptrs[0])) {}
 
 
 
@@ -272,7 +274,7 @@ private:
 
 
 
-    void copy_into_impl(coarse_grained_row* dst) const {
+    void copy_into_impl(MTrie_coarse_grained_row* dst) const {
 
         if (vptr_0_) {
 
@@ -288,11 +290,11 @@ private:
 
 
 
-    const coarse_grained_row* vptr_0_;
+    const MTrie_coarse_grained_row* vptr_0_;
 
 
 
-    friend RecordAccessor<SplitRecordAccessor<coarse_grained_row>, coarse_grained_row>;
+    friend RecordAccessor<SplitRecordAccessor<MTrie_coarse_grained_row>, MTrie_coarse_grained_row>;
 
 };
 
@@ -604,9 +606,9 @@ private:
 
 
 
-using CoarseIndex = bench::ordered_index<key_type, coarse_grained_row, db_params::db_default_params>;
+using CoarseIndex = bench::MTrie_ordered_index<key_type, MTrie_coarse_grained_row, db_params::db_default_params>;
 
-using FineIndex = bench::ordered_index<key_type, example_row, db_params::db_default_params>;
+using FineIndex = bench::MTrie_ordered_index<key_type, example_row, db_params::db_default_params>;
 
 using access_t = bench::access_t;
 
@@ -614,7 +616,7 @@ using RowAccess = bench::RowAccess;
 
 
 
-using MVIndex = bench::mvcc_ordered_index<key_type, coarse_grained_row, db_params::db_mvcc_params>;
+using MVIndex = bench::MTrie_mvcc_ordered_index<key_type, MTrie_coarse_grained_row, db_params::db_mvcc_params>;
 
 
 
@@ -624,7 +626,7 @@ void init_cindex(IndexType& ci) {
 
     for (uint64_t i = 1; i <= 10; ++i)
 
-        ci.nontrans_put(key_type(i), coarse_grained_row(i, i, i));
+        ci.nontrans_put(key_type(i), MTrie_coarse_grained_row(i, i, i));
 
 }
 
@@ -666,7 +668,7 @@ void test_coarse_basic() {
 
     init_cindex(ci);
 
-
+	
 
     {
 
@@ -677,6 +679,8 @@ void test_coarse_basic() {
         (void) row;
 
         assert(success && found);
+
+        //std::cout<<"value().aa() = "<<value.aa()<<std::endl;
 
         assert(value.aa() == 1);
 
@@ -696,7 +700,7 @@ void test_coarse_basic() {
 
         assert(success && found);
 
-        auto new_row = Sto::tx_alloc<coarse_grained_row>();
+        auto new_row = Sto::tx_alloc<MTrie_coarse_grained_row>();
 
         value.copy_into(new_row);
 
@@ -720,6 +724,8 @@ void test_coarse_basic() {
 
         assert(success && found);
 
+
+
         assert(value.aa() == 2);
 
         assert(t1.try_commit());
@@ -731,6 +737,8 @@ void test_coarse_basic() {
     //printf("pass %s\n", __FUNCTION__);
 
 }
+
+
 
 
 
@@ -762,9 +770,9 @@ void test_coarse_read_my_split() {
 
         for (int i = 0; i < 10; ++i) {
 
-            auto r = Sto::tx_alloc<coarse_grained_row>();
+            auto r = Sto::tx_alloc<MTrie_coarse_grained_row>();
 
-            new (r) coarse_grained_row(i, i, i);
+            new (r) MTrie_coarse_grained_row(i, i, i);
 
             ci.insert_row(key_type(10 + i), r);
 
@@ -776,9 +784,11 @@ void test_coarse_read_my_split() {
 
 
 
-    //printf("pass %s\n", __FUNCTION__);
+   // printf("pass %s\n", __FUNCTION__);
 
 }
+
+
 
 
 
@@ -822,7 +832,7 @@ void test_coarse_conflict0() {
 
             assert(success && found);
 
-            auto new_row = Sto::tx_alloc<coarse_grained_row>();
+            auto new_row = Sto::tx_alloc<MTrie_coarse_grained_row>();
 
             value.copy_into(new_row);
 
@@ -848,7 +858,7 @@ void test_coarse_conflict0() {
 
         TestTransaction t1(0);
 
-        coarse_grained_row row_value(100, 100, 100);
+        MTrie_coarse_grained_row row_value(100, 100, 100);
 
         {
 
@@ -887,6 +897,10 @@ void test_coarse_conflict0() {
     //printf("pass %s\n", __FUNCTION__);
 
 }
+
+
+
+
 
 
 
@@ -930,7 +944,7 @@ void test_coarse_conflict1() {
 
             assert(success && found);
 
-            auto new_row = Sto::tx_alloc<coarse_grained_row>();
+            auto new_row = Sto::tx_alloc<MTrie_coarse_grained_row>();
 
             value.copy_into(new_row);
 
@@ -1202,6 +1216,8 @@ void test_fine_delete0() {
 
             auto [success, found] = fi.delete_row(key_type(1));
 
+            //std::cout<<"success ="<<success<<" and found = "<<found<<endl;
+
             assert(success && found);
 
         }
@@ -1420,65 +1436,19 @@ void test_fine_delete1() {
 
 
 
-void test_mvcc_snapshot() {
+void test_get() {
 
     typedef CoarseIndex::NamedColumn nc;
 
-    MVIndex mi;
+    CoarseIndex ci;
 
-    mi.thread_init();
-
-
-
-    init_cindex(mi);
+    ci.thread_init();
 
 
 
-    {
-
-        TestTransaction t1(0);
-
-        {
-
-            auto [success, found, row, value] = mi.select_split_row(key_type(1), {{nc::aa, access_t::read}});
-
-            (void) row;
-
-            assert(success && found);
-
-            assert(value.aa() == 1);
-
-        }
+    init_cindex(ci);
 
 
-
-        TestTransaction t2(1);
-
-        {
-
-            auto [success, found, row, value] = mi.select_split_row(key_type(1), {{nc::aa, access_t::update}});
-
-            assert(success && found);
-
-            auto new_row = Sto::tx_alloc<coarse_grained_row>();
-
-            value.copy_into(new_row);
-
-            new_row->aa = 2;
-
-            mi.update_row(row, new_row);
-
-            assert(t2.try_commit());
-
-
-
-            t1.use();
-
-            assert(t1.try_commit());
-
-        }
-
-    }
 
 
 
@@ -1488,49 +1458,33 @@ void test_mvcc_snapshot() {
 
         {
 
-            coarse_grained_row row_value(100, 100, 100);
+        ci.nontrans_get(key_type(1));
 
-            auto [success, found] = mi.insert_row(key_type(100), &row_value);
-
-            assert(success && !found);
-
-        }
-
-
-
-        TestTransaction t2(0);
-
-        {
-
-            auto [success, found, row, value] = mi.select_split_row(key_type(100), {{nc::aa, access_t::read}});
-
-            (void) row;
-
-            (void) value;
-
-            assert(!success || !found);
-
-
-
-            t1.use();
-
-            assert(t1.try_commit());
+        assert(t1.try_commit());
 
         }
 
     }
 
+    
 
+    
 
-    //printf("pass %s\n", __FUNCTION__);
+    
+
+    // printf("pass %s\n", __FUNCTION__);
 
 }
+
+/****/
+
+
 
 
 
 int main() {
 
-auto start = std::chrono::steady_clock::now();
+   auto start = std::chrono::steady_clock::now();
 
    for(int i=0;i<1000;i++)
 
@@ -1654,9 +1608,9 @@ auto start = std::chrono::steady_clock::now();
 
        std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count()/1000<<" ns"<<std::endl;
 
-   
+    //test_get();
 
-    test_mvcc_snapshot();
+    
 
     printf("All tests pass!\n");
 
