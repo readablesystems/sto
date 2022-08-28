@@ -54,7 +54,8 @@ $ sudo apt install g++-7
 
 1. Clone the git repository
 ```bash
-$ git clone https://github.com/readablesystems/sto.git
+$ git clone https://github.com/roeeash/sto.git
+$ git checkout masstrie
 $ cd sto
 ```
 
@@ -63,7 +64,23 @@ $ cd sto
 $ git submodule update --init --recursive
 ```
 
-3. Execute configuration scripts
+3. Set system variables
+```bash
+$ cd MassTrie-beta/wormhole
+$ export LD_LIBRARY_PATH=`pwd`
+$ cd ../
+$ cd ../
+```
+OR if you're on the tcsh shell
+
+```bash
+$ cd MassTrie-beta/wormhole
+$ setenv LD_LIBRARY_PATH=`pwd`
+$ cd ../
+$ cd ../
+```
+
+4. Execute configuration scripts
 ```bash
 $ ./bootstrap.sh
 $ ./configure
@@ -74,7 +91,7 @@ enable it for STO by running `./configure CC=gcc-7 CXX=g++-7`.
 
 (Note: if you use macOS you should probably run `./configure CXX='clang++ -stdlib=libc++'`)
 
-4. Build
+5. Build
 ```bash
 $ make -jN # launch N parallel build jobs
 ```
@@ -89,6 +106,19 @@ by continuous integration.
 - `make ycsb_bench`: Build the YCSB-like benchmark.
 - `make micro_bench`: Build the array-based microbenchmark.
 - `make clean`: You know what it does.
+
+
+5.5. Build (specifically for benchmark files)
+
+```bash
+$ make unit-test_MTrie
+$ ./unit-test_MTrie
+```
+
+```bash
+$ make unit-dboindex
+$ ./unit-dboindex
+```
 
 See [Wiki](https://github.com/readablesystems/sto/wiki) for advanced buid options.
 
