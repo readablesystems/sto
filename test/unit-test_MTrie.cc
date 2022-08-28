@@ -47,6 +47,8 @@ struct key_type
     }
 };
 
+int j = 0;
+
 // using example_row from VersionSelector.hh
 
 namespace bench
@@ -604,7 +606,13 @@ void test_coarse_read_my_split()
 
         (void)value;
 
-        // assert(success && !found);
+        // if only one iteration is performed,
+        //  the value shouldn't be found pre-insertion
+        // if it is run multiple times, the MassTrie acts as a cache
+        //  for quick performances
+
+        if (j == 0)
+            assert(success && !found);
 
         for (int i = 0; i < 10; ++i)
         {
@@ -681,8 +689,12 @@ void test_coarse_conflict0()
         {
 
             auto [success, found] = ci.insert_row(key_type(100), &row_value);
-
-            // assert(success && !found);
+            // if only one iteration is performed,
+            // the value shouldn't be found pre-insertion
+            // if it is run multiple times, the MassTrie acts as a cache
+            // for quick performances
+            if (j == 0)
+                assert(success && !found);
         }
 
         TestTransaction t2(0);
@@ -695,7 +707,12 @@ void test_coarse_conflict0()
 
             (void)value;
 
-            // assert(!success || !found);
+            // if only one iteration is performed,
+            //  the value shouldn't be found pre-insertion
+            // if it is run multiple times, the MassTrie acts as a cache
+            //  for quick performances
+            if (j == 0)
+                assert(!success || !found);
         }
 
         t1.use();
@@ -1147,7 +1164,7 @@ int main()
 
     auto start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < 1000; i++)
+    for (j = 0; j < 1000; j++)
 
         test_coarse_basic();
 
@@ -1159,7 +1176,7 @@ int main()
 
     start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < 1000; i++)
+    for (j = 0; j < 1000; j++)
 
         test_coarse_read_my_split();
 
@@ -1171,7 +1188,7 @@ int main()
 
     start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < 1000; i++)
+    for (j = 0; j < 1000; j++)
 
         test_coarse_conflict0();
 
@@ -1183,7 +1200,7 @@ int main()
 
     start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < 1000; i++)
+    for (j = 0; j < 1000; j++)
 
         test_coarse_conflict1();
 
@@ -1195,7 +1212,7 @@ int main()
 
     start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < 1000; i++)
+    for (j = 0; j < 1000; j++)
 
         test_fine_conflict0();
 
@@ -1207,7 +1224,7 @@ int main()
 
     start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < 1000; i++)
+    for (j = 0; j < 1000; j++)
 
         test_fine_conflict1();
 
@@ -1219,7 +1236,7 @@ int main()
 
     start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < 1000; i++)
+    for (j = 0; j < 1000; j++)
 
         test_fine_conflict2();
 
@@ -1231,7 +1248,7 @@ int main()
 
     start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < 1000; i++)
+    for (j = 0; j < 1000; j++)
 
         test_fine_delete0();
 
@@ -1243,7 +1260,7 @@ int main()
 
     start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < 1000; i++)
+    for (j = 0; j < 1000; j++)
 
         test_fine_delete1();
 
