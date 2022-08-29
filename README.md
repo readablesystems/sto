@@ -79,7 +79,15 @@ $ cd ../
 $ cd ../
 ```
 
-4. Execute configuration scripts
+4. Additional system setup:
+If you do not have autoconf and python-is-python3 installed, run:
+
+```bash
+$ sudo apt install python-is-python3
+$ sudo apt install autoconf
+```
+
+5. Execute configuration scripts
 ```bash
 $ ./bootstrap.sh
 $ ./configure
@@ -90,7 +98,7 @@ enable it for STO by running `./configure CC=gcc-7 CXX=g++-7`.
 
 (Note: if you use macOS you should probably run `./configure CXX='clang++ -stdlib=libc++'`)
 
-5. Build
+6. Build
 ```bash
 $ make -jN # launch N parallel build jobs
 ```
@@ -107,7 +115,7 @@ by continuous integration.
 - `make clean`: You know what it does.
 
 
-5.5. Build (specifically for benchmark files)
+7. Build (specifically for benchmark files)
 
 ```bash
 $ make unit-test_MTrie
