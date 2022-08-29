@@ -54,8 +54,7 @@ $ sudo apt install g++-7
 
 1. Clone the git repository
 ```bash
-$ git clone https://github.com/roeeash/sto.git
-$ git checkout masstrie
+$ git clone -b masstrie https://github.com/roeeash/sto.git
 $ cd sto
 ```
 
