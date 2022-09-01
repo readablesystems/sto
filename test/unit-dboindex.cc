@@ -1552,7 +1552,7 @@ auto start = std::chrono::steady_clock::now();
 
     end = std::chrono::steady_clock::now();
 
-     std::cout<<"The average elapsed time for test_coarse_read_my_split with MassTrie is "<<
+     std::cout<<"The average elapsed time for test_coarse_read_my_split with masstree is "<<
 
        std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count()/1000<<" ns"<<std::endl;
 
@@ -1566,7 +1566,7 @@ auto start = std::chrono::steady_clock::now();
 
      end = std::chrono::steady_clock::now();
 
-     std::cout<<"The average elapsed time for test_coarse_conflict0 with MassTrie is "<<
+     std::cout<<"The average elapsed time for test_coarse_conflict0 with masstree is "<<
 
        std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count()/1000<<" ns"<<std::endl;
 
@@ -1580,7 +1580,7 @@ auto start = std::chrono::steady_clock::now();
 
       end = std::chrono::steady_clock::now();
 
-     std::cout<<"The average elapsed time for test_coarse_conflict1 with MassTrie is "<<
+     std::cout<<"The average elapsed time for test_coarse_conflict1 with masstree is "<<
 
        std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count()/1000<<" ns"<<std::endl;
 
@@ -1594,7 +1594,7 @@ auto start = std::chrono::steady_clock::now();
 
        end = std::chrono::steady_clock::now();
 
-     std::cout<<"The average elapsed time for test_fine_conflict0 with MassTrie is "<<
+     std::cout<<"The average elapsed time for test_fine_conflict0 with masstree is "<<
 
        std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count()/1000<<" ns"<<std::endl;
 
@@ -1608,7 +1608,7 @@ auto start = std::chrono::steady_clock::now();
 
      end = std::chrono::steady_clock::now();
 
-     std::cout<<"The average elapsed time for test_fine_conflict1 with MassTrie is "<<
+     std::cout<<"The average elapsed time for test_fine_conflict1 with masstree is "<<
 
        std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count()<<" ns"<<std::endl;
 
@@ -1622,7 +1622,7 @@ auto start = std::chrono::steady_clock::now();
 
       end = std::chrono::steady_clock::now();
 
-     std::cout<<"The average elapsed time for test_fine_conflict2 with MassTrie is "<<
+     std::cout<<"The average elapsed time for test_fine_conflict2 with masstree is "<<
 
        std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count()<<" ns"<<std::endl;
 
@@ -1636,7 +1636,7 @@ auto start = std::chrono::steady_clock::now();
 
           end = std::chrono::steady_clock::now();
 
-     std::cout<<"The average elapsed time for test_fine_delete0 with MassTrie is "<<
+     std::cout<<"The average elapsed time for test_fine_delete0 with masstree is "<<
 
        std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count()/1000<<" ns"<<std::endl;
 
@@ -1650,7 +1650,7 @@ auto start = std::chrono::steady_clock::now();
 
     end = std::chrono::steady_clock::now();
 
-     std::cout<<"The average elapsed time for test_fine_delete1 with MassTrie is "<<
+     std::cout<<"The average elapsed time for test_fine_delete1 with masstree is "<<
 
        std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count()/1000<<" ns"<<std::endl;
 
