@@ -13,6 +13,7 @@ AR = ar
 CC = @CC@
 CXX = @CXX@
 CPPFLAGS := -std=c++17
+MTFLAGS:= -L${LD_LIBRARY_PATH} -lwh -lpthread
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a $(LIBMALLOC) -lpthread -lm -lnuma
@@ -366,6 +367,12 @@ unit-hashtable: $(OBJ)/unit-hashtable.o $(STO_DEPS)
 unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
 
+unit-dboindexmasstrie: $(OBJ)/unit-dboindexmasstrie.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
+	
+unit-test_MTrie: $(OBJ)/unit-test_MTrie.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS) $(MTFLAGS) 
+	 
 unit-mvcc-access-all: $(OBJ)/unit-mvcc-access-all.o $(INDEX_DEPS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
