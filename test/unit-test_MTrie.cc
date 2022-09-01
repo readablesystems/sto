@@ -1170,7 +1170,7 @@ int main()
 
     auto end = std::chrono::steady_clock::now();
 
-    std::cout << "The average elapsed time for test_coarse_basic with masstree is " <<
+    std::cout << "The average elapsed time for test_coarse_basic with MassTrie is " <<
 
         std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000 << " ns" << std::endl;
 
