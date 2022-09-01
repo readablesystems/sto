@@ -118,12 +118,12 @@ by continuous integration.
 7. Build (specifically for benchmark files)
 
 ```bash
-$ make unit-test_MTrie
+$ make -jN unit-test_MTrie # launch N parallel build jobs
 $ ./unit-test_MTrie
 ```
 
 ```bash
-$ make unit-dboindex
+$ make -jN unit-dboindex # launch N parallel build jobs
 $ ./unit-dboindex
 ```
 
