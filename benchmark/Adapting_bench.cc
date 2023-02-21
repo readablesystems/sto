@@ -271,8 +271,10 @@ public:
     }
 
     // For convenience
-    enum txn_type {
-        read_only = 0, write_less, write_some, write_heavy
+    enum txn_type : int8_t {
+        read_less = -3, read_some = -2, read_heavy = -1,
+        read_all = 0,
+        write_less = 1, write_some = 2, write_heavy = 3
     };
 
     struct txn_params {
@@ -311,7 +313,8 @@ public:
         for (auto itr = ops.begin(); itr != ops.end(); ++itr) {
             auto key = key_gen.sample_idx();
             itr->key = adapting_key(key);
-            itr->txn = txn_type(key % db.params.variants);
+            int8_t key_sign = (key % db.params.variants == key % (2 * db.params.variants)) ? 1 : -1;
+            itr->txn = txn_type(key_sign * (key % db.params.variants));
         }
     }
 
@@ -341,8 +344,7 @@ public:
                 {
                     std::tie(success, result, row, value) = base_runner::select(
                         db.tbl_adapting, key,
-                        {{nc::read_only, Access::read},
-                         {nc::write_some, DBParams::Commute ? Access::write : Access::update},
+                        {{nc::write_some, DBParams::Commute ? Access::write : Access::update},
                          {nc::write_much, DBParams::Commute ? Access::write : Access::update},
                          {nc::write_most, DBParams::Commute ? Access::write : Access::update}},
                         3);
@@ -367,9 +369,7 @@ public:
                 {
                     std::tie(success, result, row, value) = base_runner::select(
                         db.tbl_adapting, key,
-                        {{nc::read_only, Access::read},
-                         {nc::write_some, Access::read},
-                         {nc::write_much, DBParams::Commute ? Access::write : Access::update},
+                        {{nc::write_much, DBParams::Commute ? Access::write : Access::update},
                          {nc::write_most, DBParams::Commute ? Access::write : Access::update}},
                         2);
                     CHK(success);
@@ -392,10 +392,7 @@ public:
                 {
                     std::tie(success, result, row, value) = base_runner::select(
                         db.tbl_adapting, key,
-                        {{nc::read_only, Access::read},
-                         {nc::write_some, Access::read},
-                         {nc::write_much, Access::read},
-                         {nc::write_most, DBParams::Commute ? Access::write : Access::update}},
+                        {{nc::write_most, DBParams::Commute ? Access::write : Access::update}},
                         1);
                     CHK(success);
                     assert(result);
@@ -412,7 +409,40 @@ public:
                     }
                     break;
                 }
-                case read_only:
+                case read_less:
+                {
+                    std::tie(success, result, row, value) = base_runner::select(
+                        db.tbl_adapting, key,
+                            {{nc::read_only, Access::read}},
+                            1);
+                    CHK(success);
+                    assert(result);
+                    break;
+                }
+                case read_some:
+                {
+                    std::tie(success, result, row, value) = base_runner::select(
+                        db.tbl_adapting, key,
+                            {{nc::read_only, Access::read},
+                             {nc::write_some, Access::read}},
+                            2);
+                    CHK(success);
+                    assert(result);
+                    break;
+                }
+                case read_heavy:
+                {
+                    std::tie(success, result, row, value) = base_runner::select(
+                        db.tbl_adapting, key,
+                            {{nc::read_only, Access::read},
+                             {nc::write_some, Access::read},
+                             {nc::write_much, Access::read}},
+                            3);
+                    CHK(success);
+                    assert(result);
+                    break;
+                }
+                case read_all:
                 {
                     std::tie(success, result, row, value) = base_runner::select(
                         db.tbl_adapting, key,
