@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# You're probably looking to run something like
+# AWS_DEFAULT_PROFILE=rsg python3 execute_aws.py -k ~/.ssh/harvard launch
+
 def get_cache_name():
   '''Get the name of the cache file.'''
   return 'aws.json'
