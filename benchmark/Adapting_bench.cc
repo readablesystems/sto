@@ -156,13 +156,14 @@ using adapting_key = db_common::keys::single_key<int64_t>;
 struct CommandParams : db_common::ClpCommandParams {
     explicit CommandParams()
         : db_common::ClpCommandParams(),
-          ops_per_txn(1000), table_size(1000000), variants(4) {}
+          ops_per_txn(1000), table_size(1000000), variants(4), write_rate(50) {}
 
     void print() override {
         db_common::ClpCommandParams::print();
         std::cout << "Table size                : " << table_size << std::endl
                   << "Operations per transaction: " << ops_per_txn << std::endl
                   << "Operation variants        : " << variants << std::endl
+                  << "Write rate                : " << write_rate << "%" << std::endl
                   ;
     }
 
@@ -170,6 +171,7 @@ struct CommandParams : db_common::ClpCommandParams {
     long ops_per_txn;
     long table_size;
     int32_t variants;
+    uint8_t write_rate;
 };
 
 //
@@ -289,10 +291,14 @@ public:
     struct __attribute__((aligned(128))) stats_type {
         int64_t txns_started;
         int64_t txns_committed;
+        int64_t read_ops;
+        int64_t write_ops;
 
         stats_type& operator +=(const stats_type& other) {
             txns_started += other.txns_started;
             txns_committed += other.txns_committed;
+            read_ops += other.read_ops;
+            write_ops += other.write_ops;
             return *this;
         }
 
@@ -300,22 +306,44 @@ public:
             double abort_rate = (1.0 * txns_started - txns_committed) / txns_started * 100.0;
             char abort_rate_str[8];
             snprintf(abort_rate_str, 7, "%.2f%%", abort_rate);
+            double write_rate = write_ops / std::max(1.0, 1.0 * read_ops + write_ops) * 100.0;
+            char write_rate_str[8];
+            snprintf(write_rate_str, 7, "%.2f%%", write_rate);
             std::cout << "Transactions committed : " << txns_committed << std::endl
                       << "Total transactions     : " << txns_started << std::endl
                       << "Abort rate             : " << abort_rate_str << std::endl
+                      << "Read  operations       : " << read_ops << std::endl
+                      << "Write operations       : " << write_ops << std::endl
+                      << "Write operations rate  : " << write_rate_str << std::endl
                       ;
         }
     };
 
     // Generate a single transaction to run
-    inline void generate_transaction() {
+    inline std::tuple<int64_t, int64_t> generate_transaction() {
+        int64_t read_ops = 0;
+        int64_t write_ops = 0;
+        int64_t write_debt = 0;
         // Generate keys
         for (auto itr = ops.begin(); itr != ops.end(); ++itr) {
             auto key = key_gen.sample_idx();
             itr->key = adapting_key(key);
-            int8_t key_sign = (key % db.params.variants == key % (2 * db.params.variants)) ? 1 : -1;
+            int8_t key_sign = ((key % (100 * db.params.variants)) / db.params.variants < db.params.write_rate) ? 1 : -1;
+            if (write_debt > 0 && key_sign == -1) {
+                key_sign = 1;
+                --write_debt;
+            }
             itr->txn = txn_type(key_sign * (key % db.params.variants));
+            if (itr->txn > txn_type::read_all) {
+                ++write_ops;
+            } else {
+                ++read_ops;
+                if (key_sign == 1) {
+                    ++write_debt;
+                }
+            }
         }
+        return {read_ops, write_ops};
     }
 
     // Implement this!
@@ -330,7 +358,7 @@ public:
         bool success, result;
         uintptr_t row;
 
-        generate_transaction();
+        const auto [read_ops, write_ops] = generate_transaction();
 
         TXN {
             ++get_stats(base_runner::id).txns_started;
@@ -461,6 +489,8 @@ public:
         } TEND(true);  // Retry on abort
 
         ++get_stats(base_runner::id).txns_committed;
+        get_stats(base_runner::id).read_ops += read_ops;
+        get_stats(base_runner::id).write_ops += write_ops;
         return 1;
     }
 
@@ -524,6 +554,17 @@ int run(int argc, const char * const *argv) {
             "Here is an example option. Can be one of:",
             "  any non-empty string.");
     */
+
+    parser.AddOption(
+            "write-rate", 'w', Clp_ValInt, Clp_Optional,
+            [] (CommandParams& params, std::any value) -> bool {
+                // Cast the value back from std::any
+                int8_t write_rate = std::any_cast<int>(value);
+                params.write_rate = unsigned(write_rate);
+                // Return true if the value is acceptable; false otherwise.
+                return write_rate >= 0 && write_rate <= 100;
+            },
+            "Target write ops % (default 50).");
 
     parser.AddOption(
             "ops", 'o', Clp_ValLong, Clp_Optional,
