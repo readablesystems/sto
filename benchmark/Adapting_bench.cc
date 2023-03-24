@@ -266,7 +266,8 @@ public:
     template <typename... Args>
     Adapting_runner(Args&&... args)
         : base_runner(std::forward<Args>(args)...),
-          key_gen(db.rng[base_runner::id], 0, db.params.table_size - 1) {
+          key_gen(db.rng[base_runner::id], 0, db.params.table_size - 1),
+          write_gen(db.rng[base_runner::id], 0, 99) {
         ops.resize(db.params.ops_per_txn);
         auto& stats = get_stats(base_runner::id);
         memset(&stats, 0, sizeof stats);
@@ -328,7 +329,7 @@ public:
         for (auto itr = ops.begin(); itr != ops.end(); ++itr) {
             auto key = key_gen.sample_idx();
             itr->key = adapting_key(key);
-            int8_t key_sign = ((key % (100 * db.params.variants)) / db.params.variants < db.params.write_rate) ? 1 : -1;
+            int8_t key_sign = write_gen.sample_idx() < db.params.write_rate ? 1 : -1;
             if (write_debt > 0 && key_sign == -1) {
                 key_sign = 1;
                 --write_debt;
@@ -519,6 +520,7 @@ public:
     }
 
     sampling::StoUniformDistribution<> key_gen;
+    sampling::StoUniformDistribution<> write_gen;
     std::vector<txn_params> ops;
 };
 // This is an alias for the runner type. Or we could've just called it
