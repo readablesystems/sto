@@ -223,6 +223,36 @@ def peek(key, quiet=False, **kwargs):
       print(e)
   print()
 
+def results(key, quiet=False, **kwargs):
+  '''Download results from each cached instance.'''
+  import json
+  import os
+  import pathlib
+
+  import boto3
+  import paramiko
+
+  if not key:
+    return 'Invalid SSH private key.'
+
+  with open(get_cache_name(), 'r') as fin:
+    mappings = json.load(fin)
+
+  ec2 = boto3.resource('ec2')
+
+  pathlib.Path('results').mkdir(parents=True, exist_ok=True)
+  for label, cache in mappings.items():
+    name = cache['name']
+    instanceid = cache['instanceid']
+    instance = ec2.Instance(instanceid)
+
+    print(f'\r\033[2KDownloading results from {name}: {instance.public_dns_name}', end='')
+
+    redirect = "> /dev/null 2> /dev/null" if quiet else ""
+    os.system(f'scp -i {key} -o "StrictHostKeyChecking no" ubuntu@{instance.public_dns_name}:sto/results/* results/ {redirect}')
+
+  print()
+
 def run(key, quiet=False, **kwargs):
   '''Run through each cached instance.'''
   import json
@@ -287,6 +317,7 @@ def main():
   functions = {
     'launch': launch,
     'peek': peek,
+    'results': results,
     'run': run,
   }
 
