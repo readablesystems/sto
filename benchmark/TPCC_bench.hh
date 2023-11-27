@@ -675,6 +675,7 @@ template <typename DBParams>
 class tpcc_access {
 public:
     static void prepopulation_worker(tpcc_db<DBParams> &db, int worker_id) {
+        ::TThread::set_id(worker_id);
         tpcc_prepopulator<DBParams> pop(worker_id, db);
         db.thread_init_all();
         pop.run();
