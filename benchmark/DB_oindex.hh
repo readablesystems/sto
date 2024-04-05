@@ -773,7 +773,10 @@ protected:
 
 private:
     table_type table_;
-    uint64_t key_gen_;
+    union alignas(CACHE_LINE_SIZE) {
+        uint64_t key_gen_;
+        uint8_t _[CACHE_LINE_SIZE];
+    };
 
     static bool
     access_all(std::array<access_t, value_container_type::num_versions>& cell_accesses, std::array<TransItem*,
@@ -1450,8 +1453,10 @@ public:
 
 //private:
     table_type table_;
-    uint64_t key_gen_;
-
+    union alignas(CACHE_LINE_SIZE) {
+        uint64_t key_gen_;
+        uint8_t _[CACHE_LINE_SIZE];
+    };
     //static bool
     //access_all(std::array<access_t, internal_elem::num_versions>&, std::array<TransItem*, internal_elem::num_versions>&, internal_elem*) {
     //    always_assert(false, "Not implemented.");

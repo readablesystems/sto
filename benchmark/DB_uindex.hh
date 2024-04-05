@@ -84,8 +84,10 @@ private:
     Hash hasher_;
     Pred pred_;
 
-    uint64_t key_gen_;
-
+    union alignas(CACHE_LINE_SIZE) {
+        uint64_t key_gen_;
+        uint8_t _[CACHE_LINE_SIZE];
+    };
     // used to mark whether a key is a bucket (for bucket version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
     static constexpr uintptr_t bucket_bit = C::item_key_tag;
@@ -681,7 +683,10 @@ private:
     Hash hasher_;
     Pred pred_;
 
-    uint64_t key_gen_;
+    union alignas(CACHE_LINE_SIZE) {
+        uint64_t key_gen_;
+        uint8_t _[CACHE_LINE_SIZE];
+    };
 
     // used to mark whether a key is a bucket (for bucket version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
